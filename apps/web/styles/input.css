@@ -1,0 +1,22 @@
+@import "tailwindcss" source("..");
+
+@theme {
+  --color-canvas: #f6f8f4;
+  --color-ink: #24352c;
+  --color-action: #526b5b;
+  --color-focus: #366947;
+}
+
+@layer base {
+  body {
+    @apply m-0 bg-canvas font-sans text-ink;
+  }
+
+  button {
+    @apply cursor-pointer rounded-md border border-action bg-white px-4 py-2.5 text-ink;
+  }
+
+  button:focus-visible {
+    @apply outline-3 outline-offset-3 outline-focus;
+  }
+}

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: DeterminateSystems/nix-installer-action@2cb76beab460be7e44442c7ebdcbc30b638416df
+        with:
+          extra-conf: |
+            sandbox = true
+      - name: Require an enabled Nix sandbox
+        run: test "$(nix config show sandbox)" = true
+      - name: Evaluate both supported systems
+        run: nix flake check path:. --all-systems --no-build
+      - name: Build release assets in the Nix sandbox
+        run: nix build path:.#release
+      - name: Check MoonBit, CSS extraction, and packaged artifacts
+        run: nix flake check path:. -L
+      - name: Rebuild release packages with fetching disabled
+        run: nix build path:.#web path:.#api --offline --rebuild --no-link
+      - name: Verify the built page in Chromium
+        run: |
+          nix build path:.#web --out-link result-web
+          nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" \
+            node --test tests/integration/browser.test.mjs
+      - name: Exercise local Workers runtime on Linux
+        run: |
+          nix build path:.#mooncakes --out-link result-mooncakes
+          nix develop path:. -c bash -eu <<'SCRIPT'
+            export MOON_HOME="$(mktemp -d)"
+            cp -R result-mooncakes/registry "$MOON_HOME/registry"
+            chmod -R u+w "$MOON_HOME"
+            pnpm install --frozen-lockfile
+            just test-worker
+          SCRIPT

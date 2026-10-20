@@ -1,0 +1,9 @@
+import {
+  "beso1225/tanikun-web/app",
+  "moonbit-community/rabbita",
+  "moonbit-community/rabbita/html",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "js"

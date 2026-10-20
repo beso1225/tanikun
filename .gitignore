@@ -1,0 +1,17 @@
+_build/
+.mooncakes/
+.direnv/
+node_modules/
+.wrangler/
+dist/
+output/playwright/
+.playwright-cli/
+/apps/web/public/styles.css
+
+/result
+/result-*
+/.cache/
+/.state/
+/.pnpm-store/
+/.codex/
+.DS_Store

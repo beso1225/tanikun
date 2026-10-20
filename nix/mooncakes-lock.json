@@ -1,0 +1,57 @@
+[
+  {
+    "name": "moonbit-community/rabbita",
+    "version": "0.16.4",
+    "deps": {
+      "moonbitlang/x": "0.5.1",
+      "moonbitlang/async": "0.22.4",
+      "moonbitlang/moonback": "0.8.5"
+    },
+    "checksum": "6fdbe026ad9e73113841b678f20e9fa02dec6cb6965ab512c9e20166967c0174"
+  },
+  {
+    "name": "moonbit-community/warren",
+    "version": "0.4.4",
+    "deps": {
+      "moonbitlang/x": "0.5.1",
+      "moonbitlang/async": "0.22.4",
+      "moonbitlang/parser": "0.2.5",
+      "moonbit-community/evol-minifier": "0.1.0"
+    },
+    "checksum": "82b948335ded94d4849c041a61343b85e7b362e55aab7d727de95fedefcddddb"
+  },
+  {
+    "name": "moonbit-community/evol-minifier",
+    "version": "0.1.0",
+    "checksum": "169f81e09ee099ded65e6dd8b00553df9fb9b9a3a16b68cad2bb32615fb447f7",
+    "deps": {}
+  },
+  {
+    "name": "moonbitlang/async",
+    "version": "0.22.4",
+    "checksum": "2ffdb85cb229cfe9219161a7f2b959215a79a0d75b7e642cb346713f168a1457",
+    "deps": {}
+  },
+  {
+    "name": "moonbitlang/x",
+    "version": "0.5.1",
+    "checksum": "cdceed523974dbd2833930f70e7e7ee087b77220659c55f87ab678197976aeae",
+    "deps": {}
+  },
+  {
+    "name": "moonbitlang/parser",
+    "version": "0.2.5",
+    "deps": {
+      "moonbitlang/x": "0.4.39"
+    },
+    "checksum": "896a8bed86da430626ceb62f91edb873940590cd448a5e4eeb07c1f2d4a69302"
+  },
+  {
+    "name": "moonbitlang/moonback",
+    "version": "0.8.5",
+    "deps": {
+      "moonbitlang/async": "0.22.2"
+    },
+    "checksum": "9a5087701834a9509788be2a147bc10e6209e1709d2f52cdc64f2c123afe3158"
+  }
+]

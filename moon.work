@@ -1,0 +1,4 @@
+members = [
+  "./apps/api",
+  "./apps/web",
+]
