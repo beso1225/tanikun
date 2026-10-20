@@ -527,7 +527,7 @@ Results and reusable findings:
   MoonBit function that returns `@js_async.Promise` and wraps the async work
   in `Promise::from_async` works: JavaScript can `await` it. The Node test now
   uses this pattern for `idb_put`/`idb_get`, and it is the recommended bridge
-  shape for Phase 3.
+  shape for Phase 3. Linux CI run 39452587833 verified this export.
 - The test uses fake-indexeddb in Node; real browser IndexedDB and Automerge
   WASM loading/bundling are not yet verified. That remains a browser-specific
   check for Phase 3.
@@ -568,4 +568,6 @@ Nix build sandbox.
 
 Phase 0 is complete: macOS development, Linux CI, the offline Nix release
 build, the browser regression test, and both review spikes have runnable
-evidence.
+evidence. Linux run
+[39452587833](https://github.com/beso1225/tanikun/actions/runs/39452587833)
+passed the browser, Workers runtime, S5, and S6 steps in 2m31s.
