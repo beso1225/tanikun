@@ -32,7 +32,7 @@ jobs:
           nix build path:.#web --out-link result-web
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" \
             node --test tests/integration/browser.test.mjs
-      - name: Exercise local Workers runtime on Linux
+      - name: Exercise local Workers runtime and Phase 0 spikes
         run: |
           nix build path:.#mooncakes --out-link result-mooncakes
           nix develop path:. -c bash -eu <<'SCRIPT'
@@ -41,4 +41,6 @@ jobs:
             chmod -R u+w "$MOON_HOME"
             pnpm install --frozen-lockfile
             just test-worker
+            just test-automerge
+            just test-d1
           SCRIPT

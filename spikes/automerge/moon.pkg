@@ -1,0 +1,25 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/js_async",
+} for "test"
+
+import {
+  "moonbitlang/async/js_async",
+}
+
+options(
+  link: {
+    "js": {
+      "exports": [
+        "create_doc",
+        "set_field",
+        "save_doc",
+        "load_doc",
+        "get_field",
+        "get_changes",
+        "apply_changes",
+      ],
+      "format": "esm",
+    },
+  },
+)

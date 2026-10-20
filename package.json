@@ -7,8 +7,12 @@
     "node": ">=24 <25"
   },
   "devDependencies": {
+    "@automerge/automerge": "3.5.0",
+    "@cloudflare/vitest-plugin": "1.4.6",
     "@tailwindcss/cli": "4.3.3",
+    "fake-indexeddb": "6.2.6",
     "tailwindcss": "4.3.3",
+    "vitest": "5.0.5",
     "wrangler": "4.151.1"
   }
 }

@@ -12,7 +12,7 @@ build:
 
 # Test MoonBit code and the generated JavaScript export.
 test: build
-    moon test --target js --deny-warn
+    moon test --target js --deny-warn -p beso1225/tanikun-api -p beso1225/tanikun-web/app
     node --test tests/integration/moonbit-export.test.mjs
 
 # Serve the API with local workerd; Wrangler rebuilds MoonBit on changes.
@@ -48,3 +48,12 @@ build-web: build-css
 # Set TANIKUN_WEB_DIST to test an already built directory instead of dist.
 test-browser: build-web
     node --test tests/integration/browser.test.mjs
+
+# Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
+test-automerge: build
+    moon test --target js -p beso1225/tanikun-automerge-spike
+    node --test tests/integration/automerge-ffi.test.mjs
+
+# Verify the Workers Vitest plugin with a local D1 binding.
+test-d1:
+    XDG_CONFIG_HOME="$PWD/.cache/wrangler-config" WRANGLER_LOG_PATH=.wrangler/logs pnpm exec vitest run --config vitest.config.mts

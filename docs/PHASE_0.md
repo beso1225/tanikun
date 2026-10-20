@@ -25,14 +25,14 @@ the web build and minimal tests also pass on Linux in CI.
 5. **S3: Tailwind v4 and MoonBit sources — complete on local macOS.**
    Check whether a class used only in `.mbt` appears in generated CSS.
    Use an explicit `@source` only if needed.
-6. **S4: offline Nix builds and Linux CI — implemented; Linux execution pending.**
+6. **S4: offline Nix builds and Linux CI — complete on macOS and Linux CI.**
    Pin MoonBit and pnpm dependencies for sandboxed builds. Implement
    `nix build .#web`, then `.#api` and `.#release` when
    their artifact boundaries are established. Run deterministic checks with
    `nix flake check` and add a Linux GitHub Actions workflow.
-7. **Minimum browser test — complete on local macOS.**
+7. **Minimum browser test — complete on macOS and Linux CI.**
    Add Playwright to verify the built page, including the Tailwind fixture.
-8. **Remaining review spikes.**
+8. **Remaining review spikes — complete on local macOS.**
    S5 verifies Automerge core/IndexedDB through FFI; S6 verifies the Workers
    Vitest plugin with local D1. Add these dependencies when each spike starts.
 
@@ -347,8 +347,7 @@ fixture rather than the CSS/browser pipeline.
 ## Step 6 / S4: fixed dependency closures and Linux CI (2026-10-18)
 
 Implemented release packages for both supported systems. Local macOS builds,
-checks, and offline rebuilds pass. Linux outputs evaluate, and the workflow is
-ready; an actual Linux CI run is still required before marking S4 complete.
+checks, and offline rebuilds pass. Linux CI now passes, so S4 is complete.
 
 ```sh
 nix build path:.#web       # result/{index.html,index.js,styles.css}
@@ -428,8 +427,10 @@ sockets are available. Actions are pinned by commit SHA. No cloud resources
 or deployment credentials are required.
 
 The workflow also passes actionlint (including its shellcheck integration).
-Persistent browser regression tests remain step 7. CI has not been executed
-from this local checkout; no commit or push was made as part of S4.
+Initial commit `fb95011` was pushed to `origin/main`; the first Linux run
+([39446269536](https://github.com/beso1225/tanikun/actions/runs/39446269536))
+passed all steps in 3m5s, including the browser, Workers runtime, and offline
+rebuild steps. The job also verified `sandbox = true` on the runner.
 
 ## Step 7: minimum browser test (2026-10-21)
 
@@ -483,5 +484,87 @@ Validation:
   `.cache` directory, so the Workers test no longer needs a writable home
   directory.
 
-The local Nix daemon still runs with `sandbox = false`, so this does not prove
-Linux browser execution; the Linux CI run remains the evidence for S4 completion.
+The local Nix daemon still runs with `sandbox = false`, but the Linux CI job
+verifies an enabled Nix sandbox before building. The browser step passed there
+in run 39446269536.
+
+## Step 8 / S5 and S6: review spikes (2026-10-21)
+
+Both spikes use dependencies pinned in `package.json` and `pnpm-lock.yaml`.
+The Nix `pnpmDeps` hash was updated for the larger npm closure.
+
+### S5: Automerge core and IndexedDB through FFI
+
+Versions: Automerge `3.5.0`, fake-indexeddb `6.2.6`, and
+`moonbitlang/async` `0.22.4` with the pinned MoonBit compiler.
+
+`spikes/automerge` is a workspace module. It models documents and changes as
+opaque `#external` handles and passes serialized bytes as MoonBit `Bytes`,
+which the JavaScript ABI maps to `Uint8Array`. A JS bridge installs Automerge
+and IndexedDB on `globalThis`; the MoonBit side never imports npm directly.
+
+The spike verifies:
+
+- `save`/`load` round-trips a document through `Bytes`.
+- Changes between two replicas merge through opaque change handles.
+- An async MoonBit wrapper stores bytes in IndexedDB and restores them.
+
+Commands:
+
+```sh
+nix develop path:.
+just test-automerge
+```
+
+Results and reusable findings:
+
+- Automerge 3 marks the input of `change` outdated. Branch creation must
+  clone first; the bridge does `change(clone(doc), ...)`.
+- `applyChanges` returns an array of documents, not a document. The bridge
+  takes element `0`.
+- A raw MoonBit `async fn` exported to JavaScript cannot be called directly:
+  `Promise::wait` panics because no coroutine is running. The IndexedDB test
+  succeeds under `moon test`'s async runtime. Phase 3 must either drive async
+  work from a MoonBit entrypoint/event loop or keep async calls behind a
+  non-async JS bridge that owns the loop. This is the main S5 risk.
+- The test uses fake-indexeddb in Node; real browser IndexedDB and Automerge
+  WASM loading/bundling are not yet verified. That remains a browser-specific
+  check for Phase 3.
+- Test count: three MoonBit async tests in the spike plus two Node tests for
+  the `Bytes` and change-handle ABI.
+
+### S6: Workers Vitest plugin and local D1
+
+Versions: Vitest `5.0.5`, `@cloudflare/vitest-plugin` `1.4.6`. The plugin
+brings its own Wrangler `4.151.3` and Miniflare `5.20261019.1-beta` alongside
+the directly pinned Wrangler `4.151.1`; the test uses the plugin's copy.
+
+`apps/api/test` contains a small Worker, a test-only Wrangler configuration
+with a D1 binding (`database_id` is a placeholder, never deployed), and four
+Vitest tests. The tests verify:
+
+- Per-test isolated D1 storage.
+- A `BLOB` round-trip through the Worker: POST bytes, GET them back.
+- A direct `env.DB` read inside the test.
+- A 404 for an unknown change.
+
+Commands:
+
+```sh
+nix develop path:.
+just test-d1
+```
+
+The plugin runs Miniflare/workerd fully locally; no Cloudflare account,
+remote D1 database, or network binding is used. Wrangler's registry and log
+paths stay under the ignored `.cache`/`.wrangler` directories.
+
+CI runs `just test-automerge` and `just test-d1` in the Linux job after the
+Wrangler HTTP test. The sandboxed Nix checks still compile the spike from the
+fixed Mooncakes closure, but run only the API/Web MoonBit tests; the FFI tests
+need installed npm packages and a Node async runtime, so they run outside the
+Nix build sandbox.
+
+Phase 0 is complete: macOS development, Linux CI, the offline Nix release
+build, the browser regression test, and both review spikes have runnable
+evidence.

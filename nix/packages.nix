@@ -8,7 +8,7 @@ let
     fileset = lib.fileset.unions [
       ../apps/api ../apps/web/app ../apps/web/cmd ../apps/web/moon.mod
       ../apps/web/public/index.html ../apps/web/styles
-      ../tests/integration ../moon.work ../justfile
+      ../tests/integration ../spikes ../moon.work ../justfile
       ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml
     ];
   };
@@ -20,7 +20,7 @@ let
       fileset = lib.fileset.unions [ ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ];
     };
     fetcherVersion = 3;
-    hash = "sha256-hdDkSZtBZqZfImYOIwluucVXw7tFRE82zTfT/4iVtxU=";
+    hash = "sha256-KP4VOx+tQzLgNKmxNLAMSiTKnMGlpCfmM89VPs7rATg=";
   };
   prepareMoon = ''
     export HOME="$TMPDIR/home"
@@ -63,7 +63,7 @@ let
     checkPhase = ''
       moon fmt --check
       moon check --frozen --target js --deny-warn
-      moon test --frozen --target js --deny-warn
+      moon test --frozen --target js --deny-warn -p beso1225/tanikun-web/app
       moon build --frozen --target js --release --deny-warn
       node --test tests/integration/moonbit-export.test.mjs tests/integration/tailwind.test.mjs
     '';
@@ -83,7 +83,7 @@ let
     checkPhase = ''
       moon fmt --check
       moon check --frozen --target js --deny-warn
-      moon test --frozen --target js --deny-warn
+      moon test --frozen --target js --deny-warn -p beso1225/tanikun-api
       node --test tests/integration/moonbit-export.test.mjs
     '';
     # Keep the bridge's relative import intact; no npm/runtime dependency is needed.
