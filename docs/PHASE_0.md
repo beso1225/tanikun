@@ -523,15 +523,16 @@ Results and reusable findings:
 - `applyChanges` returns an array of documents, not a document. The bridge
   takes element `0`.
 - A raw MoonBit `async fn` exported to JavaScript cannot be called directly:
-  `Promise::wait` panics because no coroutine is running. The IndexedDB test
-  succeeds under `moon test`'s async runtime. Phase 3 must either drive async
-  work from a MoonBit entrypoint/event loop or keep async calls behind a
-  non-async JS bridge that owns the loop. This is the main S5 risk.
+  `Promise::wait` panics because no coroutine is running. Exporting a normal
+  MoonBit function that returns `@js_async.Promise` and wraps the async work
+  in `Promise::from_async` works: JavaScript can `await` it. The Node test now
+  uses this pattern for `idb_put`/`idb_get`, and it is the recommended bridge
+  shape for Phase 3.
 - The test uses fake-indexeddb in Node; real browser IndexedDB and Automerge
   WASM loading/bundling are not yet verified. That remains a browser-specific
   check for Phase 3.
-- Test count: three MoonBit async tests in the spike plus two Node tests for
-  the `Bytes` and change-handle ABI.
+- Test count: three MoonBit async tests in the spike plus three Node tests for
+  the `Bytes` ABI, change handles, and the exported IndexedDB promise.
 
 ### S6: Workers Vitest plugin and local D1
 

@@ -18,6 +18,8 @@ options(
         "get_field",
         "get_changes",
         "apply_changes",
+        "idb_put",
+        "idb_get",
       ],
       "format": "esm",
     },

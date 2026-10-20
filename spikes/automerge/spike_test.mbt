@@ -80,9 +80,9 @@ async test "IndexedDB stores and restores document bytes" {
   @tanikun-automerge-spike.idb_put(
     "document-1",
     @tanikun-automerge-spike.save_doc(doc),
-  )
+  ).wait()
   let restored = @tanikun-automerge-spike.load_doc(
-    @tanikun-automerge-spike.idb_get("document-1"),
+    @tanikun-automerge-spike.idb_get("document-1").wait(),
   )
   assert_eq(@tanikun-automerge-spike.get_field(restored, "term"), "2026-spring")
 }

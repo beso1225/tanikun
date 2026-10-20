@@ -83,11 +83,13 @@ pub fn apply_changes(doc : Doc, changes : Changes) -> Doc {
 }
 
 ///|
-pub async fn idb_put(key : String, bytes : Bytes) -> Unit {
-  js_idb_put(key, bytes).wait()
+/// Export a JavaScript promise so callers outside MoonBit's async runtime can
+/// await the IndexedDB operation.
+pub fn idb_put(key : String, bytes : Bytes) -> @js_async.Promise[Unit] {
+  @js_async.Promise::from_async(() => js_idb_put(key, bytes).wait())
 }
 
 ///|
-pub async fn idb_get(key : String) -> Bytes {
-  js_idb_get(key).wait()
+pub fn idb_get(key : String) -> @js_async.Promise[Bytes] {
+  @js_async.Promise::from_async(() => js_idb_get(key).wait())
 }
