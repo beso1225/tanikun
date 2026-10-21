@@ -45,6 +45,11 @@ just test-d1
 `test-browser` は `just setup-web`、`test-worker` / `test-automerge` /
 `test-d1` は `pnpm install` が前提です。
 
+## 開発フロー
+
+変更はpull request経由で取り込みます。`main` では `linux` のCIチェックが必須で、
+直接push・force push・ブランチ削除は禁止されています。
+
 ## ドキュメント
 
 - [Phase 0の計画と検証記録](docs/PHASE_0.md)
