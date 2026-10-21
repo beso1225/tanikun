@@ -6,10 +6,10 @@
   "send_metrics": false,
   "build": {
     "command": "moon build --target js --release --deny-warn",
-    "watch_dir": ["apps/api"]
+    "watch_dir": ["apps/api"],
   },
   "dev": {
     "ip": "127.0.0.1",
-    "port": 8787
-  }
+    "port": 8787,
+  },
 }

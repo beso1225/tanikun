@@ -1,7 +1,12 @@
 import { execFileSync, spawn } from "node:child_process";
 
 const cli = "node_modules/@tailwindcss/cli/dist/index.mjs";
-const cssArgs = ["-i", "apps/web/styles/input.css", "-o", "apps/web/public/styles.css"];
+const cssArgs = [
+  "-i",
+  "apps/web/styles/input.css",
+  "-o",
+  "apps/web/public/styles.css",
+];
 
 // Warren must find the stylesheet on its first build.
 execFileSync(process.execPath, [cli, ...cssArgs], { stdio: "inherit" });
@@ -12,7 +17,9 @@ let timer;
 
 function signalGroup(child, signal) {
   if (!child.pid) return;
-  try { process.kill(-child.pid, signal); } catch (error) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch (error) {
     if (error.code !== "ESRCH") throw error;
   }
 }
@@ -36,7 +43,14 @@ function start(command, args) {
   });
   child.on("exit", (code) => stop(code ?? 1));
   child.on("close", () => {
-    if (children.every((process) => process.exitCode !== null || process.signalCode !== null || !process.pid)) {
+    if (
+      children.every(
+        (process) =>
+          process.exitCode !== null ||
+          process.signalCode !== null ||
+          !process.pid,
+      )
+    ) {
       clearTimeout(timer);
     }
   });
