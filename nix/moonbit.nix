@@ -1,4 +1,10 @@
-{ lib, stdenv, fetchurl, makeWrapper, autoPatchelfHook }:
+{
+  lib,
+  stdenv,
+  fetchurl,
+  makeWrapper,
+  autoPatchelfHook,
+}:
 
 let
   version = "0.10.14+7d59c7ec9";
@@ -27,7 +33,10 @@ stdenv.mkDerivation {
     inherit (distribution) hash;
   };
 
-  nativeBuildInputs = [ makeWrapper ] ++ lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook ];
+  nativeBuildInputs = [
+    makeWrapper
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook ];
   buildInputs = lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc.cc.lib ];
   dontUnpack = true;
   dontStrip = true;
