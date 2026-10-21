@@ -19,7 +19,7 @@
 
 初回のシェル起動時に、fnmが`.node-version`のNode.js 24.22.1を取得し、
 corepackが固定版のpnpmを提供します。Node.jsをグローバルにインストールする
-必要はありません。
+必要はありません。CIは`actions/setup-node`を使い、fnmのフックを省略します。
 
 ```sh
 git clone git@github.com:beso1225/tanikun.git

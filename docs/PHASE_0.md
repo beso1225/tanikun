@@ -685,7 +685,7 @@ installs pnpm 12.9.0 from the `packageManager` field.
   changes.
 - CI installs the same version with `actions/setup-node` from
   `.node-version`, then enables corepack. The dev shell skips its fnm hook when
-  `CI` is set.
+  `GITHUB_ACTIONS` is set.
 - Nix build derivations still use a nixpkgs Node.js internally because they run
   in the Nix sandbox. Interactive and CI test commands use 24.22.1; the Nix
   build toolchain remains a separate reproducible environment and may lag

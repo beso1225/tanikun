@@ -83,8 +83,8 @@
                 chmod -R u+w "$MOON_HOME/registry"
               fi
               export PATH="$MOON_HOME/bin:$PATH"
-              # Interactive shells use fnm; CI provides Node via setup-node.
-              if [ -z "''${CI:-}" ]; then
+              # Interactive shells use fnm; GitHub Actions provides Node via setup-node.
+              if [ -z "''${GITHUB_ACTIONS:-}" ]; then
                 export FNM_DIR="$PWD/.direnv/fnm"
                 export XDG_STATE_HOME="$PWD/.cache/state"
                 export COREPACK_HOME="$PWD/.cache/corepack"

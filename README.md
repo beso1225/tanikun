@@ -20,7 +20,7 @@ Requirements: Nix with flakes enabled. direnv is optional.
 
 The first shell entry uses fnm to download Node.js 24.22.1 from
 `.node-version`; corepack provides the pinned pnpm, so no global Node.js
-installation is required.
+installation is required. CI uses `actions/setup-node` and skips the fnm hook.
 
 ```sh
 git clone git@github.com:beso1225/tanikun.git
