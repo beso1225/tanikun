@@ -46,6 +46,11 @@ just test-d1
 `test-browser` needs `just setup-web`; `test-worker`, `test-automerge`, and
 `test-d1` need `pnpm install`.
 
+## Development workflow
+
+Changes land through pull requests. The `linux` CI check is required on `main`;
+direct pushes, force pushes, and branch deletion are blocked.
+
 ## Docs
 
 - [Phase 0 plan and evidence](docs/PHASE_0.md)
