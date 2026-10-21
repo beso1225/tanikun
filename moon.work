@@ -1,5 +1,7 @@
 members = [
   "./apps/api",
   "./apps/web",
+  "./packages/domain",
+  "./packages/requirements",
   "./spikes/automerge",
 ]

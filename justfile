@@ -33,7 +33,11 @@ build:
 
 # Test MoonBit code and the generated JavaScript export.
 test: build
-    moon test --target js --deny-warn -p beso1225/tanikun-api -p beso1225/tanikun-web/app
+    moon test --target js --deny-warn \
+        -p beso1225/tanikun-api \
+        -p beso1225/tanikun-domain \
+        -p beso1225/tanikun-requirements \
+        -p beso1225/tanikun-web/app
     node --test tests/integration/moonbit-export.test.mjs
 
 # Serve the API with local workerd; Wrangler rebuilds MoonBit on changes.
