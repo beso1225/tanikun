@@ -65,6 +65,7 @@ just test-d1
 ## ドキュメント
 
 - [Phase 0の計画と検証記録](docs/PHASE_0.md)
+- [Phase 1の設計契約](docs/PHASE_1.md)
 - [初期設計](docs/INITIAL_DESIGN.md)
 - [用語集](GLOSSARY.md)
 
