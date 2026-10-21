@@ -36,6 +36,12 @@ and the checks from issue #18 pass on Linux CI.
 `packages/requirements` depends on `packages/domain`. Neither module may depend
 on `apps/web`, `apps/api`, Workers APIs, or JavaScript FFI.
 
+Both modules declare `preferred_target = "js"` and `supported_targets = "js"`
+to match the JavaScript workspace and its CI commands. This is a build-target
+declaration, not a dependency on JavaScript: the modules use no FFI, and
+broadening their supported targets is deferred until another target is
+actually exercised.
+
 ## Value objects
 
 ### Credits

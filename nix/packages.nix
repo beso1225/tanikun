@@ -12,6 +12,7 @@ let
       ../apps/web/moon.mod
       ../apps/web/public/index.html
       ../apps/web/styles
+      ../packages
       ../tests/integration
       ../spikes
       ../moon.work
@@ -123,6 +124,27 @@ let
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
     '';
   };
+  pure = pkgs.stdenvNoCC.mkDerivation {
+    pname = "tanikun-pure";
+    version = "0.1.0";
+    inherit src;
+    nativeBuildInputs = [
+      moonbit
+      pkgs.nodejs_24
+    ];
+    configurePhase = prepareMoon;
+    buildPhase = "moon build --frozen --target js --release --deny-warn packages/domain packages/requirements";
+    doCheck = true;
+    checkPhase = ''
+      moon fmt --check
+      moon check --frozen --target js --deny-warn packages/domain packages/requirements
+      moon test --frozen --target js --deny-warn -p beso1225/tanikun-domain -p beso1225/tanikun-requirements
+    '';
+    installPhase = ''
+      mkdir -p "$out"
+      touch "$out/checked"
+    '';
+  };
   release = pkgs.runCommand "tanikun-release-0.1.0" { } ''
     mkdir -p "$out"
     ln -s ${web} "$out/web"
@@ -136,6 +158,7 @@ in
     warren
     web
     api
+    pure
     release
     ;
 }

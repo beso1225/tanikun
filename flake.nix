@@ -57,6 +57,7 @@
             warren
             web
             api
+            pure
             release
             ;
           default = project.release;
@@ -96,7 +97,7 @@
         in
         {
           moonbit-js = project.api;
-          inherit (project) web;
+          inherit (project) pure web;
           release =
             project.pkgs.runCommand "tanikun-release-check"
               {
