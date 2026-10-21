@@ -39,7 +39,8 @@ just fmt
 ```
 
 `just lint` はMoonBitのチェック、Nixのlint、Justの整形確認、oxlint/oxfmt、
-actionlint、zizmorを実行します。`just fmt` は利用可能なformatterを適用します。
+editorconfig-checker、markdownlint-cli2、stylelint、actionlint、zizmorを実行します。
+`just fmt` は利用可能なformatterを適用します。
 
 ## テスト
 

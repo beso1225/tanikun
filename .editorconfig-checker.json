@@ -1,0 +1,21 @@
+{
+  "Version": "4.0.2",
+  "Verbose": false,
+  "Format": "",
+  "Debug": false,
+  "IgnoreDefaults": false,
+  "SpacesAfterTabs": false,
+  "NoColor": false,
+  "Exclude": ["^pnpm-lock.yaml$", "^flake.lock$", "^nix/mooncakes-lock.json$"],
+  "AllowedContentTypes": [],
+  "PassedFiles": [],
+  "Disable": {
+    "Charset": false,
+    "EndOfLine": false,
+    "Indentation": false,
+    "InsertFinalNewline": false,
+    "TrimTrailingWhitespace": false,
+    "IndentSize": false,
+    "MaxLineLength": false
+  }
+}

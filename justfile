@@ -14,6 +14,9 @@ lint: check
     just --fmt --check
     pnpm exec oxlint --deny-warnings
     pnpm exec oxfmt --check
+    editorconfig-checker
+    markdownlint-cli2 "**/*.md"
+    stylelint "apps/web/styles/**/*.css"
     actionlint
     zizmor .
 

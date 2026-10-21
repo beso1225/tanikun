@@ -138,7 +138,7 @@
 
 ---
 
-**出典（2026-10-17 参照）**
+## 出典（2026-10-17 参照）
 
 - MoonBit docs: `https://docs.moonbitlang.com/en/latest/`（language/ffi, toolchain/moon/{workspace,module,package,commands}）
 - MoonBit download: `https://www.moonbitlang.com/download/`
