@@ -2,6 +2,8 @@
 let
   inherit (pkgs) lib;
   mooncakes = pkgs.callPackage ./mooncakes.nix { };
+  # Sandboxed builds keep nixpkgs Node/pnpm; interactive shells use fnm and
+  # corepack from .node-version instead.
   pnpm = pkgs.pnpm_12;
   src = lib.fileset.toSource {
     root = ../.;

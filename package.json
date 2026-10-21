@@ -5,7 +5,7 @@
   "license": "MIT",
   "packageManager": "pnpm@12.9.0",
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24.22.1 <25"
   },
   "devDependencies": {
     "@automerge/automerge": "3.5.0",

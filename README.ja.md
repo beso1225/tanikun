@@ -10,16 +10,21 @@
 - MoonBit（Rabbita / Warren）
 - Cloudflare Workers
 - Tailwind CSS v4
-- Nix（固定ツールチェーン）と pnpm
+- Nix（MoonBitとシステムツールの固定）
+- fnm + corepack（Node.js 24.22.1とpnpm 12.9.0）
 
 ## クイックスタート
 
 必要なもの: flake対応のNix。direnvは任意です。
 
+初回のシェル起動時に、fnmが`.node-version`のNode.js 24.22.1を取得し、
+corepackが固定版のpnpmを提供します。Node.jsをグローバルにインストールする
+必要はありません。
+
 ```sh
 git clone git@github.com:beso1225/tanikun.git
 cd tanikun
-direnv allow            # または nix develop path:.
+direnv allow            # または nix develop
 
 just setup-web          # Warrenを導入（初回のみ・ネットワーク必要）
 pnpm install --frozen-lockfile

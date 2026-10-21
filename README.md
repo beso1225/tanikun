@@ -11,16 +11,21 @@ browser-test foundation.
 - MoonBit with Rabbita and Warren
 - Cloudflare Workers
 - Tailwind CSS v4
-- Nix for the pinned toolchain, pnpm for npm dependencies
+- Nix for the pinned MoonBit and system toolchain
+- fnm + corepack for Node.js 24.22.1 and pnpm 12.9.0
 
 ## Quick start
 
 Requirements: Nix with flakes enabled. direnv is optional.
 
+The first shell entry uses fnm to download Node.js 24.22.1 from
+`.node-version`; corepack provides the pinned pnpm, so no global Node.js
+installation is required.
+
 ```sh
 git clone git@github.com:beso1225/tanikun.git
 cd tanikun
-direnv allow            # or: nix develop path:.
+direnv allow            # or: nix develop
 
 just setup-web          # install Warren; first run needs network
 pnpm install --frozen-lockfile

@@ -93,6 +93,9 @@ The root `flake.nix` and `flake.lock` pin nixpkgs at
 | just                  | 1.58.0                 |
 | direnv                | 2.38.2                 |
 
+Node.js and pnpm were later moved out of the Nix shell; see
+[Node.js via fnm](#nodejs-via-fnm-2026-10-22) below.
+
 `nix/moonbit.nix` fetches the versioned official toolchain and matching core
 archives with SHA-256 hashes. It bundles core during the Nix build, following
 the [official installer](https://cli.moonbitlang.com/install/unix.sh) rather
@@ -667,3 +670,23 @@ The initial adoption required:
 required status check on `main` together with `linux`. YAML uses `actionlint`
 and oxfmt rather than a separate `yamllint`, and pre-commit hooks remain
 optional. Node.js 26 is deferred until it becomes LTS.
+
+## Node.js via fnm (2026-10-22)
+
+The development shell no longer provides Node.js or pnpm from nixpkgs.
+`.node-version` pins Node.js 24.22.1 (Krypton LTS). On the first interactive
+shell entry, fnm downloads that version into `.direnv/fnm`, and corepack
+installs pnpm 12.9.0 from the `packageManager` field.
+
+- `FNM_DIR`, `XDG_STATE_HOME`, and `COREPACK_HOME` point into the repository's
+  ignored `.direnv`/`.cache` directories, so no global Node.js installation is
+  required or modified.
+- `.envrc` watches `.node-version`, so direnv reloads the shell when the pin
+  changes.
+- CI installs the same version with `actions/setup-node` from
+  `.node-version`, then enables corepack. The dev shell skips its fnm hook when
+  `CI` is set.
+- Nix build derivations still use a nixpkgs Node.js internally because they run
+  in the Nix sandbox. Interactive and CI test commands use 24.22.1; the Nix
+  build toolchain remains a separate reproducible environment and may lag
+  behind the LTS patch level.
