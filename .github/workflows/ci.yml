@@ -23,6 +23,8 @@ jobs:
           node-version-file: .node-version
       - name: Enable corepack
         run: corepack enable
+      - name: Verify Node.js version
+        run: test "$(node --version)" = "v$(cat .node-version)"
       - uses: DeterminateSystems/nix-installer-action@2cb76beab460be7e44442c7ebdcbc30b638416df
         with:
           extra-conf: |
@@ -48,6 +50,8 @@ jobs:
           node-version-file: .node-version
       - name: Enable corepack
         run: corepack enable
+      - name: Verify Node.js version
+        run: test "$(node --version)" = "v$(cat .node-version)"
       - uses: DeterminateSystems/nix-installer-action@2cb76beab460be7e44442c7ebdcbc30b638416df
         with:
           extra-conf: |
