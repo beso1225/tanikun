@@ -22,8 +22,8 @@
           moonbit = pkgs.callPackage ./nix/moonbit.nix { };
           tools = [
             moonbit
-            pkgs.nodejs_24
-            pkgs.pnpm_12
+            # Node.js is managed by fnm from .node-version, not nixpkgs.
+            pkgs.fnm
             pkgs.just
             # The browser test uses nixpkgs' Playwright core and browsers so the
             # test never downloads a browser or writes outside the sandbox.
@@ -83,6 +83,18 @@
                 chmod -R u+w "$MOON_HOME/registry"
               fi
               export PATH="$MOON_HOME/bin:$PATH"
+              # Interactive shells use fnm; GitHub Actions provides Node via setup-node.
+              if [ -z "''${GITHUB_ACTIONS:-}" ]; then
+                export FNM_DIR="$PWD/.direnv/fnm"
+                export XDG_STATE_HOME="$PWD/.cache/state"
+                export COREPACK_HOME="$PWD/.cache/corepack"
+                export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+                eval "$(fnm env --shell bash --version-file-strategy recursive)"
+                fnm use --install-if-missing --silent-if-unchanged
+                mkdir -p "$PWD/.direnv/bin"
+                corepack enable --install-directory "$PWD/.direnv/bin" >/dev/null
+                export PATH="$PWD/.direnv/bin:$PATH"
+              fi
               export PLAYWRIGHT_CORE="${project.pkgs.playwright}"
               export PLAYWRIGHT_BROWSERS_PATH="${project.pkgs.playwright-driver.browsers}"
             '';
