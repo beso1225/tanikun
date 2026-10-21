@@ -38,6 +38,17 @@ test "course rename keeps the course identity" {
 }
 
 ///|
+test "course rename rejects an empty display name" {
+  let original = make_course(
+    "PHY101",
+    "Physics",
+    expect_ok(@tanikun-domain.Credits::new(2)),
+    @tanikun-domain.CourseStatus::Active,
+  )
+  assert_empty_course_name(original.rename("  "))
+}
+
+///|
 test "retired course keeps its status" {
   let retired = make_course(
     "PHY101",

@@ -26,3 +26,13 @@ test "course id equality uses the stored parts" {
   assert_same_id(first, same)
   assert_false(first.equals(other))
 }
+
+///|
+test "course id comparison is lexicographic" {
+  let later = expect_ok(@tanikun-domain.CourseId::new("master", "PHY102"))
+  let earlier = expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))
+  let shorter = expect_ok(@tanikun-domain.CourseId::new("master", "PHY2"))
+  let longer = expect_ok(@tanikun-domain.CourseId::new("master", "PHY10"))
+  assert_true(earlier.compare(later) < 0)
+  assert_true(longer.compare(shorter) < 0)
+}
