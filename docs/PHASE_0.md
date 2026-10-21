@@ -106,9 +106,10 @@ The compiler and bundled core remain in the Nix store. The wrapper pins
 These paths are separate in the
 [pinned moon implementation](https://github.com/moonbitlang/moon/blob/914d7da/crates/moonutil/src/moon_dir.rs).
 The development shell does not use the host's `~/.moon` installation. When
-`.direnv/moon/registry` is absent, the shell seeds it from the pinned
-`mooncakes` closure, so a fresh clone can resolve the locked MoonBit packages
-without a prior `moon update`.
+`.direnv/moon/registry` is absent or incomplete, the shell seeds it from the
+pinned `mooncakes` closure, so a fresh clone can resolve the locked MoonBit
+packages without a prior `moon update`. Run `moon update` before adding
+dependencies outside that locked closure.
 
 Enter the environment and run the existing checks:
 

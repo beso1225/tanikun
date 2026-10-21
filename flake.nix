@@ -46,7 +46,8 @@
               mkdir -p "$MOON_HOME/bin"
               # Seed the pinned registry so a fresh clone can resolve the locked
               # dependencies without an initial network round trip.
-              if [ ! -d "$MOON_HOME/registry" ]; then
+              if [ ! -d "$MOON_HOME/registry/index/user" ]; then
+                rm -rf "$MOON_HOME/registry"
                 cp -R ${project.mooncakes}/registry "$MOON_HOME/registry"
                 chmod -R u+w "$MOON_HOME/registry"
               fi
