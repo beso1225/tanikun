@@ -20,7 +20,13 @@ let
       fileset = lib.fileset.unions [ ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ];
     };
     fetcherVersion = 4;
-    hash = "sha256-qaoBV4TzayaCJt3O0fgKnQUCWeIL2aXWVNV7fiI63kQ=";
+    # fetcherVersion 4 keeps only the current platform's optional packages in
+    # the store, so each supported system needs its own fixed-output hash.
+    # Regenerate both hashes after dependency changes.
+    hash =
+      if pkgs.stdenv.hostPlatform.isDarwin
+      then "sha256-qaoBV4TzayaCJt3O0fgKnQUCWeIL2aXWVNV7fiI63kQ="
+      else "sha256-PYrzReXFF6cgs1mXRH2nVl5qEZpcnlmm4Gm1WM3kJQI=";
   };
   prepareMoon = ''
     export HOME="$TMPDIR/home"
