@@ -413,8 +413,8 @@ Checks and evidence:
 - The Wrangler/workerd HTTP test passed in a temporary source tree with no
   prior `_build` or `.mooncakes` and a fresh Moon home seeded only from the
   fixed registry. The installed npm tools were reused for this local run.
-- Both supported systems pass flake evaluation. Linux binaries and the
-  cross-platform pnpm store hash still need execution on the Linux runner.
+- Both supported systems pass flake evaluation. CI verifies the Linux binaries
+  and the Linux pnpm store hash; fetcher version 4 hashes are per-platform.
 - The local Nix daemon reports `sandbox = false` and rejects an untrusted
   client's `--option sandbox true`. These local results therefore establish
   clean inputs and offline rebuilds, **not** sandbox enforcement. Earlier
@@ -605,8 +605,10 @@ fresh clone failed with "module was not found in the registry".
 ## pnpm 12 migration (2026-10-21)
 
 The flake now uses `pkgs.pnpm_12` (12.9.0), and `fetchPnpmDeps` uses fetcher
-version 4 with a refreshed fixed-output hash. `pnpm-lock.yaml` remains at
-`lockfileVersion: 9.0` and its resolved dependency content is unchanged.
+version 4 with a fixed-output hash per system. Fetcher version 4 keeps only the
+build platform's optional packages in the store, so `nix/packages.nix` selects
+the Darwin or Linux hash. `pnpm-lock.yaml` remains at `lockfileVersion: 9.0`
+and its resolved dependency content is unchanged.
 
 pnpm 12 required three configuration updates in `pnpm-workspace.yaml`:
 
@@ -619,4 +621,5 @@ pnpm 12 required three configuration updates in `pnpm-workspace.yaml`:
   dependency in the lockfile. The Nix dev shell already pins pnpm exactly.
 
 `just check`, all integration tests (CSS, browser, Workers, Automerge, and D1),
-and `nix flake check` pass locally with pnpm 12.9.0.
+and `nix flake check` pass locally with pnpm 12.9.0. Linux CI (PR #1) also
+passes with the Linux pnpm store hash.
