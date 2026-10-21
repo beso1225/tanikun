@@ -44,14 +44,14 @@ toolchain spikes.
 
 Host: macOS, Apple Silicon (`Darwin arm64`). Tools already installed:
 
-| Tool | Observed version |
-| --- | --- |
-| Nix | 2.34.5 |
-| direnv | 2.37.1 |
+| Tool           | Observed version       |
+| -------------- | ---------------------- |
+| Nix            | 2.34.5                 |
+| direnv         | 2.37.1                 |
 | moon / moonrun | 0.1.20260920 (914d7da) |
-| moonc | v0.10.14+7d59c7ec9 |
-| Node.js | v24.20.0 |
-| just | 1.58.0 |
+| moonc          | v0.10.14+7d59c7ec9     |
+| Node.js        | v24.20.0               |
+| just           | 1.58.0                 |
 
 These are observed host versions, not yet a reproducible environment pin.
 The existing pnpm executable is a Corepack shim. `pnpm --version` attempted
@@ -84,14 +84,14 @@ a Nix sandbox build, Linux compatibility, or Workers runtime compatibility.
 The root `flake.nix` and `flake.lock` pin nixpkgs at
 `f20cd90e28fe0403873f473b29e42662cd86e8c4`. The development shell provides:
 
-| Tool | Pinned version |
-| --- | --- |
-| MoonBit compiler/core | 0.10.14+7d59c7ec9 |
-| moon / moonrun | 0.1.20260920 (914d7da) |
-| Node.js | 24.21.0 |
-| pnpm | 12.9.0 |
-| just | 1.58.0 |
-| direnv | 2.38.2 |
+| Tool                  | Pinned version         |
+| --------------------- | ---------------------- |
+| MoonBit compiler/core | 0.10.14+7d59c7ec9      |
+| moon / moonrun        | 0.1.20260920 (914d7da) |
+| Node.js               | 24.21.0                |
+| pnpm                  | 12.9.0                 |
+| just                  | 1.58.0                 |
+| direnv                | 2.38.2                 |
 
 `nix/moonbit.nix` fetches the versioned official toolchain and matching core
 archives with SHA-256 hashes. It bundles core during the Nix build, following

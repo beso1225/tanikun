@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "plugins": ["eslint", "unicorn", "typescript", "oxc", "import", "vitest"],
+  "env": {
+    "builtin": true,
+    "node": true,
+    "browser": true,
+    "worker": true
+  },
+  "globals": {
+    "__tanikunAutomerge": "writable"
+  },
+  "rules": {
+    "no-underscore-dangle": ["warn", { "allow": ["__tanikunAutomerge"] }]
+  },
+  "overrides": [
+    {
+      "files": ["tests/**", "apps/api/test/**"],
+      "env": { "vitest": true }
+    },
+    {
+      "files": ["tests/**"],
+      "rules": {
+        "unicorn/prefer-add-event-listener": "off",
+        "import/no-unassigned-import": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "_build/**",
+    ".mooncakes/**",
+    "node_modules/**",
+    "apps/web/dist/**",
+    "result*/**",
+    ".direnv/**",
+    ".wrangler/**",
+    ".cache/**",
+    ".state/**",
+    ".pnpm-store/**"
+  ],
+  "options": {
+    "maxWarnings": 0
+  }
+}

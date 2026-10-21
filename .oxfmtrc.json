@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortImports": true,
+  "sortPackageJson": false,
+  "proseWrap": "preserve",
+  "ignorePatterns": [
+    "_build/**",
+    ".mooncakes/**",
+    "node_modules/**",
+    "apps/web/dist/**",
+    "apps/web/public/styles.css",
+    "result*/**",
+    ".direnv/**",
+    ".wrangler/**",
+    ".cache/**",
+    ".state/**",
+    ".pnpm-store/**",
+    "flake.lock",
+    "nix/mooncakes-lock.json",
+    "pnpm-lock.yaml"
+  ]
+}

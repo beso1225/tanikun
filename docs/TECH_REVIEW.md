@@ -7,19 +7,19 @@
 
 ## 1. 結論サマリ
 
-| 領域 | 判定 | 要点 |
-|---|---|---|
-| MoonBit ツールチェーン | **維持・微修正** | `moon.work` / `moon.mod` / `moon.pkg` は **JSON 廃止で DSL**。`preferred_target` / `supported_targets` が現行。beta-preview。 |
-| Rabbita | 維持 | `moonbit-community/rabbita`。Elm/Bonsai 風。TEA。約15KB min+gzip。 |
-| Warren | **位置づけ修正** | Rabbita 同梱のビルド/開発サーバーツール。`moon install moonbit-community/warren`。`cmd/browser`(js)/`cmd/server`(wasm,native) 規約。 |
-| MoonBit JS FFI | 維持 | JS 向け FFI は `extern "js"` / `"Module" "fn"` / `#external`。ABI 表を確認。Automerge/WebCrypto/IDB/WebAuthn は薄い FFI で包める。 |
-| Cloudflare Workers | **要検証（最大リスク）** | Workers は `export default { fetch }` の ES モジュール。MoonBit JS 出力はそのままでは default エクスポートしないため**薄い JS エントリで包む**必要が高い。 |
-| Static Assets | 維持 | `assets.directory` / `run_worker_first` / `binding: "ASSETS"`。 |
-| テスト | **名称変更** | `@cloudflare/vitest-plugin`（`@cloudflare/vitest-pool-workers` は旧）。Miniflare でローカル実行。 |
-| Automerge | 微修正 | `@automerge/automerge` は 3 系。Repo を使わず core の changes API で独自 HTTP 同期する方針は維持可能。 |
-| Tailwind CSS v4 | **要検証** | v4.3。Vite プラグイン＋CSS ファースト。クラス検出は自動だが **`.mbt` を拾うかは要検証**（`@source` 指定が必要かも）。 |
-| Nix | **要検証** | MoonBit の公式 Nix パッケージは未確認。公式 tarball（`cli.moonbitlang.com`、`.sha256` あり）を固定して derivation を自作するのが現実的。 |
-| Auth / E2EE | 維持 | いずれもブラウザ API。PRF は**実機検証が必須**（ページ確認できず）。 |
+| 領域                   | 判定                     | 要点                                                                                                                                                       |
+| ---------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MoonBit ツールチェーン | **維持・微修正**         | `moon.work` / `moon.mod` / `moon.pkg` は **JSON 廃止で DSL**。`preferred_target` / `supported_targets` が現行。beta-preview。                              |
+| Rabbita                | 維持                     | `moonbit-community/rabbita`。Elm/Bonsai 風。TEA。約15KB min+gzip。                                                                                         |
+| Warren                 | **位置づけ修正**         | Rabbita 同梱のビルド/開発サーバーツール。`moon install moonbit-community/warren`。`cmd/browser`(js)/`cmd/server`(wasm,native) 規約。                       |
+| MoonBit JS FFI         | 維持                     | JS 向け FFI は `extern "js"` / `"Module" "fn"` / `#external`。ABI 表を確認。Automerge/WebCrypto/IDB/WebAuthn は薄い FFI で包める。                         |
+| Cloudflare Workers     | **要検証（最大リスク）** | Workers は `export default { fetch }` の ES モジュール。MoonBit JS 出力はそのままでは default エクスポートしないため**薄い JS エントリで包む**必要が高い。 |
+| Static Assets          | 維持                     | `assets.directory` / `run_worker_first` / `binding: "ASSETS"`。                                                                                            |
+| テスト                 | **名称変更**             | `@cloudflare/vitest-plugin`（`@cloudflare/vitest-pool-workers` は旧）。Miniflare でローカル実行。                                                          |
+| Automerge              | 微修正                   | `@automerge/automerge` は 3 系。Repo を使わず core の changes API で独自 HTTP 同期する方針は維持可能。                                                     |
+| Tailwind CSS v4        | **要検証**               | v4.3。Vite プラグイン＋CSS ファースト。クラス検出は自動だが **`.mbt` を拾うかは要検証**（`@source` 指定が必要かも）。                                      |
+| Nix                    | **要検証**               | MoonBit の公式 Nix パッケージは未確認。公式 tarball（`cli.moonbitlang.com`、`.sha256` あり）を固定して derivation を自作するのが現実的。                   |
+| Auth / E2EE            | 維持                     | いずれもブラウザ API。PRF は**実機検証が必須**（ページ確認できず）。                                                                                       |
 
 ### `INITIAL_DESIGN.md` への修正提案（確定分）
 
@@ -109,14 +109,14 @@
 
 ## 12. Phase 0 でやるべき検証スパイク（優先順）
 
-| # | スパイク | 検証すること | 失敗時の代替 |
-|---|---|---|---|
-| S1 | MoonBit(js) → Workers | `#export_name`/`link.js.exports` の出力を薄い JS シムで `export default { fetch }` にして `wrangler dev` で動くか。Node API に依存していないか。 | シムを厚くする / wasm-gc を検討 |
-| S2 | Rabbita + Warren 最小 | `warren new` → `warren dev --browser-entry main` → `warren build` が動くか。生成物のパス。 | Vite 直叩き |
-| S3 | Tailwind v4 × `.mbt` | `.mbt` 内のクラスが抽出されるか。`@source` が要るか。 | `@source` 明示 / CLI で個別生成 |
-| S4 | Nix × MoonBit | tarball 固定でオフラインビルドが成立するか。mooncakes 取得が要るか。 | 依存を vendoring |
-| S5 | Automerge core + IndexedDB | MoonBit FFI 経由で `save`/`load`/`getChanges`/`applyChanges` が `Uint8Array` で往復するか。 | JS 側にロジックを寄せる |
-| S6 | `@cloudflare/vitest-plugin` + D1 | D1 バインディング込みのテストが完全ローカルで動くか。 | pool-workers 据え置き（短期的） |
+| #   | スパイク                         | 検証すること                                                                                                                                     | 失敗時の代替                    |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| S1  | MoonBit(js) → Workers            | `#export_name`/`link.js.exports` の出力を薄い JS シムで `export default { fetch }` にして `wrangler dev` で動くか。Node API に依存していないか。 | シムを厚くする / wasm-gc を検討 |
+| S2  | Rabbita + Warren 最小            | `warren new` → `warren dev --browser-entry main` → `warren build` が動くか。生成物のパス。                                                       | Vite 直叩き                     |
+| S3  | Tailwind v4 × `.mbt`             | `.mbt` 内のクラスが抽出されるか。`@source` が要るか。                                                                                            | `@source` 明示 / CLI で個別生成 |
+| S4  | Nix × MoonBit                    | tarball 固定でオフラインビルドが成立するか。mooncakes 取得が要るか。                                                                             | 依存を vendoring                |
+| S5  | Automerge core + IndexedDB       | MoonBit FFI 経由で `save`/`load`/`getChanges`/`applyChanges` が `Uint8Array` で往復するか。                                                      | JS 側にロジックを寄せる         |
+| S6  | `@cloudflare/vitest-plugin` + D1 | D1 バインディング込みのテストが完全ローカルで動くか。                                                                                            | pool-workers 据え置き（短期的） |
 
 ## 13. `INITIAL_DESIGN.md` への具体的修正（提案）
 

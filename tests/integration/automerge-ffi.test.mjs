@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
 import "fake-indexeddb/auto";
 import * as Automerge from "@automerge/automerge";
 
@@ -16,35 +17,40 @@ function openDatabase() {
 }
 
 function withStore(mode, operation) {
-  return openDatabase().then((database) => new Promise((resolve, reject) => {
-    const transaction = database.transaction(storeName, mode);
-    const request = operation(transaction.objectStore(storeName));
-    transaction.oncomplete = () => {
-      database.close();
-      resolve(request?.result);
-    };
-    transaction.onerror = () => {
-      database.close();
-      reject(transaction.error);
-    };
-    transaction.onabort = () => {
-      database.close();
-      reject(transaction.error);
-    };
-  }));
+  return openDatabase().then(
+    (database) =>
+      new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, mode);
+        const request = operation(transaction.objectStore(storeName));
+        transaction.oncomplete = () => {
+          database.close();
+          resolve(request?.result);
+        };
+        transaction.onerror = () => {
+          database.close();
+          reject(transaction.error);
+        };
+        transaction.onabort = () => {
+          database.close();
+          reject(transaction.error);
+        };
+      }),
+  );
 }
 
 globalThis.__tanikunAutomerge = {
   create: () => Automerge.from({}),
-  set: (doc, key, value) => Automerge.change(Automerge.clone(doc), (draft) => {
-    draft[key] = value;
-  }),
+  set: (doc, key, value) =>
+    Automerge.change(Automerge.clone(doc), (draft) => {
+      draft[key] = value;
+    }),
   save: (doc) => Automerge.save(doc),
   load: (bytes) => Automerge.load(bytes),
   get: (doc, key) => doc[key],
   changes: (from, to) => Automerge.getChanges(from, to),
   apply: (doc, changes) => Automerge.applyChanges(doc, changes)[0],
-  idbPut: (key, bytes) => withStore("readwrite", (store) => store.put(bytes, key)),
+  idbPut: (key, bytes) =>
+    withStore("readwrite", (store) => store.put(bytes, key)),
   idbGet: (key) => withStore("readonly", (store) => store.get(key)),
 };
 
@@ -58,9 +64,8 @@ const {
   load_doc,
   save_doc,
   set_field,
-} = await import(
-  "../../_build/js/release/build/beso1225/tanikun-automerge-spike/tanikun-automerge-spike.js"
-);
+} =
+  await import("../../_build/js/release/build/beso1225/tanikun-automerge-spike/tanikun-automerge-spike.js");
 
 test("Bytes round-trip through Automerge save and load", () => {
   const doc = set_field(create_doc(), "course", "physics");

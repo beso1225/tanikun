@@ -36,39 +36,39 @@
 
 ## 3. 技術選定（基本方針）
 
-| 領域 | 採用方針 | コメント |
-|---|---|---|
-| Frontend | **MoonBit JS target + Rabbita** | The Elm Architecture: Model / Msg / Update / View |
-| UI開発・ビルド | **Warren** | Rabbitaとの互換性・現行の手順をPhase 0で実証 |
-| Styling | **Tailwind CSS v4 + CSS Variables / Design Tokens** | `.mbt`を含むクラス抽出・ビルド連携を確認 |
-| Domain | **Pure MoonBit** | UI、Cloudflare、JS FFIから独立 |
-| Graduation rules | **Pure MoonBitの型付きルール評価器** | JSONルールセットをバージョン管理 |
-| CRDT | **Automerge（JavaScriptライブラリを薄いFFIで利用）** | ユーザーごとに原則1ドキュメント |
-| Local persistence | **IndexedDB** | Automergeデータ・同期メタデータを保存 |
-| Sync | **独自HTTP差分同期** | Changes + server-side sequence cursor; WebSocketなし |
-| Backend | **MoonBit JS target on Cloudflare Workers** | Worker APIはJS FFIを介す |
-| API | **REST / versioned DTO / OpenAPI志向** | OpenAPI生成方式は検証。契約テストを優先してもよい |
-| Relational DB | **Cloudflare D1** | ユーザー、セッション、Passkey、所有権、暗号化Changeログ等 |
-| Object store | **Cloudflare R2** | 暗号化Snapshot、必要なバッチ・バックアップ等。初期段階で必須ではない |
-| Static hosting | **Cloudflare Workers Static Assets** | 同一Originで配信する案 |
-| Auth | **Passkeys / WebAuthn + opaque Cookie Session** | WebAuthn暗号検証は監査されたJSライブラリ |
-| E2EE | **AES-256-GCM / Web Crypto API** | Document Key + 端末鍵、クライアント側暗号化 |
-| Device enrollment | **既存端末の承認・鍵転送がメイン** | QR/短い照合コード等で鍵相手を認証 |
-| Optional key recovery | **WebAuthn PRFは調査・実機検証後に判断** | 普遍的な復旧手段とみなさない |
-| Mandatory recovery key | **なし** | 全端末とバックアップ喪失時には復旧不能になり得る |
-| Monorepo | **MoonBit Workspace（`moon.work`）** | 実際の構文・モジュール依存を現行MoonBitで確認 |
-| Environment/build | **Nix Flakes + direnv** | **Nixは開発環境だけでなくビルドまで管理** |
-| JS dependencies | **pnpm + lockfile** | Nixのサンドボックス内でオフラインビルド可能にする |
-| Commands | **just** | ユニット・E2E・ビルドなどを統一 |
-| CI/CD | **GitHub Actions on Linux + Nix cache** | PRチェックとmainデプロイ。キャッシュはCachix等候補 |
-| IaC | **OpenTofu** | D1/R2などのリソース。Wranglerと責務を重複させない |
-| Deploy | **Wrangler** | **Nixビルド済み成果物**をデプロイする方向 |
-| Unit testing | **MoonBit標準テスト (`moon test`)** | TDDの中心 |
-| Property-based/model-based | **MoonBit側の生成器またはfast-check** | CRDT・卒業要件・同期の性質を検証 |
-| Integration | **Vitest / Workers Vitest Plugin等** | D1/R2・FFI・APIの検証 |
-| E2E | **Playwright** | 時間割操作、オフライン、複数BrowserContext、Passkeys |
-| Observability | **Cloudflare Workers Observability + OpenTelemetry** | トレース/ログを中心に段階導入 |
-| Dashboards | **Grafana Cloud第一候補** | コスト・保存期間・個人情報の扱いを検討 |
+| 領域                       | 採用方針                                             | コメント                                                             |
+| -------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Frontend                   | **MoonBit JS target + Rabbita**                      | The Elm Architecture: Model / Msg / Update / View                    |
+| UI開発・ビルド             | **Warren**                                           | Rabbitaとの互換性・現行の手順をPhase 0で実証                         |
+| Styling                    | **Tailwind CSS v4 + CSS Variables / Design Tokens**  | `.mbt`を含むクラス抽出・ビルド連携を確認                             |
+| Domain                     | **Pure MoonBit**                                     | UI、Cloudflare、JS FFIから独立                                       |
+| Graduation rules           | **Pure MoonBitの型付きルール評価器**                 | JSONルールセットをバージョン管理                                     |
+| CRDT                       | **Automerge（JavaScriptライブラリを薄いFFIで利用）** | ユーザーごとに原則1ドキュメント                                      |
+| Local persistence          | **IndexedDB**                                        | Automergeデータ・同期メタデータを保存                                |
+| Sync                       | **独自HTTP差分同期**                                 | Changes + server-side sequence cursor; WebSocketなし                 |
+| Backend                    | **MoonBit JS target on Cloudflare Workers**          | Worker APIはJS FFIを介す                                             |
+| API                        | **REST / versioned DTO / OpenAPI志向**               | OpenAPI生成方式は検証。契約テストを優先してもよい                    |
+| Relational DB              | **Cloudflare D1**                                    | ユーザー、セッション、Passkey、所有権、暗号化Changeログ等            |
+| Object store               | **Cloudflare R2**                                    | 暗号化Snapshot、必要なバッチ・バックアップ等。初期段階で必須ではない |
+| Static hosting             | **Cloudflare Workers Static Assets**                 | 同一Originで配信する案                                               |
+| Auth                       | **Passkeys / WebAuthn + opaque Cookie Session**      | WebAuthn暗号検証は監査されたJSライブラリ                             |
+| E2EE                       | **AES-256-GCM / Web Crypto API**                     | Document Key + 端末鍵、クライアント側暗号化                          |
+| Device enrollment          | **既存端末の承認・鍵転送がメイン**                   | QR/短い照合コード等で鍵相手を認証                                    |
+| Optional key recovery      | **WebAuthn PRFは調査・実機検証後に判断**             | 普遍的な復旧手段とみなさない                                         |
+| Mandatory recovery key     | **なし**                                             | 全端末とバックアップ喪失時には復旧不能になり得る                     |
+| Monorepo                   | **MoonBit Workspace（`moon.work`）**                 | 実際の構文・モジュール依存を現行MoonBitで確認                        |
+| Environment/build          | **Nix Flakes + direnv**                              | **Nixは開発環境だけでなくビルドまで管理**                            |
+| JS dependencies            | **pnpm + lockfile**                                  | Nixのサンドボックス内でオフラインビルド可能にする                    |
+| Commands                   | **just**                                             | ユニット・E2E・ビルドなどを統一                                      |
+| CI/CD                      | **GitHub Actions on Linux + Nix cache**              | PRチェックとmainデプロイ。キャッシュはCachix等候補                   |
+| IaC                        | **OpenTofu**                                         | D1/R2などのリソース。Wranglerと責務を重複させない                    |
+| Deploy                     | **Wrangler**                                         | **Nixビルド済み成果物**をデプロイする方向                            |
+| Unit testing               | **MoonBit標準テスト (`moon test`)**                  | TDDの中心                                                            |
+| Property-based/model-based | **MoonBit側の生成器またはfast-check**                | CRDT・卒業要件・同期の性質を検証                                     |
+| Integration                | **Vitest / Workers Vitest Plugin等**                 | D1/R2・FFI・APIの検証                                                |
+| E2E                        | **Playwright**                                       | 時間割操作、オフライン、複数BrowserContext、Passkeys                 |
+| Observability              | **Cloudflare Workers Observability + OpenTelemetry** | トレース/ログを中心に段階導入                                        |
+| Dashboards                 | **Grafana Cloud第一候補**                            | コスト・保存期間・個人情報の扱いを検討                               |
 
 > 注意: ツールチェーンの版・API・ターゲット対応・Cloudflareの機能は変化する。Coding Agentは**現在の公式ドキュメント／実際のCLIで検証**してから設定ファイルやコードを作ること。特に `moon.work`、`moon.mod`、`moon.pkg`、Rabbita/Warren、Tailwind v4、Workersビルド接続、Vitest Plugin、WebAuthn PRFが要確認。
 
@@ -213,16 +213,16 @@ tanikun/
 
 **Red → Green → Refactor**を基本とし、テストを各Phaseの最後にまとめて追加しない。
 
-| 層 | 主な対象 | 重要な性質・シナリオ |
-|---|---|---|
-| Unit / MoonBit | Domain, requirements, update | 状態遷移、単位計算、バリデーション、決定性 |
-| Property-based | Requirement evaluator, model | 入力順序の非依存性、非負性、ルールの不変条件（前提条件を明示） |
-| Integration / Vitest | FFI, Workers, D1/R2 | API契約、DBトランザクション、失敗時の整合性 |
-| CRDT / Model-based | Automerge replica, sync | Convergence、重複再送、順序違い、通信断、再接続、cursorページング |
-| Security | Sessions, authorization, E2EE | 越権アクセス拒否、認証状態、改ざん拒否、鍵転送の相手認証、復号失敗 |
-| E2E / Playwright | Time-table, offline, multi-device | 登録/編集/5学期/集中講義、オフライン保存、2ブラウザ間同期、復旧UI |
-| Differential（発展） | MoonBit target variants | JS/Wasm/Nativeで同じルール結果になるか |
-| Fault injection（発展） | Sync, crypto backup | 途中失敗、再送、レコード欠落、snapshot不整合 |
+| 層                      | 主な対象                          | 重要な性質・シナリオ                                               |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------------ |
+| Unit / MoonBit          | Domain, requirements, update      | 状態遷移、単位計算、バリデーション、決定性                         |
+| Property-based          | Requirement evaluator, model      | 入力順序の非依存性、非負性、ルールの不変条件（前提条件を明示）     |
+| Integration / Vitest    | FFI, Workers, D1/R2               | API契約、DBトランザクション、失敗時の整合性                        |
+| CRDT / Model-based      | Automerge replica, sync           | Convergence、重複再送、順序違い、通信断、再接続、cursorページング  |
+| Security                | Sessions, authorization, E2EE     | 越権アクセス拒否、認証状態、改ざん拒否、鍵転送の相手認証、復号失敗 |
+| E2E / Playwright        | Time-table, offline, multi-device | 登録/編集/5学期/集中講義、オフライン保存、2ブラウザ間同期、復旧UI  |
+| Differential（発展）    | MoonBit target variants           | JS/Wasm/Nativeで同じルール結果になるか                             |
+| Fault injection（発展） | Sync, crypto backup               | 途中失敗、再送、レコード欠落、snapshot不整合                       |
 
 - Unit Testは実装モジュールの近くに置き、クロスコンポーネントテストは`tests/`に置く。
 - Playwrightは**Chromiumを日常CIの主軸**、Firefox/WebKitやPasskey実機互換は別枠で検証する。
@@ -322,4 +322,4 @@ tanikun/
 
 ---
 
-**望む次の成果物**: まずは *「設計上の論点表 + 推奨ADR一覧 + Phase 0の実装可能なリポジトリ構成とTDDタスクリスト」* を作ってほしい。その内容を確認してから骨格を実装する。
+**望む次の成果物**: まずは _「設計上の論点表 + 推奨ADR一覧 + Phase 0の実装可能なリポジトリ構成とTDDタスクリスト」_ を作ってほしい。その内容を確認してから骨格を実装する。

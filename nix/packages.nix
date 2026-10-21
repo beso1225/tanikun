@@ -25,7 +25,7 @@ let
     # Regenerate both hashes after dependency changes.
     hash =
       if pkgs.stdenv.hostPlatform.isDarwin
-      then "sha256-qaoBV4TzayaCJt3O0fgKnQUCWeIL2aXWVNV7fiI63kQ="
+      then "sha256-D0ORisgfIjG5o43eI2hsMEriyNsv33dk5SxulPo6xaw="
       else "sha256-PYrzReXFF6cgs1mXRH2nVl5qEZpcnlmm4Gm1WM3kJQI=";
   };
   prepareMoon = ''

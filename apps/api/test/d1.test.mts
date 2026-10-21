@@ -24,23 +24,29 @@ describe("local D1 binding", () => {
     });
     expect(response.status).toBe(200);
 
-    const stored = await SELF.fetch("https://example.test/api/changes/change-1");
+    const stored = await SELF.fetch(
+      "https://example.test/api/changes/change-1",
+    );
     expect(stored.status).toBe(200);
     expect(await stored.json()).toEqual({ id: "change-1", payload });
   });
 
   it("reads the row directly through env.DB", async () => {
-    await env.DB.prepare(
-      "INSERT INTO changes (id, payload) VALUES (?1, ?2)",
-    ).bind("change-2", new Uint8Array([9, 8])).run();
+    await env.DB.prepare("INSERT INTO changes (id, payload) VALUES (?1, ?2)")
+      .bind("change-2", new Uint8Array([9, 8]))
+      .run();
     const row = await env.DB.prepare(
       "SELECT payload FROM changes WHERE id = ?1",
-    ).bind("change-2").first();
+    )
+      .bind("change-2")
+      .first();
     expect(Array.from(new Uint8Array(row.payload))).toEqual([9, 8]);
   });
 
   it("returns 404 for an unknown change", async () => {
-    const response = await SELF.fetch("https://example.test/api/changes/missing");
+    const response = await SELF.fetch(
+      "https://example.test/api/changes/missing",
+    );
     expect(response.status).toBe(404);
   });
 });

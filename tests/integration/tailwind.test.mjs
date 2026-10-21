@@ -9,10 +9,18 @@ test("Tailwind detects MoonBit utilities without scanning unrelated tests", asyn
   const directory = await mkdtemp(join(tmpdir(), "tanikun-tailwind-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const output = join(directory, "styles.css");
-  execFileSync(process.execPath, [
-    "node_modules/@tailwindcss/cli/dist/index.mjs",
-    "-i", "apps/web/styles/input.css", "-o", output, "--minify",
-  ], { stdio: "pipe" });
+  execFileSync(
+    process.execPath,
+    [
+      "node_modules/@tailwindcss/cli/dist/index.mjs",
+      "-i",
+      "apps/web/styles/input.css",
+      "-o",
+      output,
+      "--minify",
+    ],
+    { stdio: "pipe" },
+  );
   const css = await readFile(output, "utf8");
   assert.match(css, /\.max-w-2xl\{/);
   assert.match(css, /\.gap-3\{/);
