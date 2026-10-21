@@ -2,7 +2,7 @@
 let
   inherit (pkgs) lib;
   mooncakes = pkgs.callPackage ./mooncakes.nix { };
-  pnpm = pkgs.pnpm_10;
+  pnpm = pkgs.pnpm_12;
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -19,8 +19,8 @@ let
       root = ../.;
       fileset = lib.fileset.unions [ ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ];
     };
-    fetcherVersion = 3;
-    hash = "sha256-KP4VOx+tQzLgNKmxNLAMSiTKnMGlpCfmM89VPs7rATg=";
+    fetcherVersion = 4;
+    hash = "sha256-qaoBV4TzayaCJt3O0fgKnQUCWeIL2aXWVNV7fiI63kQ=";
   };
   prepareMoon = ''
     export HOME="$TMPDIR/home"

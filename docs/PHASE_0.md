@@ -89,7 +89,7 @@ The root `flake.nix` and `flake.lock` pin nixpkgs at
 | MoonBit compiler/core | 0.10.14+7d59c7ec9 |
 | moon / moonrun | 0.1.20260920 (914d7da) |
 | Node.js | 24.21.0 |
-| pnpm | 10.34.5 |
+| pnpm | 12.9.0 |
 | just | 1.58.0 |
 | direnv | 2.38.2 |
 
@@ -379,7 +379,7 @@ Dependency boundaries:
   generated sources do not require running yacc during these builds.
 - Warren is compiled from that closure with the pinned MoonBit compiler and
   a native C toolchain. The host's installed Warren is not a build input.
-- `fetchPnpmDeps` uses pnpm 10.34.5, fetcher version 3, the frozen lockfile,
+- `fetchPnpmDeps` uses pnpm 12.9.0, fetcher version 4, the frozen lockfile,
   and a fixed output hash. Its forced fetch includes optional packages for
   other platforms, including Tailwind's native packages. `pnpmConfigHook`
   installs offline with lifecycle scripts disabled; CSS generation does not
@@ -601,3 +601,22 @@ All commands passed in the clone. `just setup-web` and `pnpm install` are
 required for the web and FFI/D1 tests respectively; the first one needs
 network access. Without the registry seeding fix, the first `just check` in a
 fresh clone failed with "module was not found in the registry".
+
+## pnpm 12 migration (2026-10-21)
+
+The flake now uses `pkgs.pnpm_12` (12.9.0), and `fetchPnpmDeps` uses fetcher
+version 4 with a refreshed fixed-output hash. `pnpm-lock.yaml` remains at
+`lockfileVersion: 9.0` and its resolved dependency content is unchanged.
+
+pnpm 12 required three configuration updates in `pnpm-workspace.yaml`:
+
+- `allowBuilds` replaces the removed `onlyBuiltDependencies` list. The same
+  three packages are approved explicitly: `@parcel/watcher`, `esbuild`, and
+  `workerd`.
+- pnpm 12 applies a release-age quarantine by default. This repository pins
+  exact versions in the lockfile, so `minimumReleaseAge` is set to `0`.
+- `pmOnFail: ignore` prevents pnpm from recording itself as an environment
+  dependency in the lockfile. The Nix dev shell already pins pnpm exactly.
+
+`just check`, all integration tests (CSS, browser, Workers, Automerge, and D1),
+and `nix flake check` pass locally with pnpm 12.9.0.

@@ -18,7 +18,7 @@
           tools = [
             moonbit
             pkgs.nodejs_24
-            pkgs.pnpm_10
+            pkgs.pnpm_12
             pkgs.just
             # The browser test uses nixpkgs' Playwright core and browsers so the
             # test never downloads a browser or writes outside the sandbox.
