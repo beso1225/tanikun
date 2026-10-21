@@ -1,0 +1,17 @@
+{
+  "config": {
+    "MD013": false,
+  },
+  "ignores": [
+    "_build/**",
+    ".mooncakes/**",
+    "node_modules/**",
+    "result*/**",
+    "apps/web/dist/**",
+    ".direnv/**",
+    ".wrangler/**",
+    ".cache/**",
+    ".state/**",
+    ".pnpm-store/**",
+  ],
+}

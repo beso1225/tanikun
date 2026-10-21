@@ -40,7 +40,8 @@ just fmt
 ```
 
 `just lint` runs MoonBit checks, Nix linting, Just formatting, oxlint/oxfmt,
-actionlint, and zizmor. `just fmt` applies the available formatters.
+editorconfig-checker, markdownlint-cli2, stylelint, actionlint, and zizmor.
+`just fmt` applies the available formatters.
 
 ## Tests
 

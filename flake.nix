@@ -36,6 +36,9 @@
             pkgs.actionlint
             pkgs.shellcheck
             pkgs.zizmor
+            pkgs.editorconfig-checker
+            pkgs.markdownlint-cli2
+            pkgs.stylelint
           ];
         in
         { inherit pkgs moonbit tools; } // import ./nix/packages.nix { inherit pkgs moonbit; };

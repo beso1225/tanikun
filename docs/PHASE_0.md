@@ -628,15 +628,28 @@ passes with the Linux pnpm store hash.
 
 The repository now uses **oxlint 1.89.0** and **oxfmt 0.74.0**, installed as
 exact pnpm dev dependencies. Nix additionally provides `nixfmt`, `statix`,
-`deadnix`, `actionlint`, `shellcheck`, and `zizmor` in the development shell.
+`deadnix`, `actionlint`, `shellcheck`, `zizmor`, `editorconfig-checker`,
+`markdownlint-cli2`, and `stylelint` in the development shell. Neovim is the
+primary editor; the repository relies on CLI tools rather than editor-specific
+extensions.
 
 - `.oxfmtrc.json`: 80-column formatting, import sorting enabled, package.json
   sorting disabled, prose wrapping preserved, and generated files ignored.
 - `.oxlintrc.json`: correctness errors, suspicious warnings, Node/Worker/
   browser/Vitest environments, generated files ignored, and `--deny-warnings`
   enforced in CI.
+- `.editorconfig` and `.editorconfig-checker.json`: UTF-8, LF, final newline,
+  two-space indentation, four-space Just recipes, and Markdown indentation
+  delegated to Markdown tooling.
+- `.markdownlint-cli2.jsonc`: line-length disabled and generated directories
+  ignored; the project documentation passes the remaining rules.
+- `.stylelintrc.json`: a minimal Tailwind v4-aware rule set that allows
+  `@theme`, `@source`, `@apply`, `@utility`, and `@variant`. The CSS entry
+  point is expected to grow with design tokens and base-layer rules even if the
+  number of CSS files stays small.
 - `just lint` runs MoonBit formatting/checks, `nixfmt`, `statix`, `deadnix`,
-  `just --fmt --check`, oxlint, oxfmt, `actionlint`, and `zizmor`.
+  `just --fmt --check`, oxlint, oxfmt, editorconfig-checker,
+  markdownlint-cli2, stylelint, `actionlint`, and `zizmor`.
 - `just fmt` applies `moon fmt`, `nixfmt`, `just --fmt`, and oxfmt.
 
 The initial adoption required:
@@ -651,5 +664,6 @@ The initial adoption required:
 - A new `lint` CI job that installs pnpm dependencies and runs `just lint`.
 
 `just lint` and the existing test suite pass locally. The `lint` job is a
-required status check on `main` together with `linux`. Markdown/YAML/CSS
-specific linters and pre-commit hooks remain optional follow-ups.
+required status check on `main` together with `linux`. YAML uses `actionlint`
+and oxfmt rather than a separate `yamllint`, and pre-commit hooks remain
+optional. Node.js 26 is deferred until it becomes LTS.
