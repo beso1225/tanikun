@@ -2,7 +2,7 @@
 let
   inherit (pkgs) lib;
   mooncakes = pkgs.callPackage ./mooncakes.nix { };
-  pnpm = pkgs.pnpm_10;
+  pnpm = pkgs.pnpm_12;
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -19,8 +19,14 @@ let
       root = ../.;
       fileset = lib.fileset.unions [ ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ];
     };
-    fetcherVersion = 3;
-    hash = "sha256-KP4VOx+tQzLgNKmxNLAMSiTKnMGlpCfmM89VPs7rATg=";
+    fetcherVersion = 4;
+    # fetcherVersion 4 keeps only the current platform's optional packages in
+    # the store, so each supported system needs its own fixed-output hash.
+    # Regenerate both hashes after dependency changes.
+    hash =
+      if pkgs.stdenv.hostPlatform.isDarwin
+      then "sha256-qaoBV4TzayaCJt3O0fgKnQUCWeIL2aXWVNV7fiI63kQ="
+      else "sha256-PYrzReXFF6cgs1mXRH2nVl5qEZpcnlmm4Gm1WM3kJQI=";
   };
   prepareMoon = ''
     export HOME="$TMPDIR/home"
