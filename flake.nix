@@ -44,6 +44,12 @@
             shellHook = ''
               export MOON_HOME="$PWD/.direnv/moon"
               mkdir -p "$MOON_HOME/bin"
+              # Seed the pinned registry so a fresh clone can resolve the locked
+              # dependencies without an initial network round trip.
+              if [ ! -d "$MOON_HOME/registry" ]; then
+                cp -R ${project.mooncakes}/registry "$MOON_HOME/registry"
+                chmod -R u+w "$MOON_HOME/registry"
+              fi
               export PATH="$MOON_HOME/bin:$PATH"
               export PLAYWRIGHT_CORE="${project.pkgs.playwright}"
               export PLAYWRIGHT_BROWSERS_PATH="${project.pkgs.playwright-driver.browsers}"
