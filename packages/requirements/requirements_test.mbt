@@ -1,7 +1,4 @@
 ///|
-test "requirements skeleton resolves the domain module" {
-  inspect(
-    @tanikun-requirements.domain_module_name(),
-    content="beso1225/tanikun-domain",
-  )
+test "requirements skeleton resolves domain credits" {
+  assert_eq(@tanikun-requirements.zero_credits().half_units(), 0)
 }
