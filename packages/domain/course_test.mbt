@@ -21,6 +21,14 @@ test "course rejects an empty display name" {
       @tanikun-domain.CourseStatus::Active,
     ),
   )
+  assert_empty_course_name(
+    @tanikun-domain.Course::new(
+      id,
+      "\u{00A0}",
+      credits,
+      @tanikun-domain.CourseStatus::Active,
+    ),
+  )
 }
 
 ///|
@@ -46,6 +54,7 @@ test "course rename rejects an empty display name" {
     @tanikun-domain.CourseStatus::Active,
   )
   assert_empty_course_name(original.rename("  "))
+  assert_empty_course_name(original.rename("\u{3000}"))
 }
 
 ///|

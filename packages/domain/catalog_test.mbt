@@ -85,7 +85,53 @@ test "catalog orders courses by id and looks them up deterministically" {
   assert_same_id(courses[0].id, earlier_id)
   assert_same_id(courses[1].id, later_id)
   assert_same_id(expect_some(catalog.lookup(earlier_id)).id, earlier_id)
-  assert_same_id(expect_some(catalog.lookup(earlier_id)).id, earlier_id)
+  assert_same_id(expect_some(catalog.lookup(later_id)).id, later_id)
+  // A second catalog built in the opposite insertion order keeps the same order.
+  let again = expect_ok(
+    @tanikun-domain.CourseCatalog::new([
+      catalog_course(
+        "PHY102",
+        "Physics II",
+        @tanikun-domain.CourseStatus::Active,
+      ),
+      catalog_course("PHY101", "Physics", @tanikun-domain.CourseStatus::Active),
+    ]),
+  )
+  assert_same_id(again.courses()[0].id, earlier_id)
+  assert_same_id(again.courses()[1].id, later_id)
+  let missing_id = expect_ok(@tanikun-domain.CourseId::new("master", "PHY999"))
+  match catalog.lookup(missing_id) {
+    None => ()
+    Some(_) => fail("expected no course for a missing ID")
+  }
+}
+
+///|
+test "catalog lookup reaches every sorted position" {
+  let catalog = expect_ok(
+    @tanikun-domain.CourseCatalog::new([
+      catalog_course("PHY9", "Physics 9", @tanikun-domain.CourseStatus::Active),
+      catalog_course(
+        "PHY10",
+        "Physics 10",
+        @tanikun-domain.CourseStatus::Active,
+      ),
+      catalog_course(
+        "PHY100",
+        "Physics 100",
+        @tanikun-domain.CourseStatus::Active,
+      ),
+      catalog_course(
+        "PHY101",
+        "Physics 101",
+        @tanikun-domain.CourseStatus::Active,
+      ),
+      catalog_course("PHY2", "Physics 2", @tanikun-domain.CourseStatus::Active),
+    ]),
+  )
+  for course in catalog.courses() {
+    assert_same_id(expect_some(catalog.lookup(course.id)).id, course.id)
+  }
 }
 
 ///|

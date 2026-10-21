@@ -24,7 +24,7 @@ pub fn Course::new(
   credits : Credits,
   status : CourseStatus,
 ) -> Result[Course, DomainError] {
-  if name.trim().is_empty() {
+  if is_blank(name) {
     Err(DomainError::EmptyCourseName)
   } else {
     Ok({ id, name, credits, status, })
@@ -37,7 +37,7 @@ pub fn Course::rename(
   self : Course,
   name : String,
 ) -> Result[Course, DomainError] {
-  if name.trim().is_empty() {
+  if is_blank(name) {
     Err(DomainError::EmptyCourseName)
   } else {
     Ok({ ..self, name, })

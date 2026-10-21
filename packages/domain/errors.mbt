@@ -1,5 +1,7 @@
 ///|
 /// Identifies the aggregate that owns an ID.
+///
+/// The enum is shared by all ID types added in later Phase 1 issues.
 pub(all) enum IdKind {
   Course
   Offering

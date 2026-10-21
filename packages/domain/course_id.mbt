@@ -13,11 +13,11 @@ pub fn CourseId::new(
   namespace_part : String,
   local_part : String,
 ) -> Result[CourseId, DomainError] {
-  if namespace_part.trim().is_empty() {
+  if is_blank(namespace_part) {
     Err(
       DomainError::EmptyIdField(kind=IdKind::Course, field=IdField::Namespace),
     )
-  } else if local_part.trim().is_empty() {
+  } else if is_blank(local_part) {
     Err(DomainError::EmptyIdField(kind=IdKind::Course, field=IdField::Local))
   } else if has_control_character(namespace_part) {
     Err(
@@ -39,15 +39,15 @@ pub fn CourseId::new(
 }
 
 ///|
-/// Compares the full ID exactly.
-pub fn CourseId::equals(self : CourseId, other : CourseId) -> Bool {
+/// Course IDs are equal when both stored parts match exactly.
+pub impl Eq for CourseId with fn equal(self, other) {
   self.namespace_part == other.namespace_part &&
   self.local_part == other.local_part
 }
 
 ///|
-/// Orders IDs by namespace and then by local part.
-pub fn CourseId::compare(self : CourseId, other : CourseId) -> Int {
+/// Orders IDs lexicographically by namespace, then by local part.
+pub impl Compare for CourseId with fn compare(self, other) {
   let namespace_order = compare_code_units(
     self.namespace_part,
     other.namespace_part,
@@ -58,6 +58,12 @@ pub fn CourseId::compare(self : CourseId, other : CourseId) -> Int {
     compare_code_units(self.local_part, other.local_part)
   }
 }
+
+///|
+pub extend CourseId with Eq::{not_equal, equal}
+
+///|
+pub extend CourseId with Compare::{op_lt, op_le, op_ge, compare, op_gt}
 
 ///|
 fn compare_code_units(left : String, right : String) -> Int {
@@ -78,15 +84,4 @@ fn compare_code_units(left : String, right : String) -> Int {
   } else {
     0
   }
-}
-
-///|
-fn has_control_character(value : String) -> Bool {
-  for index in 0..<value.length() {
-    let code = value.code_unit_at(index).to_int()
-    if code < 32 || code == 127 {
-      return true
-    }
-  }
-  false
 }

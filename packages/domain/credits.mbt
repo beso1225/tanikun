@@ -31,12 +31,16 @@ pub fn Credits::half_units(self : Credits) -> Int {
 
 ///|
 /// Adds two non-negative credit values exactly.
+///
+/// Overflow is not checked; callers must keep the result within `Int` range.
 pub fn Credits::add(self : Credits, other : Credits) -> Credits {
   { half_units: self.half_units + other.half_units, }
 }
 
 ///|
 /// Sums credits without introducing floating-point arithmetic.
+///
+/// Overflow is not checked; callers must keep the total within `Int` range.
 pub fn Credits::sum(values : Array[Credits]) -> Credits {
   let mut total = 0
   for credits in values {

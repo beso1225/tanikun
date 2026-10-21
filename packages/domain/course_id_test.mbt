@@ -9,12 +9,22 @@ test "course id keeps namespace and local parts" {
 test "course id rejects empty and whitespace parts" {
   assert_empty_course_namespace(@tanikun-domain.CourseId::new("", "PHY101"))
   assert_empty_course_local(@tanikun-domain.CourseId::new("master", "  "))
+  assert_empty_course_namespace(
+    @tanikun-domain.CourseId::new("\u{3000}", "PHY101"),
+  )
+  assert_empty_course_local(@tanikun-domain.CourseId::new("master", "\u{00A0}"))
 }
 
 ///|
 test "course id rejects control characters" {
   assert_control_character_course_namespace(
     @tanikun-domain.CourseId::new("master\n", "PHY101"),
+  )
+  assert_control_character_course_namespace(
+    @tanikun-domain.CourseId::new("master\u{2028}", "PHY101"),
+  )
+  assert_control_character_course_local(
+    @tanikun-domain.CourseId::new("master", "PHY\u{0085}101"),
   )
 }
 
@@ -23,16 +33,19 @@ test "course id equality uses the stored parts" {
   let first = expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))
   let same = expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))
   let other = expect_ok(@tanikun-domain.CourseId::new("master", "PHY102"))
-  assert_same_id(first, same)
-  assert_false(first.equals(other))
+  assert_true(first == same)
+  assert_true(first != other)
 }
 
 ///|
 test "course id comparison is lexicographic" {
   let later = expect_ok(@tanikun-domain.CourseId::new("master", "PHY102"))
   let earlier = expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))
-  let shorter = expect_ok(@tanikun-domain.CourseId::new("master", "PHY2"))
-  let longer = expect_ok(@tanikun-domain.CourseId::new("master", "PHY10"))
-  assert_true(earlier.compare(later) < 0)
-  assert_true(longer.compare(shorter) < 0)
+  let short_local = expect_ok(@tanikun-domain.CourseId::new("master", "PHY2"))
+  let long_local = expect_ok(@tanikun-domain.CourseId::new("master", "PHY10"))
+  assert_true(earlier < later)
+  assert_true(later > earlier)
+  assert_eq(earlier.compare(earlier), 0)
+  // Lexicographic, not shortlex: PHY10 sorts before PHY2.
+  assert_true(long_local < short_local)
 }
