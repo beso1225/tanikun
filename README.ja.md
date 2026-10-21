@@ -30,6 +30,17 @@ just dev-api            # http://127.0.0.1:8787/api/health
 
 `dev-web` と `dev-api` は別々のターミナルで起動してください。
 
+## Lintと整形
+
+```sh
+pnpm install --frozen-lockfile
+just lint
+just fmt
+```
+
+`just lint` はMoonBitのチェック、Nixのlint、Justの整形確認、oxlint/oxfmt、
+actionlint、zizmorを実行します。`just fmt` は利用可能なformatterを適用します。
+
 ## テスト
 
 ```sh
@@ -47,8 +58,8 @@ just test-d1
 
 ## 開発フロー
 
-変更はpull request経由で取り込みます。`main` では `linux` のCIチェックが必須で、
-直接push・force push・ブランチ削除は禁止されています。
+変更はpull request経由で取り込みます。`main` では `linux` と `lint` のCIチェックが
+必須で、直接push・force push・ブランチ削除は禁止されています。
 
 ## ドキュメント
 

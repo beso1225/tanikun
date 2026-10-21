@@ -1,4 +1,9 @@
-{ lib, runCommand, fetchurl, unzip }:
+{
+  lib,
+  runCommand,
+  fetchurl,
+  unzip,
+}:
 
 # A minimal registry and source closure: resolution can see only these versions.
 let
@@ -6,7 +11,9 @@ let
   archives = map (entry: {
     inherit entry;
     archive = fetchurl {
-      url = "https://download.mooncakes.io/user/${lib.replaceStrings [ "/" ] [ "%2F" ] entry.name}%2F${entry.version}.zip";
+      url = "https://download.mooncakes.io/user/${
+        lib.replaceStrings [ "/" ] [ "%2F" ] entry.name
+      }%2F${entry.version}.zip";
       sha256 = entry.checksum;
     };
   }) locked;
@@ -19,7 +26,11 @@ runCommand "tanikun-mooncakes" { nativeBuildInputs = [ unzip ]; } ''
       "$out/registry/cache/${entry.name}"
     unzip -q ${archive} -d "$out/sources/${entry.name}"
     cp ${archive} "$out/registry/cache/${entry.name}/${entry.version}.zip"
-    cp ${builtins.toFile "${lib.replaceStrings [ "/" ] [ "-" ] entry.name}.index" (builtins.toJSON entry + "\n")} \
+    cp ${
+      builtins.toFile "${lib.replaceStrings [ "/" ] [ "-" ] entry.name}.index" (
+        builtins.toJSON entry + "\n"
+      )
+    } \
       "$out/registry/index/user/${entry.name}.index"
   '') archives}
 ''

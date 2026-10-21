@@ -8,11 +8,33 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@2cb76beab460be7e44442c7ebdcbc30b638416df
+        with:
+          extra-conf: |
+            sandbox = true
+      - name: Require an enabled Nix sandbox
+        run: test "$(nix config show sandbox)" = true
+      - name: Run linters and format checks
+        run: |
+          nix develop path:. -c bash -eu <<'SCRIPT'
+            pnpm install --frozen-lockfile
+            just lint
+          SCRIPT
+
   linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@2cb76beab460be7e44442c7ebdcbc30b638416df
         with:
           extra-conf: |

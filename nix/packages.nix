@@ -6,10 +6,19 @@ let
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
-      ../apps/api ../apps/web/app ../apps/web/cmd ../apps/web/moon.mod
-      ../apps/web/public/index.html ../apps/web/styles
-      ../tests/integration ../spikes ../moon.work ../justfile
-      ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml
+      ../apps/api
+      ../apps/web/app
+      ../apps/web/cmd
+      ../apps/web/moon.mod
+      ../apps/web/public/index.html
+      ../apps/web/styles
+      ../tests/integration
+      ../spikes
+      ../moon.work
+      ../justfile
+      ../package.json
+      ../pnpm-lock.yaml
+      ../pnpm-workspace.yaml
     ];
   };
   pnpmDeps = pkgs.fetchPnpmDeps {
@@ -17,16 +26,21 @@ let
     inherit pnpm;
     src = lib.fileset.toSource {
       root = ../.;
-      fileset = lib.fileset.unions [ ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ];
+      fileset = lib.fileset.unions [
+        ../package.json
+        ../pnpm-lock.yaml
+        ../pnpm-workspace.yaml
+      ];
     };
     fetcherVersion = 4;
     # fetcherVersion 4 keeps only the current platform's optional packages in
     # the store, so each supported system needs its own fixed-output hash.
     # Regenerate both hashes after dependency changes.
     hash =
-      if pkgs.stdenv.hostPlatform.isDarwin
-      then "sha256-D0ORisgfIjG5o43eI2hsMEriyNsv33dk5SxulPo6xaw="
-      else "sha256-MShHKMGDGBgq5xmOfLILYEBUNPa6CVnJO94C4qLb66E=";
+      if pkgs.stdenv.hostPlatform.isDarwin then
+        "sha256-D0ORisgfIjG5o43eI2hsMEriyNsv33dk5SxulPo6xaw="
+      else
+        "sha256-MShHKMGDGBgq5xmOfLILYEBUNPa6CVnJO94C4qLb66E=";
   };
   prepareMoon = ''
     export HOME="$TMPDIR/home"
@@ -58,7 +72,14 @@ let
     pname = "tanikun-web";
     version = "0.1.0";
     inherit src pnpmDeps;
-    nativeBuildInputs = [ moonbit warren pkgs.nodejs_24 pnpm pkgs.pnpmConfigHook pkgs.just ];
+    nativeBuildInputs = [
+      moonbit
+      warren
+      pkgs.nodejs_24
+      pnpm
+      pkgs.pnpmConfigHook
+      pkgs.just
+    ];
     preConfigure = prepareMoon;
     buildPhase = ''
       runHook preBuild
@@ -82,9 +103,12 @@ let
     pname = "tanikun-api";
     version = "0.1.0";
     inherit src;
-    nativeBuildInputs = [ moonbit pkgs.nodejs_24 ];
+    nativeBuildInputs = [
+      moonbit
+      pkgs.nodejs_24
+    ];
     configurePhase = prepareMoon;
-    buildPhase = ''moon build --frozen --target js --release --deny-warn'';
+    buildPhase = "moon build --frozen --target js --release --deny-warn";
     doCheck = true;
     checkPhase = ''
       moon fmt --check
@@ -105,4 +129,13 @@ let
     ln -s ${api} "$out/api"
   '';
 in
-{ inherit mooncakes pnpmDeps warren web api release; }
+{
+  inherit
+    mooncakes
+    pnpmDeps
+    warren
+    web
+    api
+    release
+    ;
+}

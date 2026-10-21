@@ -6,6 +6,24 @@ check:
     moon fmt --check
     moon check --target js --deny-warn
 
+# Run all linters and format checks. Requires `pnpm install` for oxlint/oxfmt.
+lint: check
+    nixfmt --check flake.nix nix/*.nix
+    statix check .
+    deadnix --fail .
+    just --fmt --check
+    pnpm exec oxlint --deny-warnings
+    pnpm exec oxfmt --check
+    actionlint
+    zizmor .
+
+# Apply all formatters.
+fmt:
+    moon fmt
+    nixfmt flake.nix nix/*.nix
+    just --fmt
+    pnpm exec oxfmt
+
 # Build the MoonBit ES module; this is not yet a deployable Worker.
 build:
     moon build --target js --release --deny-warn

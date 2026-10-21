@@ -31,6 +31,17 @@ just dev-api            # http://127.0.0.1:8787/api/health
 
 Run `dev-web` and `dev-api` in separate terminals.
 
+## Lint and format
+
+```sh
+pnpm install --frozen-lockfile
+just lint
+just fmt
+```
+
+`just lint` runs MoonBit checks, Nix linting, Just formatting, oxlint/oxfmt,
+actionlint, and zizmor. `just fmt` applies the available formatters.
+
 ## Tests
 
 ```sh
@@ -48,8 +59,9 @@ just test-d1
 
 ## Development workflow
 
-Changes land through pull requests. The `linux` CI check is required on `main`;
-direct pushes, force pushes, and branch deletion are blocked.
+Changes land through pull requests. The `linux` and `lint` CI checks are
+required on `main`; direct pushes, force pushes, and branch deletion are
+blocked.
 
 ## Docs
 

@@ -623,3 +623,33 @@ pnpm 12 required three configuration updates in `pnpm-workspace.yaml`:
 `just check`, all integration tests (CSS, browser, Workers, Automerge, and D1),
 and `nix flake check` pass locally with pnpm 12.9.0. Linux CI (PR #1) also
 passes with the Linux pnpm store hash.
+
+## Lint and format (2026-10-21)
+
+The repository now uses **oxlint 1.89.0** and **oxfmt 0.74.0**, installed as
+exact pnpm dev dependencies. Nix additionally provides `nixfmt`, `statix`,
+`deadnix`, `actionlint`, `shellcheck`, and `zizmor` in the development shell.
+
+- `.oxfmtrc.json`: 80-column formatting, import sorting enabled, package.json
+  sorting disabled, prose wrapping preserved, and generated files ignored.
+- `.oxlintrc.json`: correctness errors, suspicious warnings, Node/Worker/
+  browser/Vitest environments, generated files ignored, and `--deny-warnings`
+  enforced in CI.
+- `just lint` runs MoonBit formatting/checks, `nixfmt`, `statix`, `deadnix`,
+  `just --fmt --check`, oxlint, oxfmt, `actionlint`, and `zizmor`.
+- `just fmt` applies `moon fmt`, `nixfmt`, `just --fmt`, and oxfmt.
+
+The initial adoption required:
+
+- Formatting-only changes from oxfmt across Markdown, YAML, JSONC, CSS, HTML,
+  JavaScript, and TypeScript.
+- `nixfmt` formatting for the existing Nix files.
+- Removing the unused `self` flake argument and using `inherit` where statix
+  requested it.
+- Setting `persist-credentials: false` on both checkout steps, as reported by
+  zizmor.
+- A new `lint` CI job that installs pnpm dependencies and runs `just lint`.
+
+`just lint` and the existing test suite pass locally. The `lint` job is a
+required status check on `main` together with `linux`. Markdown/YAML/CSS
+specific linters and pre-commit hooks remain optional follow-ups.
