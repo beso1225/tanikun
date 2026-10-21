@@ -67,6 +67,7 @@ blocked.
 ## Docs
 
 - [Phase 0 plan and evidence](docs/PHASE_0.md)
+- [Phase 1 design contract](docs/PHASE_1.md)
 - [Initial design](docs/INITIAL_DESIGN.md)
 - [Glossary](GLOSSARY.md)
 
