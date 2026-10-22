@@ -24,10 +24,12 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/node/corepack
+          # Cache only the corepack pnpm binary, not project dependencies.
           key: corepack-pnpm-12.9.0-${{ runner.os }}
       - name: Enable corepack and prepare pnpm
         run: |
           corepack enable
+          # Keep this version aligned with package.json packageManager.
           for attempt in 1 2 3; do
             if corepack prepare pnpm@12.9.0 --activate; then
               exit 0
@@ -63,10 +65,12 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/node/corepack
+          # Cache only the corepack pnpm binary, not project dependencies.
           key: corepack-pnpm-12.9.0-${{ runner.os }}
       - name: Enable corepack and prepare pnpm
         run: |
           corepack enable
+          # Keep this version aligned with package.json packageManager.
           for attempt in 1 2 3; do
             if corepack prepare pnpm@12.9.0 --activate; then
               exit 0

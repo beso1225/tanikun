@@ -7,9 +7,9 @@ pub fn effective_course_name(course : Course, overrides : Overrides) -> String {
       OverrideAttribute::DisplayName,
     ) {
     Some(entry) =>
-      match entry.value() {
-        OverrideValue::Text(text) => text
-        _ => course.name
+      match entry.text() {
+        Some(text) => text
+        None => course.name
       }
     None => course.name
   }
@@ -27,9 +27,9 @@ pub fn effective_course_credits(
       OverrideAttribute::Credits,
     ) {
     Some(entry) =>
-      match entry.value() {
-        OverrideValue::Credits(credits) => credits
-        _ => course.credits
+      match entry.credits() {
+        Some(credits) => credits
+        None => course.credits
       }
     None => course.credits
   }
@@ -76,8 +76,8 @@ pub fn effective_slots(
       OverrideAttribute::Slots,
     ) {
     Some(entry) =>
-      match entry.value() {
-        OverrideValue::Slots(slots) =>
+      match entry.slots() {
+        Some(slots) =>
           match
             CourseOffering::new(
               offering.id,
@@ -90,7 +90,7 @@ pub fn effective_slots(
             Ok(updated) => Ok(updated.slots())
             Err(error) => Err(error)
           }
-        _ => Ok(offering.slots())
+        None => Ok(offering.slots())
       }
     None => Ok(offering.slots())
   }

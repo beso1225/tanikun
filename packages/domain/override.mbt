@@ -29,6 +29,9 @@ pub(all) enum OverrideValue {
 
 ///|
 /// A sparse override of a course or offering attribute.
+///
+/// `value` is excluded from identity; `(target, attribute)` is the key used
+/// for duplicate detection.
 pub struct Override {
   target : OverrideTarget
   attribute : OverrideAttribute
@@ -36,6 +39,8 @@ pub struct Override {
 }
 
 ///|
+/// Slot values are checked for shape here but validated against the owning
+/// offering's schedule and status by `effective_slots` when applied.
 pub fn Override::new(
   target : OverrideTarget,
   attribute : OverrideAttribute,
@@ -57,12 +62,29 @@ pub fn Override::new(
 }
 
 ///|
-/// Returns a copy of the override value.
-pub fn Override::value(self : Override) -> OverrideValue {
+/// Returns the text value, or `None` for another value kind.
+pub fn Override::text(self : Override) -> String? {
   match self.value {
-    Text(text) => Text(text)
-    Credits(credits) => Credits(credits)
-    Slots(slots) => Slots(slots.copy())
+    Text(text) => Some(text)
+    _ => None
+  }
+}
+
+///|
+/// Returns the credit value, or `None` for another value kind.
+pub fn Override::credits(self : Override) -> Credits? {
+  match self.value {
+    Credits(credits) => Some(credits)
+    _ => None
+  }
+}
+
+///|
+/// Returns a copy of the slot value, or `None` for another value kind.
+pub fn Override::slots(self : Override) -> Array[Slot]? {
+  match self.value {
+    Slots(slots) => Some(slots.copy())
+    _ => None
   }
 }
 
@@ -77,6 +99,7 @@ pub fn Overrides::new(
   entries : Array[Override],
 ) -> Result[Overrides, DomainError] {
   let entries = entries.copy()
+  // Override sets are sparse, so the quadratic duplicate check is fine.
   for index in 0..<entries.length() {
     for other in (index + 1)..<entries.length() {
       if entries[index].target == entries[other].target &&
@@ -94,6 +117,7 @@ pub fn Overrides::new(
 }
 
 ///|
+/// An empty override set.
 pub fn Overrides::empty() -> Overrides {
   { entries: [], }
 }
