@@ -301,3 +301,49 @@ fn[T] assert_empty_override_text(
     _ => fail("expected EmptyOverrideText")
   }
 }
+
+///|
+fn[T] assert_empty_category_id(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyIdField(
+      kind=@tanikun-domain.IdKind::Category,
+      field=@tanikun-domain.IdField::Value
+    ) => ()
+    _ => fail("expected an empty category ID")
+  }
+}
+
+///|
+fn[T] assert_control_character_category_id(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::ControlCharacterInId(
+      kind=@tanikun-domain.IdKind::Category,
+      field=@tanikun-domain.IdField::Value
+    ) => ()
+    _ => fail("expected a control character in a category ID")
+  }
+}
+
+///|
+fn[T] assert_empty_program_name(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyProgramName => ()
+    _ => fail("expected EmptyProgramName")
+  }
+}
+
+///|
+fn[T] assert_empty_category_name(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyCategoryName => ()
+    _ => fail("expected EmptyCategoryName")
+  }
+}

@@ -1,3 +1,7 @@
 import {
   "beso1225/tanikun-domain",
 }
+
+import {
+  "beso1225/tanikun-domain",
+} for "test"
