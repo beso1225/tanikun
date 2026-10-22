@@ -28,7 +28,7 @@ fn override_target_offering(
 }
 
 ///|
-fn overrides(
+fn override_set(
   entries : Array[@tanikun-domain.Override],
 ) -> @tanikun-domain.Overrides raise Error {
   expect_ok(@tanikun-domain.Overrides::new(entries))
@@ -37,36 +37,48 @@ fn overrides(
 ///|
 test "course display name override applies to display and planned enrollments" {
   let course = override_course()
-  let override = expect_ok(
+  let entry = expect_ok(
     @tanikun-domain.Override::new(
       override_target_course(course),
       @tanikun-domain.OverrideAttribute::DisplayName,
       @tanikun-domain.OverrideValue::Text("Applied Physics"),
     ),
   )
-  let overrides = overrides([override])
-  assert_eq(effective_course_name(course, overrides), "Applied Physics")
+  let overrides = override_set([entry])
+  assert_eq(
+    @tanikun-domain.effective_course_name(course, overrides),
+    "Applied Physics",
+  )
   let planned = @tanikun-domain.Enrollment::planned(enrollment_offering_id())
-  assert_eq(effective_name(planned, course, overrides), "Applied Physics")
+  assert_eq(
+    @tanikun-domain.effective_name(planned, course, overrides),
+    "Applied Physics",
+  )
 }
 
 ///|
 test "credit override applies before a pass and the snapshot wins after" {
   let course = override_course()
-  let override = expect_ok(
+  let entry = expect_ok(
     @tanikun-domain.Override::new(
       override_target_course(course),
       @tanikun-domain.OverrideAttribute::Credits,
       @tanikun-domain.OverrideValue::Credits(override_credits(6)),
     ),
   )
-  let overrides = overrides([override])
+  let overrides = override_set([entry])
   let planned = @tanikun-domain.Enrollment::planned(enrollment_offering_id())
   let in_progress = @tanikun-domain.Enrollment::in_progress(
     enrollment_offering_id(),
   )
-  assert_eq(effective_credits(planned, course, overrides).half_units(), 6)
-  assert_eq(effective_credits(in_progress, course, overrides).half_units(), 6)
+  assert_eq(
+    @tanikun-domain.effective_credits(planned, course, overrides).half_units(),
+    6,
+  )
+  assert_eq(
+    @tanikun-domain.effective_credits(in_progress, course, overrides).half_units(),
+    6,
+  )
 
   let snapshot = expect_ok(
     @tanikun-domain.PassedCourseSnapshot::new(
@@ -80,20 +92,23 @@ test "credit override applies before a pass and the snapshot wins after" {
     @tanikun-domain.PassingGrade::Excellent,
     snapshot,
   )
-  assert_eq(effective_credits(passed, course, overrides).half_units(), 4)
+  assert_eq(
+    @tanikun-domain.effective_credits(passed, course, overrides).half_units(),
+    4,
+  )
 }
 
 ///|
 test "display name override does not rewrite a passed snapshot" {
   let course = override_course()
-  let override = expect_ok(
+  let entry = expect_ok(
     @tanikun-domain.Override::new(
       override_target_course(course),
       @tanikun-domain.OverrideAttribute::DisplayName,
       @tanikun-domain.OverrideValue::Text("Applied Physics"),
     ),
   )
-  let overrides = overrides([override])
+  let overrides = override_set([entry])
   let snapshot = expect_ok(
     @tanikun-domain.PassedCourseSnapshot::new(
       course.id,
@@ -106,9 +121,15 @@ test "display name override does not rewrite a passed snapshot" {
     @tanikun-domain.PassingGrade::Good,
     snapshot,
   )
-  assert_eq(effective_name(passed, course, overrides), "Physics")
+  assert_eq(
+    @tanikun-domain.effective_name(passed, course, overrides),
+    "Physics",
+  )
   let planned = @tanikun-domain.Enrollment::planned(enrollment_offering_id())
-  assert_eq(effective_name(planned, course, overrides), "Applied Physics")
+  assert_eq(
+    @tanikun-domain.effective_name(planned, course, overrides),
+    "Applied Physics",
+  )
 }
 
 ///|
@@ -154,7 +175,7 @@ test "different attributes on one target are allowed" {
       @tanikun-domain.OverrideValue::Credits(override_credits(6)),
     ),
   )
-  let _ = overrides([name, credits])
+  let _ = override_set([name, credits])
 }
 
 ///|
@@ -228,14 +249,16 @@ test "slot override replaces offering slots after validation" {
     ),
   )
   let replacement = offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2)
-  let override = expect_ok(
+  let entry = expect_ok(
     @tanikun-domain.Override::new(
       override_target_offering(offering),
       @tanikun-domain.OverrideAttribute::Slots,
       @tanikun-domain.OverrideValue::Slots([replacement]),
     ),
   )
-  let slots = expect_ok(effective_slots(offering, overrides([override])))
+  let slots = expect_ok(
+    @tanikun-domain.effective_slots(offering, override_set([entry])),
+  )
   assert_eq(slots.length(), 1)
   assert_true(slots[0] == replacement)
 }
@@ -258,7 +281,9 @@ test "slot override validates regular and year-long slot rules" {
       @tanikun-domain.OverrideValue::Slots([]),
     ),
   )
-  assert_missing_offering_slots(effective_slots(offering, overrides([empty])))
+  assert_missing_offering_slots(
+    @tanikun-domain.effective_slots(offering, override_set([empty])),
+  )
 
   let repeated = offering_slot(@tanikun-domain.DayOfWeek::Monday, 1)
   let duplicate = expect_ok(
@@ -269,7 +294,7 @@ test "slot override validates regular and year-long slot rules" {
     ),
   )
   assert_duplicate_offering_slot(
-    effective_slots(offering, overrides([duplicate])),
+    @tanikun-domain.effective_slots(offering, override_set([duplicate])),
     repeated,
   )
 }
@@ -294,7 +319,7 @@ test "slot override respects intensive and not-offered rules" {
     ),
   )
   let empty_result = expect_ok(
-    effective_slots(intensive, overrides([empty_slots])),
+    @tanikun-domain.effective_slots(intensive, override_set([empty_slots])),
   )
   assert_eq(empty_result.length(), 0)
 
@@ -308,7 +333,7 @@ test "slot override respects intensive and not-offered rules" {
     ),
   )
   assert_unexpected_offering_slots(
-    effective_slots(intensive, overrides([non_empty_slots])),
+    @tanikun-domain.effective_slots(intensive, override_set([non_empty_slots])),
   )
 
   let not_offered = expect_ok(
@@ -329,7 +354,10 @@ test "slot override respects intensive and not-offered rules" {
     ),
   )
   assert_unexpected_offering_slots(
-    effective_slots(not_offered, overrides([slots_for_not_offered])),
+    @tanikun-domain.effective_slots(
+      not_offered,
+      override_set([slots_for_not_offered]),
+    ),
   )
 }
 
@@ -350,12 +378,24 @@ test "multiple overrides are order-independent" {
       @tanikun-domain.OverrideValue::Credits(override_credits(6)),
     ),
   )
-  let first = overrides([name, credits])
-  let second = overrides([credits, name])
-  assert_eq(effective_course_name(course, first), "Applied Physics")
-  assert_eq(effective_course_name(course, second), "Applied Physics")
-  assert_eq(effective_course_credits(course, first).half_units(), 6)
-  assert_eq(effective_course_credits(course, second).half_units(), 6)
+  let first = override_set([name, credits])
+  let second = override_set([credits, name])
+  assert_eq(
+    @tanikun-domain.effective_course_name(course, first),
+    "Applied Physics",
+  )
+  assert_eq(
+    @tanikun-domain.effective_course_name(course, second),
+    "Applied Physics",
+  )
+  assert_eq(
+    @tanikun-domain.effective_course_credits(course, first).half_units(),
+    6,
+  )
+  assert_eq(
+    @tanikun-domain.effective_course_credits(course, second).half_units(),
+    6,
+  )
 }
 
 ///|
@@ -368,10 +408,8 @@ test "override slot values are copied" {
       [offering_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
     ),
   )
-  let original = [
-    offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2),
-  ]
-  let override = expect_ok(
+  let original = [offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2)]
+  let entry = expect_ok(
     @tanikun-domain.Override::new(
       override_target_offering(offering),
       @tanikun-domain.OverrideAttribute::Slots,
@@ -379,7 +417,9 @@ test "override slot values are copied" {
     ),
   )
   original[0] = offering_slot(@tanikun-domain.DayOfWeek::Wednesday, 3)
-  let slots = expect_ok(effective_slots(offering, overrides([override])))
+  let slots = expect_ok(
+    @tanikun-domain.effective_slots(offering, override_set([entry])),
+  )
   assert_true(slots[0] == offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2))
 }
 
@@ -394,9 +434,12 @@ test "no override keeps the course and offering data" {
       [offering_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
     ),
   )
-  let empty = overrides([])
-  assert_eq(effective_course_name(course, empty), "Physics")
-  assert_eq(effective_course_credits(course, empty).half_units(), 4)
-  let slots = expect_ok(effective_slots(offering, empty))
+  let empty = override_set([])
+  assert_eq(@tanikun-domain.effective_course_name(course, empty), "Physics")
+  assert_eq(
+    @tanikun-domain.effective_course_credits(course, empty).half_units(),
+    4,
+  )
+  let slots = expect_ok(@tanikun-domain.effective_slots(offering, empty))
   assert_eq(slots.length(), 1)
 }

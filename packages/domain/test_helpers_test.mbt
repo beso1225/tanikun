@@ -284,10 +284,7 @@ fn[T] assert_invalid_override_combination(
   expected_attribute : @tanikun-domain.OverrideAttribute,
 ) -> Unit raise Error {
   match expect_error(result) {
-    @tanikun-domain.DomainError::InvalidOverrideCombination(
-      target~,
-      attribute~,
-    ) => {
+    @tanikun-domain.DomainError::InvalidOverrideCombination(target~, attribute~) => {
       assert_true(target == expected_target)
       assert_true(attribute == expected_attribute)
     }
