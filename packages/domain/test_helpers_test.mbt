@@ -235,3 +235,29 @@ fn[T] assert_duplicate_offering_slot(
     _ => fail("expected DuplicateOfferingSlot")
   }
 }
+
+///|
+fn[T] assert_empty_program_id(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyIdField(
+      kind=@tanikun-domain.IdKind::Program,
+      field=@tanikun-domain.IdField::Value
+    ) => ()
+    _ => fail("expected an empty program ID")
+  }
+}
+
+///|
+fn[T] assert_control_character_program_id(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::ControlCharacterInId(
+      kind=@tanikun-domain.IdKind::Program,
+      field=@tanikun-domain.IdField::Value
+    ) => ()
+    _ => fail("expected a control character in a program ID")
+  }
+}
