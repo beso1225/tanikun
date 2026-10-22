@@ -230,6 +230,14 @@ test "not-offered offerings have no slots" {
       [],
     ),
   )
+  let _ = expect_ok(
+    make_offering(
+      "offering-year-long",
+      @tanikun-domain.OfferingSchedule::YearLong,
+      @tanikun-domain.OfferingStatus::NotOffered,
+      [],
+    ),
+  )
   assert_unexpected_offering_slots(
     make_offering(
       "offering-year-long",
@@ -252,6 +260,22 @@ test "duplicate slots within one offering are rejected" {
     ),
     repeated,
   )
+}
+
+///|
+test "offering accepts multiple distinct slots" {
+  let offering = expect_ok(
+    make_offering(
+      "offering-multiple-slots",
+      regular([@tanikun-domain.Term::S1]),
+      @tanikun-domain.OfferingStatus::Offered,
+      [
+        offering_slot(@tanikun-domain.DayOfWeek::Monday, 1),
+        offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2),
+      ],
+    ),
+  )
+  assert_eq(offering.slots().length(), 2)
 }
 
 ///|
