@@ -57,6 +57,45 @@ test "course display name override applies to display and planned enrollments" {
 }
 
 ///|
+test "pass snapshot captures active course overrides" {
+  let course = override_course()
+  let name_override = expect_ok(
+    @tanikun-domain.Override::new(
+      override_target_course(course),
+      @tanikun-domain.OverrideAttribute::DisplayName,
+      @tanikun-domain.OverrideValue::Text("Applied Physics"),
+    ),
+  )
+  let credits_override = expect_ok(
+    @tanikun-domain.Override::new(
+      override_target_course(course),
+      @tanikun-domain.OverrideAttribute::Credits,
+      @tanikun-domain.OverrideValue::Credits(override_credits(6)),
+    ),
+  )
+  let overrides = override_set([name_override, credits_override])
+  let snapshot = expect_ok(
+    @tanikun-domain.PassedCourseSnapshot::from_course(course, overrides),
+  )
+  assert_eq(snapshot.name, "Applied Physics")
+  assert_eq(snapshot.credits.half_units(), 6)
+
+  let passed = @tanikun-domain.Enrollment::passed(
+    enrollment_offering_id(),
+    @tanikun-domain.PassingGrade::Excellent,
+    snapshot,
+  )
+  assert_eq(
+    @tanikun-domain.effective_name(passed, course, overrides),
+    "Applied Physics",
+  )
+  assert_eq(
+    @tanikun-domain.effective_credits(passed, course, overrides).half_units(),
+    6,
+  )
+}
+
+///|
 test "credit override applies before a pass and the snapshot wins after" {
   let course = override_course()
   let entry = expect_ok(

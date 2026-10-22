@@ -46,7 +46,10 @@ test "snapshot can be built from a course" {
     ),
   )
   let snapshot = expect_ok(
-    @tanikun-domain.PassedCourseSnapshot::from_course(course),
+    @tanikun-domain.PassedCourseSnapshot::from_course(
+      course,
+      @tanikun-domain.Overrides::empty(),
+    ),
   )
   assert_same_id(snapshot.course_id, course.id)
   assert_eq(snapshot.name, "Physics")
@@ -64,7 +67,10 @@ test "passed enrollment keeps its snapshot after the course master changes" {
     ),
   )
   let snapshot = expect_ok(
-    @tanikun-domain.PassedCourseSnapshot::from_course(course),
+    @tanikun-domain.PassedCourseSnapshot::from_course(
+      course,
+      @tanikun-domain.Overrides::empty(),
+    ),
   )
   let enrollment = @tanikun-domain.Enrollment::passed(
     enrollment_offering_id(),

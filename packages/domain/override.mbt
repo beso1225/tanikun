@@ -94,6 +94,11 @@ pub fn Overrides::new(
 }
 
 ///|
+pub fn Overrides::empty() -> Overrides {
+  { entries: [], }
+}
+
+///|
 pub fn Overrides::len(self : Overrides) -> Int {
   self.entries.length()
 }
