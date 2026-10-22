@@ -121,3 +121,117 @@ fn[T] assert_duplicate_course_id(
     _ => fail("expected DuplicateCourseId")
   }
 }
+
+///|
+fn[T] assert_invalid_academic_year(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : Int,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::InvalidAcademicYear(year~) =>
+      assert_eq(year, expected)
+    _ => fail("expected InvalidAcademicYear")
+  }
+}
+
+///|
+fn[T] assert_invalid_period(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : Int,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::InvalidPeriod(value~) =>
+      assert_eq(value, expected)
+    _ => fail("expected InvalidPeriod")
+  }
+}
+
+///|
+fn[T] assert_empty_offering_id(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyIdField(
+      kind=@tanikun-domain.IdKind::Offering,
+      field=@tanikun-domain.IdField::Value
+    ) => ()
+    _ => fail("expected an empty offering ID")
+  }
+}
+
+///|
+fn[T] assert_control_character_offering_id(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::ControlCharacterInId(
+      kind=@tanikun-domain.IdKind::Offering,
+      field=@tanikun-domain.IdField::Value
+    ) => ()
+    _ => fail("expected a control character in an offering ID")
+  }
+}
+
+///|
+fn[T] assert_empty_offering_terms(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyOfferingTerms => ()
+    _ => fail("expected EmptyOfferingTerms")
+  }
+}
+
+///|
+fn[T] assert_duplicate_offering_term(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.Term,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::DuplicateOfferingTerm(term~) =>
+      assert_true(term == expected)
+    _ => fail("expected DuplicateOfferingTerm")
+  }
+}
+
+///|
+fn[T] assert_mixed_offering_terms(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::MixedOfferingTerms => ()
+    _ => fail("expected MixedOfferingTerms")
+  }
+}
+
+///|
+fn[T] assert_missing_offering_slots(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::MissingOfferingSlots => ()
+    _ => fail("expected MissingOfferingSlots")
+  }
+}
+
+///|
+fn[T] assert_unexpected_offering_slots(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::UnexpectedOfferingSlots => ()
+    _ => fail("expected UnexpectedOfferingSlots")
+  }
+}
+
+///|
+fn[T] assert_duplicate_offering_slot(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.Slot,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::DuplicateOfferingSlot(slot~) =>
+      assert_true(slot == expected)
+    _ => fail("expected DuplicateOfferingSlot")
+  }
+}
