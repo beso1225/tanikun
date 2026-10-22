@@ -261,3 +261,46 @@ fn[T] assert_control_character_program_id(
     _ => fail("expected a control character in a program ID")
   }
 }
+
+///|
+fn[T] assert_duplicate_override(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected_target : @tanikun-domain.OverrideTarget,
+  expected_attribute : @tanikun-domain.OverrideAttribute,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::DuplicateOverride(target~, attribute~) => {
+      assert_true(target == expected_target)
+      assert_true(attribute == expected_attribute)
+    }
+    _ => fail("expected DuplicateOverride")
+  }
+}
+
+///|
+fn[T] assert_invalid_override_combination(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected_target : @tanikun-domain.OverrideTarget,
+  expected_attribute : @tanikun-domain.OverrideAttribute,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::InvalidOverrideCombination(
+      target~,
+      attribute~,
+    ) => {
+      assert_true(target == expected_target)
+      assert_true(attribute == expected_attribute)
+    }
+    _ => fail("expected InvalidOverrideCombination")
+  }
+}
+
+///|
+fn[T] assert_empty_override_text(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyOverrideText => ()
+    _ => fail("expected EmptyOverrideText")
+  }
+}
