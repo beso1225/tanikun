@@ -52,6 +52,30 @@ test "requirement set rejects duplicate category ids" {
 }
 
 ///|
+test "requirement set rejects category table errors" {
+  let key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("applied-physics"),
+    academic_year(2026),
+  )
+  let physics = category("physics", "Physics")
+  let mechanics = course_id("PHY101")
+  let unknown = category_id("unknown")
+  assert_unknown_category(
+    requirement_set(key, [physics], [(mechanics, unknown)], "rule-1"),
+    unknown,
+  )
+  assert_duplicate_category_assignment(
+    requirement_set(
+      key,
+      [physics],
+      [(mechanics, physics.id), (mechanics, physics.id)],
+      "rule-1",
+    ),
+    mechanics,
+  )
+}
+
+///|
 test "same course can have different categories in different programs" {
   let mechanics = course_id("PHY101")
   let core = category("core", "Core")
