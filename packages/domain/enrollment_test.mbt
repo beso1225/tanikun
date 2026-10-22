@@ -45,7 +45,9 @@ test "snapshot can be built from a course" {
       @tanikun-domain.CourseStatus::Active,
     ),
   )
-  let snapshot = expect_ok(@tanikun-domain.PassedCourseSnapshot::from_course(course))
+  let snapshot = expect_ok(
+    @tanikun-domain.PassedCourseSnapshot::from_course(course),
+  )
   assert_same_id(snapshot.course_id, course.id)
   assert_eq(snapshot.name, "Physics")
   assert_eq(snapshot.credits.half_units(), 4)
@@ -61,12 +63,15 @@ test "passed enrollment keeps its snapshot after the course master changes" {
       @tanikun-domain.CourseStatus::Active,
     ),
   )
-  let snapshot = expect_ok(@tanikun-domain.PassedCourseSnapshot::from_course(course))
+  let snapshot = expect_ok(
+    @tanikun-domain.PassedCourseSnapshot::from_course(course),
+  )
   let enrollment = @tanikun-domain.Enrollment::passed(
     enrollment_offering_id(),
     @tanikun-domain.PassingGrade::Excellent,
     snapshot,
   )
+  assert_eq(enrollment.offering_id.value, "offering-1")
   let revised = expect_ok(
     @tanikun-domain.Course::new(
       enrollment_course_id(),
@@ -87,13 +92,14 @@ test "passed enrollment keeps its snapshot after the course master changes" {
 
 ///|
 test "all passing grades are passed" {
-  for grade in [
-    @tanikun-domain.PassingGrade::ExcellentPlus,
-    @tanikun-domain.PassingGrade::Excellent,
-    @tanikun-domain.PassingGrade::Good,
-    @tanikun-domain.PassingGrade::Fair,
-    @tanikun-domain.PassingGrade::Pass,
-  ] {
+  for
+    grade in [
+      @tanikun-domain.PassingGrade::ExcellentPlus,
+      @tanikun-domain.PassingGrade::Excellent,
+      @tanikun-domain.PassingGrade::Good,
+      @tanikun-domain.PassingGrade::Fair,
+      @tanikun-domain.PassingGrade::Pass,
+    ] {
     let enrollment = @tanikun-domain.Enrollment::passed(
       enrollment_offering_id(),
       grade,
@@ -110,10 +116,11 @@ test "all passing grades are passed" {
 
 ///|
 test "failing grades are confirmed but not passed" {
-  for grade in [
-    @tanikun-domain.FailingGrade::Fail,
-    @tanikun-domain.FailingGrade::NotPassed,
-  ] {
+  for
+    grade in [
+      @tanikun-domain.FailingGrade::Fail,
+      @tanikun-domain.FailingGrade::NotPassed,
+    ] {
     let enrollment = @tanikun-domain.Enrollment::failed(
       enrollment_offering_id(),
       grade,
@@ -129,7 +136,9 @@ test "failing grades are confirmed but not passed" {
 
 ///|
 test "not-taken and unconfirmed enrollments are not passed" {
-  let not_taken = @tanikun-domain.Enrollment::not_taken(enrollment_offering_id())
+  let not_taken = @tanikun-domain.Enrollment::not_taken(
+    enrollment_offering_id(),
+  )
   assert_false(not_taken.is_passed())
   assert_true(not_taken.is_confirmed())
   match not_taken.snapshot() {
@@ -170,7 +179,7 @@ test "confirmed enrollment always carries a confirmed outcome" {
   assert_false(enrollment.is_passed())
   match enrollment.state {
     @tanikun-domain.EnrollmentState::Confirmed(
-      @tanikun-domain.ConfirmedGrade::NotTaken,
+      @tanikun-domain.ConfirmedGrade::NotTaken
     ) => ()
     _ => fail("expected a confirmed not-taken enrollment")
   }

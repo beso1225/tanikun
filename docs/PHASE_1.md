@@ -179,6 +179,8 @@ enum ConfirmedGrade {
 - `FailingGrade`: 不可, 否.
 - `Passed`, `Failed`, and `NotTaken` are confirmed outcomes. Planned and
   in-progress enrollments have no grade.
+- `Confirmed` always carries a `ConfirmedGrade`; a confirmed enrollment without
+  an outcome is not representable.
 - `is_passed` is true only for `Passed`.
 - `PassedCourseSnapshot` contains `course_id`, `name`, and `credits`. It does not
   contain a category; categories belong to the requirement set.
