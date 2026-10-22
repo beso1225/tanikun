@@ -1,0 +1,142 @@
+///|
+/// The course or offering an override applies to.
+pub(all) enum OverrideTarget {
+  Course(CourseId)
+  Offering(OfferingId)
+} derive(Eq)
+
+///|
+pub extend OverrideTarget with Eq::{not_equal, equal}
+
+///|
+/// The overridable attribute. Categories are intentionally absent.
+pub(all) enum OverrideAttribute {
+  DisplayName
+  Credits
+  Slots
+} derive(Eq)
+
+///|
+pub extend OverrideAttribute with Eq::{not_equal, equal}
+
+///|
+/// A typed override value.
+pub(all) enum OverrideValue {
+  Text(String)
+  Credits(Credits)
+  Slots(Array[Slot])
+}
+
+///|
+/// A sparse override of a course or offering attribute.
+///
+/// `value` is excluded from identity; `(target, attribute)` is the key used
+/// for duplicate detection.
+pub struct Override {
+  target : OverrideTarget
+  attribute : OverrideAttribute
+  priv value : OverrideValue
+}
+
+///|
+/// Slot values are checked for shape here but validated against the owning
+/// offering's schedule and status by `effective_slots` when applied.
+pub fn Override::new(
+  target : OverrideTarget,
+  attribute : OverrideAttribute,
+  value : OverrideValue,
+) -> Result[Override, DomainError] {
+  match (target, attribute, value) {
+    (Course(_), DisplayName, Text(text)) =>
+      if is_blank(text) {
+        Err(DomainError::EmptyOverrideText)
+      } else {
+        Ok({ target, attribute, value: Text(text), })
+      }
+    (Course(_), Credits, Credits(credits)) =>
+      Ok({ target, attribute, value: Credits(credits), })
+    (Offering(_), Slots, Slots(slots)) =>
+      Ok({ target, attribute, value: Slots(slots.copy()), })
+    _ => Err(DomainError::InvalidOverrideCombination(target~, attribute~))
+  }
+}
+
+///|
+/// Returns the text value, or `None` for another value kind.
+pub fn Override::text(self : Override) -> String? {
+  match self.value {
+    Text(text) => Some(text)
+    _ => None
+  }
+}
+
+///|
+/// Returns the credit value, or `None` for another value kind.
+pub fn Override::credits(self : Override) -> Credits? {
+  match self.value {
+    Credits(credits) => Some(credits)
+    _ => None
+  }
+}
+
+///|
+/// Returns a copy of the slot value, or `None` for another value kind.
+pub fn Override::slots(self : Override) -> Array[Slot]? {
+  match self.value {
+    Slots(slots) => Some(slots.copy())
+    _ => None
+  }
+}
+
+///|
+/// A sparse set of overrides keyed by `(target, attribute)`.
+pub struct Overrides {
+  priv entries : Array[Override]
+}
+
+///|
+pub fn Overrides::new(
+  entries : Array[Override],
+) -> Result[Overrides, DomainError] {
+  let entries = entries.copy()
+  // Override sets are sparse, so the quadratic duplicate check is fine.
+  for index in 0..<entries.length() {
+    for other in (index + 1)..<entries.length() {
+      if entries[index].target == entries[other].target &&
+        entries[index].attribute == entries[other].attribute {
+        return Err(
+          DomainError::DuplicateOverride(
+            target=entries[index].target,
+            attribute=entries[index].attribute,
+          ),
+        )
+      }
+    }
+  }
+  Ok({ entries, })
+}
+
+///|
+/// An empty override set.
+pub fn Overrides::empty() -> Overrides {
+  { entries: [], }
+}
+
+///|
+pub fn Overrides::len(self : Overrides) -> Int {
+  self.entries.length()
+}
+
+///|
+pub fn Overrides::find(
+  self : Overrides,
+  target : OverrideTarget,
+  attribute : OverrideAttribute,
+) -> Override? {
+  for entry in self.entries {
+    if entry.target == target && entry.attribute == attribute {
+      return Some(entry)
+    }
+  }
+  None
+}

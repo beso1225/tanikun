@@ -50,6 +50,9 @@ pub struct PassedCourseSnapshot {
 }
 
 ///|
+/// Builds a snapshot from already-resolved effective data. Prefer
+/// `from_course` when overrides are available so active overrides are frozen
+/// correctly.
 pub fn PassedCourseSnapshot::new(
   course_id : CourseId,
   name : String,
@@ -63,10 +66,17 @@ pub fn PassedCourseSnapshot::new(
 }
 
 ///|
+/// Builds a pass snapshot from the effective course data at confirmation time,
+/// including active name and credit overrides.
 pub fn PassedCourseSnapshot::from_course(
   course : Course,
+  overrides : Overrides,
 ) -> Result[PassedCourseSnapshot, DomainError] {
-  PassedCourseSnapshot::new(course.id, course.name, course.credits)
+  PassedCourseSnapshot::new(
+    course.id,
+    effective_course_name(course, overrides),
+    effective_course_credits(course, overrides),
+  )
 }
 
 ///|
