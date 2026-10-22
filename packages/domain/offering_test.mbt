@@ -222,6 +222,14 @@ test "not-offered offerings have no slots" {
       [],
     ),
   )
+  let _ = expect_ok(
+    make_offering(
+      "offering-intensive",
+      intensive(@tanikun-domain.Semester::W),
+      @tanikun-domain.OfferingStatus::NotOffered,
+      [],
+    ),
+  )
   assert_unexpected_offering_slots(
     make_offering(
       "offering-year-long",
@@ -285,6 +293,30 @@ test "offering getters do not expose mutable storage" {
     _ => fail("expected a regular offering")
   }
   let slots = offering.slots()
+  slots[0] = offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2)
+  match offering.schedule() {
+    @tanikun-domain.OfferingSchedule::Regular(terms~) =>
+      assert_true(terms[0] == @tanikun-domain.Term::S1)
+    _ => fail("expected a regular offering")
+  }
+  assert_true(
+    offering.slots()[0] == offering_slot(@tanikun-domain.DayOfWeek::Monday, 1),
+  )
+}
+
+///|
+test "offering constructor copies input arrays" {
+  let terms = [@tanikun-domain.Term::S1]
+  let slots = [offering_slot(@tanikun-domain.DayOfWeek::Monday, 1)]
+  let offering = expect_ok(
+    make_offering(
+      "offering-input-copy",
+      regular(terms),
+      @tanikun-domain.OfferingStatus::Offered,
+      slots,
+    ),
+  )
+  terms[0] = @tanikun-domain.Term::A1
   slots[0] = offering_slot(@tanikun-domain.DayOfWeek::Tuesday, 2)
   match offering.schedule() {
     @tanikun-domain.OfferingSchedule::Regular(terms~) =>
