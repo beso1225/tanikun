@@ -35,9 +35,8 @@ pub fn Program::new(
   id : ProgramId,
   name : String,
 ) -> Result[Program, DomainError] {
-  if is_blank(name) {
-    Err(DomainError::EmptyProgramName)
-  } else {
-    Ok({ id, name, })
+  match validate_display_name(name, DomainError::EmptyProgramName) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ id, name, })
   }
 }

@@ -10,9 +10,12 @@ pub fn Category::new(
   id : @tanikun-domain.CategoryId,
   name : String,
 ) -> Result[Category, @tanikun-domain.DomainError] {
-  if @tanikun-domain.is_blank(name) {
-    Err(@tanikun-domain.DomainError::EmptyCategoryName)
-  } else {
-    Ok({ id, name, })
+  match
+    @tanikun-domain.validate_display_name(
+      name,
+      @tanikun-domain.DomainError::EmptyCategoryName,
+    ) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ id, name, })
   }
 }

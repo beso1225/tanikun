@@ -58,10 +58,9 @@ pub fn PassedCourseSnapshot::new(
   name : String,
   credits : Credits,
 ) -> Result[PassedCourseSnapshot, DomainError] {
-  if is_blank(name) {
-    Err(DomainError::EmptyCourseName)
-  } else {
-    Ok({ course_id, name, credits, })
+  match validate_display_name(name, DomainError::EmptyCourseName) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ course_id, name, credits, })
   }
 }
 

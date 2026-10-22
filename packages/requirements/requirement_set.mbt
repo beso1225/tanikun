@@ -18,6 +18,9 @@ pub fn RequirementSetKey::new(
 
 ///|
 /// Categories, a category table, and a rule tree for one program/year.
+///
+/// A set may define no categories; such a set contributes only total-credit
+/// requirements.
 pub struct RequirementSet[Rule] {
   key : RequirementSetKey
   priv categories : Array[Category]

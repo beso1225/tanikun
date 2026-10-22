@@ -17,6 +17,7 @@ pub fn CategoryTable::new(
       return Err(@tanikun-domain.DomainError::UnknownCategory(id=assignment.1))
     }
   }
+  // Sorted order serves both the adjacent duplicate check and binary lookup.
   assignments.sort_by(fn(left, right) { left.0.compare(right.0) })
   for index in 1..<assignments.length() {
     if assignments[index - 1].0 == assignments[index].0 {
@@ -36,13 +37,23 @@ pub fn CategoryTable::len(self : CategoryTable) -> Int {
 }
 
 ///|
+/// Looks up a course in the table. Assignments are stored in `CourseId` order,
+/// so binary search is valid.
 pub fn CategoryTable::lookup(
   self : CategoryTable,
   course_id : @tanikun-domain.CourseId,
 ) -> @tanikun-domain.CategoryId? {
-  for assignment in self.assignments {
-    if assignment.0 == course_id {
-      return Some(assignment.1)
+  let mut low = 0
+  let mut high = self.assignments.length()
+  while low < high {
+    let middle = low + (high - low) / 2
+    let order = self.assignments[middle].0.compare(course_id)
+    if order < 0 {
+      low = middle + 1
+    } else if order > 0 {
+      high = middle
+    } else {
+      return Some(self.assignments[middle].1)
     }
   }
   None
