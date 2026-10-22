@@ -167,18 +167,18 @@ test "not-taken and unconfirmed enrollments are not passed" {
 
 ///|
 test "confirmed enrollment always carries a confirmed outcome" {
-  // EnrollmentState::Confirmed requires a ConfirmedGrade by construction, so
+  // EnrollmentStatus::Confirmed requires a ConfirmedGrade by construction, so
   // a confirmed enrollment without an outcome cannot be represented.
   let enrollment = @tanikun-domain.Enrollment::new(
     enrollment_offering_id(),
-    @tanikun-domain.EnrollmentState::Confirmed(
+    @tanikun-domain.EnrollmentStatus::Confirmed(
       @tanikun-domain.ConfirmedGrade::NotTaken,
     ),
   )
   assert_true(enrollment.is_confirmed())
   assert_false(enrollment.is_passed())
-  match enrollment.state {
-    @tanikun-domain.EnrollmentState::Confirmed(
+  match enrollment.status {
+    @tanikun-domain.EnrollmentStatus::Confirmed(
       @tanikun-domain.ConfirmedGrade::NotTaken
     ) => ()
     _ => fail("expected a confirmed not-taken enrollment")

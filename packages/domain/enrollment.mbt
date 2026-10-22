@@ -1,11 +1,11 @@
 ///|
 /// A passing grade: 優上, 優, 良, 可, or 合.
 pub(all) enum PassingGrade {
-  ExcellentPlus
-  Excellent
-  Good
-  Fair
-  Pass
+  ExcellentPlus // 優上
+  Excellent // 優
+  Good // 良
+  Fair // 可
+  Pass // 合
 } derive(Eq)
 
 ///|
@@ -14,8 +14,8 @@ pub extend PassingGrade with Eq::{not_equal, equal}
 ///|
 /// A failing grade: 不可 or 否.
 pub(all) enum FailingGrade {
-  Fail
-  NotPassed
+  Fail // 不可
+  NotPassed // 否
 } derive(Eq)
 
 ///|
@@ -30,9 +30,9 @@ pub(all) enum ConfirmedGrade {
 }
 
 ///|
-/// Enrollment state. `Confirmed` always carries a `ConfirmedGrade`, so a
+/// Enrollment status. `Confirmed` always carries a `ConfirmedGrade`, so a
 /// confirmed enrollment without an outcome is not representable.
-pub(all) enum EnrollmentState {
+pub(all) enum EnrollmentStatus {
   Planned
   InProgress
   Confirmed(ConfirmedGrade)
@@ -73,25 +73,25 @@ pub fn PassedCourseSnapshot::from_course(
 /// An enrollment keyed by its offering.
 pub struct Enrollment {
   offering_id : OfferingId
-  state : EnrollmentState
+  status : EnrollmentStatus
 }
 
 ///|
 pub fn Enrollment::new(
   offering_id : OfferingId,
-  state : EnrollmentState,
+  status : EnrollmentStatus,
 ) -> Enrollment {
-  { offering_id, state, }
+  { offering_id, status, }
 }
 
 ///|
 pub fn Enrollment::planned(offering_id : OfferingId) -> Enrollment {
-  Enrollment::new(offering_id, EnrollmentState::Planned)
+  Enrollment::new(offering_id, EnrollmentStatus::Planned)
 }
 
 ///|
 pub fn Enrollment::in_progress(offering_id : OfferingId) -> Enrollment {
-  Enrollment::new(offering_id, EnrollmentState::InProgress)
+  Enrollment::new(offering_id, EnrollmentStatus::InProgress)
 }
 
 ///|
@@ -102,7 +102,7 @@ pub fn Enrollment::passed(
 ) -> Enrollment {
   Enrollment::new(
     offering_id,
-    EnrollmentState::Confirmed(ConfirmedGrade::Passed(grade~, snapshot~)),
+    EnrollmentStatus::Confirmed(ConfirmedGrade::Passed(grade~, snapshot~)),
   )
 }
 
@@ -113,7 +113,7 @@ pub fn Enrollment::failed(
 ) -> Enrollment {
   Enrollment::new(
     offering_id,
-    EnrollmentState::Confirmed(ConfirmedGrade::Failed(grade~)),
+    EnrollmentStatus::Confirmed(ConfirmedGrade::Failed(grade~)),
   )
 }
 
@@ -121,30 +121,30 @@ pub fn Enrollment::failed(
 pub fn Enrollment::not_taken(offering_id : OfferingId) -> Enrollment {
   Enrollment::new(
     offering_id,
-    EnrollmentState::Confirmed(ConfirmedGrade::NotTaken),
+    EnrollmentStatus::Confirmed(ConfirmedGrade::NotTaken),
   )
 }
 
 ///|
 pub fn Enrollment::is_confirmed(self : Enrollment) -> Bool {
-  match self.state {
-    EnrollmentState::Confirmed(_) => true
+  match self.status {
+    EnrollmentStatus::Confirmed(_) => true
     _ => false
   }
 }
 
 ///|
 pub fn Enrollment::is_passed(self : Enrollment) -> Bool {
-  match self.state {
-    EnrollmentState::Confirmed(ConfirmedGrade::Passed(..)) => true
+  match self.status {
+    EnrollmentStatus::Confirmed(ConfirmedGrade::Passed(..)) => true
     _ => false
   }
 }
 
 ///|
 pub fn Enrollment::snapshot(self : Enrollment) -> PassedCourseSnapshot? {
-  match self.state {
-    EnrollmentState::Confirmed(ConfirmedGrade::Passed(snapshot~, ..)) =>
+  match self.status {
+    EnrollmentStatus::Confirmed(ConfirmedGrade::Passed(snapshot~, ..)) =>
       Some(snapshot)
     _ => None
   }

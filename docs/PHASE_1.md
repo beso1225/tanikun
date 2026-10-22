@@ -162,7 +162,7 @@ An `Enrollment` is keyed by `OfferingId`; there is at most one enrollment per
 offering.
 
 ```moonbit
-enum EnrollmentState {
+enum EnrollmentStatus {
   Planned
   InProgress
   Confirmed(ConfirmedGrade)
