@@ -98,7 +98,7 @@ fn[T] assert_duplicate_requirement_set(
   match expect_error(result) {
     @tanikun-domain.DomainError::DuplicateRequirementSet(
       program_id~,
-      advancement_year~,
+      advancement_year~
     ) => {
       assert_true(program_id == expected_program)
       assert_true(advancement_year == expected_year)

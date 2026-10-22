@@ -337,13 +337,3 @@ fn[T] assert_empty_program_name(
     _ => fail("expected EmptyProgramName")
   }
 }
-
-///|
-fn[T] assert_empty_category_name(
-  result : Result[T, @tanikun-domain.DomainError],
-) -> Unit raise Error {
-  match expect_error(result) {
-    @tanikun-domain.DomainError::EmptyCategoryName => ()
-    _ => fail("expected EmptyCategoryName")
-  }
-}

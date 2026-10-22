@@ -4,7 +4,7 @@
 /// The core `String::trim()` default only strips ASCII whitespace, so IDs and
 /// names need this broader check to reject pasted non-breaking and ideographic
 /// spaces as empty.
-fn is_blank(value : String) -> Bool {
+pub fn is_blank(value : String) -> Bool {
   for char in value {
     if !is_blank_char(char) {
       return false
@@ -47,4 +47,26 @@ fn has_control_character(value : String) -> Bool {
     }
   }
   false
+}
+
+///|
+/// Compares strings by UTF-16 code units, then by length.
+fn compare_code_units(left : String, right : String) -> Int {
+  let shared = if left.length() < right.length() {
+    left.length()
+  } else {
+    right.length()
+  }
+  for index in 0..<shared {
+    if left[index] != right[index] {
+      return if left[index] < right[index] { -1 } else { 1 }
+    }
+  }
+  if left.length() < right.length() {
+    -1
+  } else if left.length() > right.length() {
+    1
+  } else {
+    0
+  }
 }

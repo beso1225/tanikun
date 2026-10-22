@@ -57,10 +57,7 @@ test "category table rejects unknown categories" {
   let unknown = category_id("unknown")
   let mechanics = course_id("PHY101")
   assert_unknown_category(
-    @tanikun-requirements.CategoryTable::new(
-      [(mechanics, unknown)],
-      [physics],
-    ),
+    @tanikun-requirements.CategoryTable::new([(mechanics, unknown)], [physics]),
     unknown,
   )
 }

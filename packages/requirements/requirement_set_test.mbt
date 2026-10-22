@@ -12,20 +12,13 @@ fn academic_year(value : Int) -> @tanikun-domain.AcademicYear raise Error {
 fn requirement_set(
   key : @tanikun-requirements.RequirementSetKey,
   categories : Array[@tanikun-requirements.Category],
-  assignments : Array[
-    (@tanikun-domain.CourseId, @tanikun-domain.CategoryId),
-  ],
+  assignments : Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)],
   rule : String,
 ) -> Result[
   @tanikun-requirements.RequirementSet[String],
   @tanikun-domain.DomainError,
 ] {
-  @tanikun-requirements.RequirementSet::new(
-    key,
-    categories,
-    assignments,
-    rule,
-  )
+  @tanikun-requirements.RequirementSet::new(key, categories, assignments, rule)
 }
 
 ///|
@@ -36,12 +29,7 @@ test "requirement set stores its key, categories, table, and rule" {
   let physics = category("physics", "Physics")
   let mechanics = course_id("PHY101")
   let set = expect_ok(
-    requirement_set(
-      key,
-      [physics],
-      [(mechanics, physics.id)],
-      "rule-1",
-    ),
+    requirement_set(key, [physics], [(mechanics, physics.id)], "rule-1"),
   )
   assert_true(set.key == key)
   assert_eq(set.categories().length(), 1)
@@ -87,10 +75,7 @@ test "same course can have different categories in different programs" {
       "rule-b",
     ),
   )
-  assert_same_category_id(
-    expect_some(first.category_for(mechanics)),
-    core.id,
-  )
+  assert_same_category_id(expect_some(first.category_for(mechanics)), core.id)
   assert_same_category_id(
     expect_some(second.category_for(mechanics)),
     elective.id,
@@ -107,12 +92,7 @@ test "uncategorized courses remain valid" {
     academic_year(2026),
   )
   let set = expect_ok(
-    requirement_set(
-      key,
-      [physics],
-      [(mechanics, physics.id)],
-      "rule-1",
-    ),
+    requirement_set(key, [physics], [(mechanics, physics.id)], "rule-1"),
   )
   match set.category_for(statistics) {
     None => ()
@@ -128,12 +108,7 @@ test "requirement sets are looked up by program and advancement year" {
   let mechanics = course_id("PHY101")
   let key = @tanikun-requirements.RequirementSetKey::new(program, year)
   let set = expect_ok(
-    requirement_set(
-      key,
-      [physics],
-      [(mechanics, physics.id)],
-      "rule-1",
-    ),
+    requirement_set(key, [physics], [(mechanics, physics.id)], "rule-1"),
   )
   let sets = expect_ok(@tanikun-requirements.RequirementSets::new([set]))
   assert_eq(sets.len(), 1)
@@ -160,16 +135,9 @@ test "duplicate requirement set keys are rejected" {
   let physics = category("physics", "Physics")
   let mechanics = course_id("PHY101")
   let first = expect_ok(
-    requirement_set(
-      key,
-      [physics],
-      [(mechanics, physics.id)],
-      "rule-a",
-    ),
+    requirement_set(key, [physics], [(mechanics, physics.id)], "rule-a"),
   )
-  let second = expect_ok(
-    requirement_set(key, [physics], [], "rule-b"),
-  )
+  let second = expect_ok(requirement_set(key, [physics], [], "rule-b"))
   assert_duplicate_requirement_set(
     @tanikun-requirements.RequirementSets::new([first, second]),
     program,
