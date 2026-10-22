@@ -1,9 +1,6 @@
 ///|
 test "academic year must be positive" {
-  assert_eq(
-    expect_ok(@tanikun-domain.AcademicYear::new(2026)).year(),
-    2026,
-  )
+  assert_eq(expect_ok(@tanikun-domain.AcademicYear::new(2026)).year(), 2026)
   assert_invalid_academic_year(@tanikun-domain.AcademicYear::new(0), 0)
   assert_invalid_academic_year(@tanikun-domain.AcademicYear::new(-1), -1)
 }
@@ -25,10 +22,18 @@ test "semesters and terms cover the academic calendar" {
     @tanikun-domain.Term::A2,
   ]
   assert_eq(terms.length(), 4)
-  assert_true(@tanikun-domain.Term::S1.semester() == @tanikun-domain.Semester::S)
-  assert_true(@tanikun-domain.Term::S2.semester() == @tanikun-domain.Semester::S)
-  assert_true(@tanikun-domain.Term::A1.semester() == @tanikun-domain.Semester::A)
-  assert_true(@tanikun-domain.Term::A2.semester() == @tanikun-domain.Semester::A)
+  assert_true(
+    @tanikun-domain.Term::S1.semester() == @tanikun-domain.Semester::S,
+  )
+  assert_true(
+    @tanikun-domain.Term::S2.semester() == @tanikun-domain.Semester::S,
+  )
+  assert_true(
+    @tanikun-domain.Term::A1.semester() == @tanikun-domain.Semester::A,
+  )
+  assert_true(
+    @tanikun-domain.Term::A2.semester() == @tanikun-domain.Semester::A,
+  )
   assert_true(@tanikun-domain.Semester::W != @tanikun-domain.Semester::A)
 }
 

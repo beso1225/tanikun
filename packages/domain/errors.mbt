@@ -11,17 +11,28 @@ pub(all) enum IdKind {
 
 ///|
 /// Identifies the part of an ID that failed validation.
+///
+/// `Value` is used by single-part IDs such as `OfferingId`.
 pub(all) enum IdField {
   Namespace
   Local
+  Value
 }
 
 ///|
 /// A typed domain validation failure.
 pub(all) enum DomainError {
   InvalidCredits(half_units~ : Int)
+  InvalidAcademicYear(year~ : Int)
+  InvalidPeriod(value~ : Int)
   EmptyIdField(kind~ : IdKind, field~ : IdField)
   ControlCharacterInId(kind~ : IdKind, field~ : IdField)
   EmptyCourseName
   DuplicateCourseId(id~ : CourseId)
+  EmptyOfferingTerms
+  DuplicateOfferingTerm(term~ : Term)
+  MixedOfferingTerms
+  MissingOfferingSlots
+  UnexpectedOfferingSlots
+  DuplicateOfferingSlot(slot~ : Slot)
 }

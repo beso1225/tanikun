@@ -1,14 +1,4 @@
 ///|
-fn offering_course_id() -> @tanikun-domain.CourseId raise Error {
-  expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))
-}
-
-///|
-fn offering_year() -> @tanikun-domain.AcademicYear raise Error {
-  expect_ok(@tanikun-domain.AcademicYear::new(2026))
-}
-
-///|
 fn offering_period(value : Int) -> @tanikun-domain.Period raise Error {
   expect_ok(@tanikun-domain.Period::new(value))
 }
@@ -25,14 +15,14 @@ fn offering_slot(
 fn regular(
   terms : Array[@tanikun-domain.Term],
 ) -> @tanikun-domain.OfferingSchedule {
-  @tanikun-domain.OfferingSchedule::Regular(terms=terms)
+  @tanikun-domain.OfferingSchedule::Regular(terms~)
 }
 
 ///|
 fn intensive(
   semester : @tanikun-domain.Semester,
 ) -> @tanikun-domain.OfferingSchedule {
-  @tanikun-domain.OfferingSchedule::Intensive(semester=semester)
+  @tanikun-domain.OfferingSchedule::Intensive(semester~)
 }
 
 ///|
@@ -41,15 +31,21 @@ fn make_offering(
   schedule : @tanikun-domain.OfferingSchedule,
   status : @tanikun-domain.OfferingStatus,
   slots : Array[@tanikun-domain.Slot],
-) -> Result[@tanikun-domain.CourseOffering, @tanikun-domain.DomainError> raise Error {
-  let offering_id = expect_ok(@tanikun-domain.OfferingId::new(id))
+) -> Result[@tanikun-domain.CourseOffering, @tanikun-domain.DomainError] {
+  let offering_id = match @tanikun-domain.OfferingId::new(id) {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
+  let course_id = match @tanikun-domain.CourseId::new("master", "PHY101") {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
+  let academic_year = match @tanikun-domain.AcademicYear::new(2026) {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
   @tanikun-domain.CourseOffering::new(
-    offering_id,
-    offering_course_id(),
-    offering_year(),
-    schedule,
-    status,
-    slots,
+    offering_id, course_id, academic_year, schedule, status, slots,
   )
 }
 
@@ -166,7 +162,7 @@ test "offered regular and year-long offerings require slots" {
 
 ///|
 test "offered regular and year-long offerings accept slots" {
-  expect_ok(
+  let _ = expect_ok(
     make_offering(
       "offering-regular",
       regular([@tanikun-domain.Term::S1]),
@@ -174,7 +170,7 @@ test "offered regular and year-long offerings accept slots" {
       [offering_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
     ),
   )
-  expect_ok(
+  let _ = expect_ok(
     make_offering(
       "offering-year-long",
       @tanikun-domain.OfferingSchedule::YearLong,
@@ -186,26 +182,23 @@ test "offered regular and year-long offerings accept slots" {
 
 ///|
 test "intensive offerings have a semester and no slots" {
-  for semester in [
-    @tanikun-domain.Semester::S,
-    @tanikun-domain.Semester::A,
-    @tanikun-domain.Semester::W,
-  ] {
+  for
+    expected_semester in [
+      @tanikun-domain.Semester::S,
+      @tanikun-domain.Semester::A,
+      @tanikun-domain.Semester::W,
+    ] {
     let offering = expect_ok(
       make_offering(
         "offering-intensive",
-        intensive(semester),
+        intensive(expected_semester),
         @tanikun-domain.OfferingStatus::Offered,
         [],
       ),
     )
     match offering.schedule() {
       @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
-        match semester {
-          @tanikun-domain.Semester::S => ()
-          @tanikun-domain.Semester::A => ()
-          @tanikun-domain.Semester::W => ()
-        }
+        assert_true(semester == expected_semester)
       _ => fail("expected an intensive offering")
     }
   }
@@ -221,7 +214,7 @@ test "intensive offerings have a semester and no slots" {
 
 ///|
 test "not-offered offerings have no slots" {
-  expect_ok(
+  let _ = expect_ok(
     make_offering(
       "offering-regular",
       regular([@tanikun-domain.Term::S1]),
@@ -299,7 +292,6 @@ test "offering getters do not expose mutable storage" {
     _ => fail("expected a regular offering")
   }
   assert_true(
-    offering.slots()[0] ==
-    offering_slot(@tanikun-domain.DayOfWeek::Monday, 1),
+    offering.slots()[0] == offering_slot(@tanikun-domain.DayOfWeek::Monday, 1),
   )
 }
