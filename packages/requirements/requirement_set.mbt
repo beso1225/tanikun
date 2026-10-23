@@ -127,3 +127,11 @@ pub fn[Rule] RequirementSets::lookup_for_profile(
 ) -> RequirementSet[Rule]? {
   self.lookup(profile.program_id, profile.advancement_year)
 }
+
+///|
+/// Returns a copy of the course IDs assigned to categories.
+pub fn[Rule] RequirementSet::assigned_course_ids(
+  self : RequirementSet[Rule],
+) -> Array[@tanikun-domain.CourseId] {
+  self.category_table.course_ids()
+}

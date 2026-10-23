@@ -183,14 +183,15 @@ pub fn Rule::at_least_count(self : Rule) -> Int? {
 }
 
 ///|
-/// Validates that every category and course reference exists in the scope.
+/// Collects invalid category and course references in deterministic ID order.
 ///
 /// The worklist avoids recursion, so deeply nested trees do not overflow the
 /// call stack.
-pub fn Rule::validate(
+pub fn Rule::reference_errors(
   self : Rule,
   scope : RuleScope,
-) -> Result[Unit, @tanikun-domain.DomainError] {
+) -> Array[@tanikun-domain.DomainError] {
+  let errors : Array[@tanikun-domain.DomainError] = []
   let pending = [self]
   while !pending.is_empty() {
     let rule = match pending.pop() {
@@ -201,7 +202,7 @@ pub fn Rule::validate(
       CategoryMinimum(categories~, ..) =>
         for category in categories {
           if !scope.contains_category(category) {
-            return Err(
+            errors.push(
               @tanikun-domain.DomainError::UnknownRuleCategory(id=category),
             )
           }
@@ -210,7 +211,7 @@ pub fn Rule::validate(
       AllCoursesPassed(courses~) =>
         for course in courses {
           if !scope.contains_course(course) {
-            return Err(
+            errors.push(
               @tanikun-domain.DomainError::UnknownRuleCourse(course_id=course),
             )
           }
@@ -218,7 +219,7 @@ pub fn Rule::validate(
       CourseSetMinimum(courses~, ..) =>
         for course in courses {
           if !scope.contains_course(course) {
-            return Err(
+            errors.push(
               @tanikun-domain.DomainError::UnknownRuleCourse(course_id=course),
             )
           }
@@ -228,7 +229,54 @@ pub fn Rule::validate(
       AtLeast(children~, ..) => push_rule_children(pending, children)
     }
   }
-  Ok(())
+  errors.sort_by(fn(left, right) { compare_rule_reference_errors(left, right) })
+  errors
+}
+
+///|
+/// Validates that every category and course reference exists in the scope.
+pub fn Rule::validate(
+  self : Rule,
+  scope : RuleScope,
+) -> Result[Unit, @tanikun-domain.DomainError] {
+  let errors = self.reference_errors(scope)
+  if errors.is_empty() {
+    Ok(())
+  } else {
+    Err(errors[0])
+  }
+}
+
+///|
+fn rule_reference_rank(error : @tanikun-domain.DomainError) -> Int {
+  match error {
+    @tanikun-domain.DomainError::UnknownRuleCategory(_) => 0
+    @tanikun-domain.DomainError::UnknownRuleCourse(_) => 1
+    _ => 2
+  }
+}
+
+///|
+fn compare_rule_reference_errors(
+  left : @tanikun-domain.DomainError,
+  right : @tanikun-domain.DomainError,
+) -> Int {
+  let rank = rule_reference_rank(left)
+  let other_rank = rule_reference_rank(right)
+  if rank != other_rank {
+    return if rank < other_rank { -1 } else { 1 }
+  }
+  match (left, right) {
+    (
+      @tanikun-domain.DomainError::UnknownRuleCategory(id=left_id),
+      @tanikun-domain.DomainError::UnknownRuleCategory(id=right_id),
+    ) => left_id.compare(right_id)
+    (
+      @tanikun-domain.DomainError::UnknownRuleCourse(course_id=left_id),
+      @tanikun-domain.DomainError::UnknownRuleCourse(course_id=right_id),
+    ) => left_id.compare(right_id)
+    _ => 0
+  }
 }
 
 ///|

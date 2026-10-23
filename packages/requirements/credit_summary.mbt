@@ -79,6 +79,12 @@ pub fn credit_summary(
       None => unknown_courses.push(offering.course_id)
     }
   }
+  for course_id in input.requirement_set.assigned_course_ids() {
+    match find_course(courses, course_id) {
+      Some(_) => ()
+      None => unknown_courses.push(course_id)
+    }
+  }
 
   let override_entries = input.overrides.entries()
   sort_override_entries(override_entries)

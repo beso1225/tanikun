@@ -990,3 +990,17 @@ test "retired course errors are selected by course id" {
     retired_low.id,
   )
 }
+
+///|
+test "credit summary validates category-table course references" {
+  let known = credit_course("PHY101", 4)
+  let category = category("core", "Core")
+  let unknown = course_id("PHY999")
+  let set = credit_requirement_set([category], [(unknown, category.id)])
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(set, [known], [], [], @tanikun-domain.Overrides::empty()),
+    ),
+    unknown,
+  )
+}
