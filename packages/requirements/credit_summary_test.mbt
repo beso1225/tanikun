@@ -334,6 +334,7 @@ test "frozen passed credits and overrides apply to the right states" {
   assert_eq(category_total(projection.confirmed), 4)
   assert_eq(category_total(projection.standard), 10)
   assert_eq(category_total(projection.optimistic), 10)
+  assert_monotonic(projection)
 }
 
 ///|
@@ -370,6 +371,7 @@ test "each course counts once and failed courses do not block later states" {
   assert_eq(projection.confirmed.total.half_units(), 4)
   assert_eq(projection.standard.total.half_units(), 6)
   assert_eq(projection.optimistic.total.half_units(), 8)
+  assert_monotonic(projection)
 }
 
 ///|
