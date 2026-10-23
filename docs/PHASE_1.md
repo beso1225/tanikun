@@ -454,6 +454,33 @@ The golden test will record confirmed, standard projected, and optimistic
 projected totals, per-category credits, and each rule result. The fixture lives
 in the requirements test package; no JSON serialization is needed in Phase 1.
 
+## Verification commands
+
+Run these from the repository root:
+
+```sh
+nix develop -c just test
+nix develop -c just lint
+nix flake check path:.
+nix build path:.#web path:.#api --offline --rebuild --no-link
+```
+
+`just test` runs the MoonBit build, the domain/requirements/API/Web tests, and
+the generated JavaScript export test. The pure domain and requirements tests do
+not require `pnpm install`; `nix flake check` runs the sandboxed `pure`, `web`,
+and release checks. Linux CI runs the same checks with an enabled Nix sandbox.
+
+Mutation testing is separate from the required CI gate:
+
+```sh
+nix develop
+just setup-mutation
+just mutate
+```
+
+See [MUTATION.md](MUTATION.md) for the baseline, accepted mutants, and the
+ratchet policy.
+
 ## Out of scope and deferred decisions
 
 - UI, Workers, D1, Automerge, IndexedDB, and persistence.

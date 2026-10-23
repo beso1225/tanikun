@@ -25,6 +25,8 @@
             # Node.js is managed by fnm from .node-version, not nixpkgs.
             pkgs.fnm
             pkgs.just
+            # `timeout` is required by turtles on macOS.
+            pkgs.coreutils
             # The browser test uses nixpkgs' Playwright core and browsers so the
             # test never downloads a browser or writes outside the sandbox.
             pkgs.playwright
