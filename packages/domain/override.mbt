@@ -9,6 +9,19 @@ pub(all) enum OverrideTarget {
 pub extend OverrideTarget with Eq::{not_equal, equal}
 
 ///|
+pub impl Compare for OverrideTarget with fn compare(self, other) {
+  match (self, other) {
+    (Course(left), Course(right)) => left.compare(right)
+    (Offering(left), Offering(right)) => left.compare(right)
+    (Course(_), Offering(_)) => -1
+    (Offering(_), Course(_)) => 1
+  }
+}
+
+///|
+pub extend OverrideTarget with Compare::{op_lt, op_le, op_ge, compare, op_gt}
+
+///|
 /// The overridable attribute. Categories are intentionally absent.
 pub(all) enum OverrideAttribute {
   DisplayName
@@ -18,6 +31,22 @@ pub(all) enum OverrideAttribute {
 
 ///|
 pub extend OverrideAttribute with Eq::{not_equal, equal}
+
+///|
+pub impl Compare for OverrideAttribute with fn compare(self, other) {
+  match (self, other) {
+    (DisplayName, DisplayName) => 0
+    (DisplayName, _) => -1
+    (Credits, DisplayName) => 1
+    (Credits, Credits) => 0
+    (Credits, Slots) => -1
+    (Slots, Slots) => 0
+    (Slots, _) => 1
+  }
+}
+
+///|
+pub extend OverrideAttribute with Compare::{op_lt, op_le, op_ge, compare, op_gt}
 
 ///|
 /// A typed override value.

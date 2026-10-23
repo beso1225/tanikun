@@ -790,3 +790,50 @@ test "overrides are validated against their targets" {
     ),
   )
 }
+
+///|
+test "override validation order is deterministic" {
+  let course = credit_course("PHY101", 4)
+  let offering = credit_offering("offering-1", course.id)
+  let first_unknown = course_id("PHY999")
+  let second_unknown = course_id("PHY998")
+  let first_override = expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Course(first_unknown),
+      @tanikun-domain.OverrideAttribute::Credits,
+      @tanikun-domain.OverrideValue::Credits(credit_value(4)),
+    ),
+  )
+  let second_override = expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Course(second_unknown),
+      @tanikun-domain.OverrideAttribute::Credits,
+      @tanikun-domain.OverrideValue::Credits(credit_value(4)),
+    ),
+  )
+  let set = credit_requirement_set([], [])
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        set,
+        [course],
+        [offering],
+        [],
+        credit_overrides([first_override, second_override]),
+      ),
+    ),
+    second_unknown,
+  )
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        set,
+        [course],
+        [offering],
+        [],
+        credit_overrides([second_override, first_override]),
+      ),
+    ),
+    second_unknown,
+  )
+}

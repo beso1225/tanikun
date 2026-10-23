@@ -341,7 +341,16 @@ fn validate_overrides(
   offerings : Array[@tanikun-domain.CourseOffering],
   overrides : @tanikun-domain.Overrides,
 ) -> Result[Unit, @tanikun-domain.DomainError] {
-  for entry in overrides.entries() {
+  let entries = overrides.entries()
+  entries.sort_by(fn(left, right) {
+    let target_order = left.target.compare(right.target)
+    if target_order != 0 {
+      target_order
+    } else {
+      left.attribute.compare(right.attribute)
+    }
+  })
+  for entry in entries {
     match entry.target {
       @tanikun-domain.OverrideTarget::Course(course_id) =>
         match find_course(courses, course_id) {
