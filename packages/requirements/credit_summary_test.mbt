@@ -1111,3 +1111,46 @@ test "duplicate slot overrides report the canonical slot" {
     1,
   )
 }
+
+///|
+test "course and offering failures are selected by entity id" {
+  let retired_low = credit_course_status(
+    "PHY000",
+    4,
+    @tanikun-domain.CourseStatus::Retired,
+  )
+  let missing_high = course_id("PHY999")
+  let retired_offering = credit_offering("offering-low", retired_low.id)
+  let missing_offering = credit_offering("offering-high", missing_high)
+  assert_retired_course_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [retired_low],
+        [retired_offering, missing_offering],
+        [in_progress_enrollment("offering-low")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    retired_low.id,
+  )
+
+  let active = credit_course("PHY101", 4)
+  let not_offered = credit_offering_status(
+    "offering-a",
+    active.id,
+    @tanikun-domain.OfferingStatus::NotOffered,
+  )
+  assert_not_offered_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [active],
+        [not_offered],
+        [planned_enrollment("offering-a"), planned_enrollment("offering-z")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    not_offered.id,
+  )
+}

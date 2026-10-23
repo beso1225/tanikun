@@ -65,28 +65,48 @@ pub fn credit_summary(
     input.requirement_set,
     courses,
   )
-  let unknown_courses : Array[@tanikun-domain.CourseId] = []
-  let unknown_offerings : Array[@tanikun-domain.OfferingId] = []
-  let retired_courses : Array[@tanikun-domain.CourseId] = []
-  let not_offered_offerings : Array[@tanikun-domain.OfferingId] = []
-  let snapshot_mismatches : Array[
-    (
-      @tanikun-domain.OfferingId,
-      @tanikun-domain.CourseId,
-      @tanikun-domain.CourseId,
-    ),
+  let course_failures : Array[
+    (@tanikun-domain.CourseId, @tanikun-domain.DomainError),
   ] = []
+  let offering_failures : Array[
+    (@tanikun-domain.OfferingId, @tanikun-domain.DomainError),
+  ] = []
+  let mut category_failure : @tanikun-domain.DomainError? = None
+
+  for error in rule_errors {
+    match error {
+      @tanikun-domain.DomainError::UnknownRuleCategory(_) =>
+        match category_failure {
+          None => category_failure = Some(error)
+          Some(_) => ()
+        }
+      @tanikun-domain.DomainError::UnknownRuleCourse(course_id~) =>
+        course_failures.push((course_id, error))
+      _ => ()
+    }
+  }
 
   for offering in offerings {
     match find_course(courses, offering.course_id) {
       Some(_) => ()
-      None => unknown_courses.push(offering.course_id)
+      None =>
+        course_failures.push(
+          (
+            offering.course_id,
+            @tanikun-domain.DomainError::UnknownCourse(
+              course_id=offering.course_id,
+            ),
+          ),
+        )
     }
   }
   for course_id in input.requirement_set.assigned_course_ids() {
     match find_course(courses, course_id) {
       Some(_) => ()
-      None => unknown_courses.push(course_id)
+      None =>
+        course_failures.push(
+          (course_id, @tanikun-domain.DomainError::UnknownCourse(course_id~)),
+        )
     }
   }
 
@@ -97,12 +117,24 @@ pub fn credit_summary(
       @tanikun-domain.OverrideTarget::Course(course_id) =>
         match find_course(courses, course_id) {
           Some(_) => ()
-          None => unknown_courses.push(course_id)
+          None =>
+            course_failures.push(
+              (
+                course_id,
+                @tanikun-domain.DomainError::UnknownCourse(course_id~),
+              ),
+            )
         }
       @tanikun-domain.OverrideTarget::Offering(offering_id) =>
         match find_offering(offerings, offering_id) {
           Some(_) => ()
-          None => unknown_offerings.push(offering_id)
+          None =>
+            offering_failures.push(
+              (
+                offering_id,
+                @tanikun-domain.DomainError::UnknownOffering(offering_id~),
+              ),
+            )
         }
     }
   }
@@ -119,7 +151,15 @@ pub fn credit_summary(
 
   for enrollment in enrollments {
     match find_offering(offerings, enrollment.offering_id) {
-      None => unknown_offerings.push(enrollment.offering_id)
+      None =>
+        offering_failures.push(
+          (
+            enrollment.offering_id,
+            @tanikun-domain.DomainError::UnknownOffering(
+              offering_id=enrollment.offering_id,
+            ),
+          ),
+        )
       Some(offering) =>
         match enrollment.status {
           @tanikun-domain.EnrollmentStatus::Confirmed(
@@ -128,23 +168,52 @@ pub fn credit_summary(
             // A snapshot is taken from the offering's course at pass time, so
             // a mismatch means corrupted history rather than a valid state.
             if snapshot.course_id != offering.course_id {
-              snapshot_mismatches.push(
-                (offering.id, snapshot.course_id, offering.course_id),
+              offering_failures.push(
+                (
+                  offering.id,
+                  @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(
+                    offering_id=offering.id,
+                    snapshot_course_id=snapshot.course_id,
+                    offering_course_id=offering.course_id,
+                  ),
+                ),
               )
             } else {
               passed_entries.push((snapshot.course_id, snapshot.credits))
             }
           _ =>
             match find_course(courses, offering.course_id) {
-              None => unknown_courses.push(offering.course_id)
+              None =>
+                course_failures.push(
+                  (
+                    offering.course_id,
+                    @tanikun-domain.DomainError::UnknownCourse(
+                      course_id=offering.course_id,
+                    ),
+                  ),
+                )
               Some(course) =>
                 match course.status {
                   @tanikun-domain.CourseStatus::Retired =>
-                    retired_courses.push(course.id)
+                    course_failures.push(
+                      (
+                        course.id,
+                        @tanikun-domain.DomainError::RetiredCourseEnrollment(
+                          course_id=course.id,
+                        ),
+                      ),
+                    )
                   @tanikun-domain.CourseStatus::Active =>
                     match offering.status {
                       @tanikun-domain.OfferingStatus::NotOffered =>
-                        not_offered_offerings.push(offering.id)
+                        offering_failures.push(
+                          (
+                            offering.id,
+                            @tanikun-domain.DomainError::NotOfferedEnrollment(
+                              offering_id=offering.id,
+                            ),
+                          ),
+                        )
                       @tanikun-domain.OfferingStatus::Offered =>
                         match enrollment.status {
                           @tanikun-domain.EnrollmentStatus::InProgress =>
@@ -183,71 +252,17 @@ pub fn credit_summary(
     }
   }
 
-  unknown_courses.sort_by(fn(left, right) { left.compare(right) })
-  unknown_offerings.sort_by(fn(left, right) { left.compare(right) })
-  retired_courses.sort_by(fn(left, right) { left.compare(right) })
-  not_offered_offerings.sort_by(fn(left, right) { left.compare(right) })
-  snapshot_mismatches.sort_by(fn(left, right) { left.0.compare(right.0) })
-
-  let mut rule_course_error : @tanikun-domain.DomainError? = None
-  for error in rule_errors {
-    match error {
-      @tanikun-domain.DomainError::UnknownRuleCategory(_) => return Err(error)
-      @tanikun-domain.DomainError::UnknownRuleCourse(_) =>
-        match rule_course_error {
-          None => rule_course_error = Some(error)
-          Some(_) => ()
-        }
-      _ => ()
-    }
-  }
-  match rule_course_error {
-    Some(error) =>
-      match error {
-        @tanikun-domain.DomainError::UnknownRuleCourse(course_id~) =>
-          if unknown_courses.is_empty() ||
-            course_id.compare(unknown_courses[0]) < 0 {
-            return Err(error)
-          }
-        _ => ()
-      }
+  course_failures.sort_by(compare_course_failures)
+  offering_failures.sort_by(compare_offering_failures)
+  match category_failure {
+    Some(error) => return Err(error)
     None => ()
   }
-  if !unknown_courses.is_empty() {
-    return Err(
-      @tanikun-domain.DomainError::UnknownCourse(course_id=unknown_courses[0]),
-    )
+  if !course_failures.is_empty() {
+    return Err(course_failures[0].1)
   }
-  if !unknown_offerings.is_empty() {
-    return Err(
-      @tanikun-domain.DomainError::UnknownOffering(
-        offering_id=unknown_offerings[0],
-      ),
-    )
-  }
-  if !retired_courses.is_empty() {
-    return Err(
-      @tanikun-domain.DomainError::RetiredCourseEnrollment(
-        course_id=retired_courses[0],
-      ),
-    )
-  }
-  if !not_offered_offerings.is_empty() {
-    return Err(
-      @tanikun-domain.DomainError::NotOfferedEnrollment(
-        offering_id=not_offered_offerings[0],
-      ),
-    )
-  }
-  if !snapshot_mismatches.is_empty() {
-    let mismatch = snapshot_mismatches[0]
-    return Err(
-      @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(
-        offering_id=mismatch.0,
-        snapshot_course_id=mismatch.1,
-        offering_course_id=mismatch.2,
-      ),
-    )
+  if !offering_failures.is_empty() {
+    return Err(offering_failures[0].1)
   }
 
   passed_entries.sort_by(fn(left, right) { left.0.compare(right.0) })
@@ -423,6 +438,68 @@ fn validate_unique_enrollments(
     }
   }
   Ok(sorted)
+}
+
+///|
+fn course_failure_rank(error : @tanikun-domain.DomainError) -> Int {
+  match error {
+    @tanikun-domain.DomainError::UnknownCourse(_) => 0
+    @tanikun-domain.DomainError::UnknownRuleCourse(_) => 1
+    @tanikun-domain.DomainError::RetiredCourseEnrollment(_) => 2
+    _ => 3
+  }
+}
+
+///|
+fn compare_course_failures(
+  left : (@tanikun-domain.CourseId, @tanikun-domain.DomainError),
+  right : (@tanikun-domain.CourseId, @tanikun-domain.DomainError),
+) -> Int {
+  let order = left.0.compare(right.0)
+  if order != 0 {
+    order
+  } else {
+    let left_rank = course_failure_rank(left.1)
+    let right_rank = course_failure_rank(right.1)
+    if left_rank == right_rank {
+      0
+    } else if left_rank < right_rank {
+      -1
+    } else {
+      1
+    }
+  }
+}
+
+///|
+fn offering_failure_rank(error : @tanikun-domain.DomainError) -> Int {
+  match error {
+    @tanikun-domain.DomainError::UnknownOffering(_) => 0
+    @tanikun-domain.DomainError::NotOfferedEnrollment(_) => 1
+    @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(..) => 2
+    _ => 3
+  }
+}
+
+///|
+fn compare_offering_failures(
+  left : (@tanikun-domain.OfferingId, @tanikun-domain.DomainError),
+  right : (@tanikun-domain.OfferingId, @tanikun-domain.DomainError),
+) -> Int {
+  let order = left.0.compare(right.0)
+  if order != 0 {
+    order
+  } else {
+    let left_rank = offering_failure_rank(left.1)
+    let right_rank = offering_failure_rank(right.1)
+    if left_rank == right_rank {
+      0
+    } else if left_rank < right_rank {
+      -1
+    } else {
+      1
+    }
+  }
 }
 
 ///|
