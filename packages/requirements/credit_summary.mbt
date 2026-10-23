@@ -271,32 +271,25 @@ fn accumulate_credits(
                       @tanikun-domain.OfferingStatus::Offered =>
                         match enrollment.status {
                           @tanikun-domain.EnrollmentStatus::InProgress =>
-                            if !course_in_entries(
-                                in_progress_entries,
+                            in_progress_entries.push(
+                              (
                                 course.id,
-                              ) {
-                              in_progress_entries.push(
-                                (
-                                  course.id,
-                                  @tanikun-domain.effective_course_credits(
-                                    course,
-                                    input.overrides,
-                                  ),
+                                @tanikun-domain.effective_course_credits(
+                                  course,
+                                  input.overrides,
                                 ),
-                              )
-                            }
+                              ),
+                            )
                           @tanikun-domain.EnrollmentStatus::Planned =>
-                            if !course_in_entries(planned_entries, course.id) {
-                              planned_entries.push(
-                                (
-                                  course.id,
-                                  @tanikun-domain.effective_course_credits(
-                                    course,
-                                    input.overrides,
-                                  ),
+                            planned_entries.push(
+                              (
+                                course.id,
+                                @tanikun-domain.effective_course_credits(
+                                  course,
+                                  input.overrides,
                                 ),
-                              )
-                            }
+                              ),
+                            )
                           _ => ()
                         }
                     }
@@ -338,6 +331,8 @@ fn accumulate_credits(
     Ok(_) => ()
   }
 
+  // Projected entries may contain duplicate courses; this merge is the single
+  // deduplication point before the mode summaries are built.
   let standard_entries = passed_entries.copy()
   for entry in in_progress_entries {
     if !course_in_entries(standard_entries, entry.0) {

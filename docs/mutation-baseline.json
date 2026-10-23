@@ -1,0 +1,318 @@
+{
+  "jobs": 2,
+  "packages": {
+    "domain": {
+      "summary": {
+        "killed": 154,
+        "kills_by_kind": {
+          "assertion": 2314,
+          "doc_test": 0,
+          "property": 0,
+          "snapshot": 0
+        },
+        "property_only_kills": 0,
+        "reused": 0,
+        "score": 99.35483870967742,
+        "score_private": {
+          "killed": 84,
+          "mutants": 84,
+          "score": 100,
+          "survived": 0,
+          "timeout": 0,
+          "unviable": 0
+        },
+        "score_public": {
+          "killed": 70,
+          "mutants": 71,
+          "score": 98.59154929577464,
+          "survived": 0,
+          "timeout": 1,
+          "unviable": 0
+        },
+        "survived": 0,
+        "timeout": 1,
+        "unviable": 0
+      },
+      "survivors": [
+        {
+          "accepted": true,
+          "column": 20,
+          "group": "arithmetic",
+          "line": 42,
+          "original": "+",
+          "outcome": "TIMEOUT",
+          "path": "packages/domain/catalog.mbt",
+          "replacement": "-"
+        }
+      ]
+    },
+    "requirements": {
+      "summary": {
+        "killed": 211,
+        "kills_by_kind": {
+          "assertion": 1203,
+          "doc_test": 0,
+          "property": 0,
+          "snapshot": 0
+        },
+        "property_only_kills": 0,
+        "reused": 0,
+        "score": 90.17094017094017,
+        "score_private": {
+          "killed": 155,
+          "mutants": 177,
+          "score": 87.57062146892656,
+          "survived": 22,
+          "timeout": 0,
+          "unviable": 0
+        },
+        "score_public": {
+          "killed": 56,
+          "mutants": 57,
+          "score": 98.24561403508773,
+          "survived": 0,
+          "timeout": 1,
+          "unviable": 0
+        },
+        "survived": 22,
+        "timeout": 1,
+        "unviable": 0
+      },
+      "survivors": [
+        {
+          "accepted": true,
+          "column": 20,
+          "group": "arithmetic",
+          "line": 52,
+          "original": "+",
+          "outcome": "TIMEOUT",
+          "path": "packages/requirements/category_table.mbt",
+          "replacement": "-"
+        },
+        {
+          "accepted": true,
+          "column": 25,
+          "group": "literal",
+          "line": 408,
+          "original": "false",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 12,
+          "group": "condition",
+          "line": 418,
+          "original": "!found",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 6,
+          "group": "condition",
+          "line": 488,
+          "original": "order != 0",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 8,
+          "group": "condition",
+          "line": 493,
+          "original": "left_rank == right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 8,
+          "group": "condition",
+          "line": 493,
+          "original": "left_rank == right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 18,
+          "group": "comparison",
+          "line": 493,
+          "original": "==",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "!="
+        },
+        {
+          "accepted": true,
+          "column": 15,
+          "group": "condition",
+          "line": 495,
+          "original": "left_rank < right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 15,
+          "group": "condition",
+          "line": 495,
+          "original": "left_rank < right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 25,
+          "group": "comparison",
+          "line": 495,
+          "original": "<",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": ">"
+        },
+        {
+          "accepted": true,
+          "column": 6,
+          "group": "condition",
+          "line": 521,
+          "original": "order != 0",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 8,
+          "group": "condition",
+          "line": 526,
+          "original": "left_rank == right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 8,
+          "group": "condition",
+          "line": 526,
+          "original": "left_rank == right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 18,
+          "group": "comparison",
+          "line": 526,
+          "original": "==",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "!="
+        },
+        {
+          "accepted": true,
+          "column": 15,
+          "group": "condition",
+          "line": 528,
+          "original": "left_rank < right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 15,
+          "group": "condition",
+          "line": 528,
+          "original": "left_rank < right_rank",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 25,
+          "group": "comparison",
+          "line": 528,
+          "original": "<",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": ">"
+        },
+        {
+          "accepted": true,
+          "column": 8,
+          "group": "condition",
+          "line": 540,
+          "original": "target_order != 0",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 8,
+          "group": "condition",
+          "line": 540,
+          "original": "target_order != 0",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 21,
+          "group": "comparison",
+          "line": 540,
+          "original": "!=",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "=="
+        },
+        {
+          "accepted": true,
+          "column": 6,
+          "group": "condition",
+          "line": 568,
+          "original": "left_day != right_day",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        },
+        {
+          "accepted": true,
+          "column": 13,
+          "group": "condition",
+          "line": 574,
+          "original": "left.period.value < right.period.value",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "false"
+        },
+        {
+          "accepted": true,
+          "column": 13,
+          "group": "condition",
+          "line": 576,
+          "original": "left.period.value > right.period.value",
+          "outcome": "SURVIVED",
+          "path": "packages/requirements/credit_summary.mbt",
+          "replacement": "true"
+        }
+      ]
+    }
+  },
+  "recorded_at": "2026-10-23",
+  "target": "js",
+  "tool": "turtles 0.4.5"
+}

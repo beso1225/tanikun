@@ -168,3 +168,22 @@ test "duplicate requirement set keys are rejected" {
     year,
   )
 }
+
+///|
+test "requirement sets accept distinct keys" {
+  let year = academic_year(2026)
+  let first_key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("applied-physics"),
+    year,
+  )
+  let second_key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("physics"),
+    year,
+  )
+  let first = expect_ok(requirement_set(first_key, [], [], "rule-a"))
+  let second = expect_ok(requirement_set(second_key, [], [], "rule-b"))
+  let sets = expect_ok(
+    @tanikun-requirements.RequirementSets::new([first, second]),
+  )
+  assert_eq(sets.len(), 2)
+}
