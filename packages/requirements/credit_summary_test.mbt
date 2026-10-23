@@ -1197,3 +1197,60 @@ test "duplicate and eligibility failures are selected by entity id" {
     not_offered.id,
   )
 }
+
+///|
+test "distinct slot overrides are accepted" {
+  let course = credit_course("PHY101", 4)
+  let offering = credit_regular_offering("offering-1", course.id)
+  let monday = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Monday,
+    expect_ok(@tanikun-domain.Period::new(1)),
+  )
+  let tuesday = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Tuesday,
+    expect_ok(@tanikun-domain.Period::new(1)),
+  )
+  let slot_override = credit_slot_override(offering, [monday, tuesday])
+  let projection = expect_ok(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([slot_override]),
+      ),
+    ),
+  )
+  assert_eq(projection.confirmed.total.half_units(), 0)
+}
+
+///|
+test "duplicate slots on one day report the canonical period" {
+  let course = credit_course("PHY101", 4)
+  let offering = credit_regular_offering("offering-1", course.id)
+  let first = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Monday,
+    expect_ok(@tanikun-domain.Period::new(1)),
+  )
+  let second = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Monday,
+    expect_ok(@tanikun-domain.Period::new(2)),
+  )
+  let slot_override = credit_slot_override(offering, [
+    second, second, first, first,
+  ])
+  assert_duplicate_offering_slot(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([slot_override]),
+      ),
+    ),
+    @tanikun-domain.DayOfWeek::Monday,
+    1,
+  )
+}

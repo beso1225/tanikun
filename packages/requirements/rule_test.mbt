@@ -280,3 +280,43 @@ test "rule reference errors are sorted by kind and id" {
   )
   assert_unknown_rule_course(rule.validate(rule_scope([], [])), low)
 }
+
+///|
+test "rule reference errors sort by entity kind and id" {
+  let category = category_id("unknown-category")
+  let high_course = course_id("PHY999")
+  let low_course = course_id("PHY000")
+  let rule = expect_ok(
+    @tanikun-requirements.Rule::all([
+      expect_ok(
+        @tanikun-requirements.Rule::course_set_minimum(
+          [high_course, low_course],
+          rule_threshold(2),
+        ),
+      ),
+      expect_ok(
+        @tanikun-requirements.Rule::category_minimum(
+          [category],
+          rule_threshold(2),
+        ),
+      ),
+    ]),
+  )
+  let errors = rule.reference_errors(rule_scope([], []))
+  assert_eq(errors.length(), 3)
+  match errors[0] {
+    @tanikun-domain.DomainError::UnknownRuleCategory(id~) =>
+      assert_same_category_id(id, category)
+    _ => fail("expected the category error first")
+  }
+  match errors[1] {
+    @tanikun-domain.DomainError::UnknownRuleCourse(course_id~) =>
+      assert_same_course_id(course_id, low_course)
+    _ => fail("expected the low course error second")
+  }
+  match errors[2] {
+    @tanikun-domain.DomainError::UnknownRuleCourse(course_id~) =>
+      assert_same_course_id(course_id, high_course)
+    _ => fail("expected the high course error last")
+  }
+}

@@ -49,3 +49,13 @@ test "course id comparison is lexicographic" {
   // Lexicographic, not shortlex: PHY10 sorts before PHY2.
   assert_true(long_local < short_local)
 }
+
+///|
+test "course id compares namespaces before local parts" {
+  let alpha = expect_ok(@tanikun-domain.CourseId::new("alpha", "PHY999"))
+  let beta = expect_ok(@tanikun-domain.CourseId::new("beta", "PHY000"))
+  assert_true(alpha < beta)
+  assert_true(beta > alpha)
+  assert_true(alpha.compare(beta) < 0)
+  assert_eq(alpha.compare(alpha), 0)
+}
