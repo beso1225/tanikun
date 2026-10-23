@@ -37,14 +37,34 @@ pub fn CreditSummary::category_credits(
 }
 
 ///|
+priv struct CreditModeData {
+  total : @tanikun-domain.Credits
+  by_category : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)]
+  by_course : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)]
+  passed_courses : Array[@tanikun-domain.CourseId]
+}
+
+///|
+fn CreditModeData::to_summary(self : CreditModeData) -> CreditSummary {
+  { total: self.total, by_category: self.by_category.copy(), }
+}
+
+///|
+priv struct CreditAccumulation {
+  confirmed : CreditModeData
+  standard : CreditModeData
+  optimistic : CreditModeData
+}
+
+///|
 /// Accumulates confirmed, standard projected, and optimistic projected credits.
 ///
 /// Phase 1 note: this function performs the fail-fast validation it needs
-/// inline. The collecting `validate(input)` API in #16 will share these rules;
-/// keep their ordering conventions aligned when it lands.
-pub fn credit_summary(
+/// inline. The collecting `validate(input)` API will share these rules; keep
+/// their ordering conventions aligned when it lands.
+fn accumulate_credits(
   input : EvaluationInput[Rule],
-) -> Result[Projection[CreditSummary], @tanikun-domain.DomainError] {
+) -> Result[CreditAccumulation, @tanikun-domain.DomainError] {
   if input.profile.program_id != input.requirement_set.key.program_id ||
     input.profile.advancement_year != input.requirement_set.key.advancement_year {
     return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
@@ -331,37 +351,61 @@ pub fn credit_summary(
     }
   }
 
+  let passed_courses : Array[@tanikun-domain.CourseId] = []
+  for entry in passed_entries {
+    passed_courses.push(entry.0)
+  }
+
   // Re-aggregation is deliberate: the nested projection entries are small and
-  // one summary builder per mode keeps the accumulation readable.
+  // one mode builder keeps the accumulation readable.
   let confirmed = match
-    build_credit_summary(input.requirement_set, passed_entries) {
-    Ok(summary) => summary
+    build_credit_mode(input.requirement_set, passed_entries, passed_courses) {
+    Ok(mode) => mode
     Err(error) => return Err(error)
   }
   let standard = match
-    build_credit_summary(input.requirement_set, standard_entries) {
-    Ok(summary) => summary
+    build_credit_mode(input.requirement_set, standard_entries, passed_courses) {
+    Ok(mode) => mode
     Err(error) => return Err(error)
   }
   let optimistic = match
-    build_credit_summary(input.requirement_set, optimistic_entries) {
-    Ok(summary) => summary
+    build_credit_mode(input.requirement_set, optimistic_entries, passed_courses) {
+    Ok(mode) => mode
     Err(error) => return Err(error)
   }
   Ok({ confirmed, standard, optimistic, })
 }
 
 ///|
-fn build_credit_summary(
+/// Returns the three credit summaries without evaluating the rule tree.
+pub fn credit_summary(
+  input : EvaluationInput[Rule],
+) -> Result[Projection[CreditSummary], @tanikun-domain.DomainError] {
+  let data = match accumulate_credits(input) {
+    Ok(data) => data
+    Err(error) => return Err(error)
+  }
+  Ok({
+    confirmed: data.confirmed.to_summary(),
+    standard: data.standard.to_summary(),
+    optimistic: data.optimistic.to_summary(),
+  })
+}
+
+///|
+fn build_credit_mode(
   requirement_set : RequirementSet[Rule],
   entries : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)],
-) -> Result[CreditSummary, @tanikun-domain.DomainError] {
+  passed_courses : Array[@tanikun-domain.CourseId],
+) -> Result[CreditModeData, @tanikun-domain.DomainError] {
+  let by_course = entries.copy()
+  by_course.sort_by(fn(left, right) { left.0.compare(right.0) })
   let by_category : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)] = []
   for category in requirement_set.categories() {
     by_category.push((category.id, @tanikun-domain.Credits::zero()))
   }
   let mut total = @tanikun-domain.Credits::zero()
-  for entry in entries {
+  for entry in by_course {
     total = total.add(entry.1)
     match requirement_set.category_for(entry.0) {
       Some(category_id) => {
@@ -385,7 +429,7 @@ fn build_credit_summary(
     }
   }
   by_category.sort_by(fn(left, right) { left.0.compare(right.0) })
-  Ok({ total, by_category, })
+  Ok({ total, by_category, by_course, passed_courses: passed_courses.copy(), })
 }
 
 ///|
