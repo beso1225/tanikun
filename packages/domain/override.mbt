@@ -48,10 +48,9 @@ pub fn Override::new(
 ) -> Result[Override, DomainError] {
   match (target, attribute, value) {
     (Course(_), DisplayName, Text(text)) =>
-      if is_blank(text) {
-        Err(DomainError::EmptyOverrideText)
-      } else {
-        Ok({ target, attribute, value: Text(text), })
+      match validate_display_name(text, DomainError::EmptyOverrideText) {
+        Err(error) => Err(error)
+        Ok(_) => Ok({ target, attribute, value: Text(text), })
       }
     (Course(_), Credits, Credits(credits)) =>
       Ok({ target, attribute, value: Credits(credits), })

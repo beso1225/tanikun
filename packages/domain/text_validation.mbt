@@ -48,3 +48,19 @@ fn has_control_character(value : String) -> Bool {
   }
   false
 }
+
+///|
+/// Validates a display name, returning the caller-specific error when blank.
+///
+/// Public so dependent packages such as `requirements` can enforce the same
+/// blank-name policy while supplying their own error variant.
+pub fn validate_display_name(
+  name : String,
+  error : DomainError,
+) -> Result[Unit, DomainError] {
+  if is_blank(name) {
+    Err(error)
+  } else {
+    Ok(())
+  }
+}

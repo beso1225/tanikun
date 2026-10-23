@@ -41,4 +41,13 @@ pub(all) enum DomainError {
     attribute~ : OverrideAttribute
   )
   EmptyOverrideText
+  EmptyProgramName
+  EmptyCategoryName
+  DuplicateCategoryId(id~ : CategoryId)
+  UnknownCategory(id~ : CategoryId)
+  DuplicateCategoryAssignment(course_id~ : CourseId)
+  DuplicateRequirementSet(
+    program_id~ : ProgramId,
+    advancement_year~ : AcademicYear
+  )
 }

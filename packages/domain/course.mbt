@@ -24,10 +24,9 @@ pub fn Course::new(
   credits : Credits,
   status : CourseStatus,
 ) -> Result[Course, DomainError] {
-  if is_blank(name) {
-    Err(DomainError::EmptyCourseName)
-  } else {
-    Ok({ id, name, credits, status, })
+  match validate_display_name(name, DomainError::EmptyCourseName) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ id, name, credits, status, })
   }
 }
 
@@ -37,9 +36,8 @@ pub fn Course::rename(
   self : Course,
   name : String,
 ) -> Result[Course, DomainError] {
-  if is_blank(name) {
-    Err(DomainError::EmptyCourseName)
-  } else {
-    Ok({ ..self, name, })
+  match validate_display_name(name, DomainError::EmptyCourseName) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ ..self, name, })
   }
 }
