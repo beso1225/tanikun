@@ -41,6 +41,85 @@ fn credit_offering(
 }
 
 ///|
+fn credit_course_status(
+  local_part : String,
+  half_units : Int,
+  status : @tanikun-domain.CourseStatus,
+) -> @tanikun-domain.Course raise Error {
+  expect_ok(
+    @tanikun-domain.Course::new(
+      course_id(local_part),
+      local_part,
+      credit_value(half_units),
+      status,
+    ),
+  )
+}
+
+///|
+fn credit_offering_status(
+  id : String,
+  course_id : @tanikun-domain.CourseId,
+  status : @tanikun-domain.OfferingStatus,
+) -> @tanikun-domain.CourseOffering raise Error {
+  let period = expect_ok(@tanikun-domain.Period::new(1))
+  let slot = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Monday,
+    period,
+  )
+  let slots = match status {
+    @tanikun-domain.OfferingStatus::Offered => [slot]
+    @tanikun-domain.OfferingStatus::NotOffered => []
+  }
+  expect_ok(
+    @tanikun-domain.CourseOffering::new(
+      expect_ok(@tanikun-domain.OfferingId::new(id)),
+      course_id,
+      academic_year(2026),
+      @tanikun-domain.OfferingSchedule::YearLong,
+      status,
+      slots,
+    ),
+  )
+}
+
+///|
+fn credit_regular_offering(
+  id : String,
+  course_id : @tanikun-domain.CourseId,
+) -> @tanikun-domain.CourseOffering raise Error {
+  let period = expect_ok(@tanikun-domain.Period::new(1))
+  let slot = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Monday,
+    period,
+  )
+  expect_ok(
+    @tanikun-domain.CourseOffering::new(
+      expect_ok(@tanikun-domain.OfferingId::new(id)),
+      course_id,
+      academic_year(2026),
+      @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::S1]),
+      @tanikun-domain.OfferingStatus::Offered,
+      [slot],
+    ),
+  )
+}
+
+///|
+fn credit_slot_override(
+  offering : @tanikun-domain.CourseOffering,
+  slots : Array[@tanikun-domain.Slot],
+) -> @tanikun-domain.Override raise Error {
+  expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Offering(offering.id),
+      @tanikun-domain.OverrideAttribute::Slots,
+      @tanikun-domain.OverrideValue::Slots(slots),
+    ),
+  )
+}
+
+///|
 fn credit_requirement_set(
   categories : Array[@tanikun-requirements.Category],
   assignments : Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)],
@@ -537,4 +616,177 @@ test "credit summary is order-independent and category-sorted" {
   assert_credit_summary_equal(first.optimistic, second.optimistic)
   assert_monotonic(first)
   assert_monotonic(second)
+}
+
+///|
+test "projected credits reject retired courses and not-offered offerings" {
+  let retired = credit_course_status(
+    "PHY101",
+    4,
+    @tanikun-domain.CourseStatus::Retired,
+  )
+  let retired_offering = credit_offering("offering-1", retired.id)
+  assert_retired_course_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [retired],
+        [retired_offering],
+        [in_progress_enrollment("offering-1")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    retired.id,
+  )
+
+  let active = credit_course("PHY102", 4)
+  let not_offered = credit_offering_status(
+    "offering-2",
+    active.id,
+    @tanikun-domain.OfferingStatus::NotOffered,
+  )
+  assert_not_offered_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [active],
+        [not_offered],
+        [planned_enrollment("offering-2")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    not_offered.id,
+  )
+
+  assert_retired_course_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [retired],
+        [retired_offering],
+        [failed_enrollment("offering-1")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    retired.id,
+  )
+}
+
+///|
+test "passed snapshots must match their offering course" {
+  let course = credit_course("PHY101", 4)
+  let other = credit_course("PHY102", 4)
+  let offering = credit_offering("offering-1", course.id)
+  let input = credit_input(
+    credit_requirement_set([], []),
+    [course, other],
+    [offering],
+    [passed_enrollment("offering-1", other, 4)],
+    @tanikun-domain.Overrides::empty(),
+  )
+  assert_passed_snapshot_course_mismatch(
+    @tanikun-requirements.credit_summary(input),
+    offering.id,
+    other.id,
+    course.id,
+  )
+}
+
+///|
+test "all offerings must reference known courses" {
+  let course = credit_course("PHY101", 4)
+  let unknown = course_id("PHY999")
+  let offering = credit_offering("offering-1", unknown)
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    unknown,
+  )
+}
+
+///|
+test "duplicate errors are independent of input order" {
+  let first = credit_course("PHY101", 4)
+  let second = credit_course("PHY102", 4)
+  let set = credit_requirement_set([], [])
+  let overrides = @tanikun-domain.Overrides::empty()
+  assert_duplicate_course_id(
+    @tanikun-requirements.credit_summary(
+      credit_input(set, [first, second, first, second], [], [], overrides),
+    ),
+    first.id,
+  )
+  assert_duplicate_course_id(
+    @tanikun-requirements.credit_summary(
+      credit_input(set, [second, first, second, first], [], [], overrides),
+    ),
+    first.id,
+  )
+}
+
+///|
+test "overrides are validated against their targets" {
+  let course = credit_course("PHY101", 4)
+  let offering = credit_regular_offering("offering-1", course.id)
+  let unknown_course = course_id("PHY999")
+  let unknown_course_override = expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Course(unknown_course),
+      @tanikun-domain.OverrideAttribute::Credits,
+      @tanikun-domain.OverrideValue::Credits(credit_value(4)),
+    ),
+  )
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([unknown_course_override]),
+      ),
+    ),
+    unknown_course,
+  )
+
+  let unknown_offering = expect_ok(@tanikun-domain.OfferingId::new("missing"))
+  let unknown_offering_override = expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Offering(unknown_offering),
+      @tanikun-domain.OverrideAttribute::Slots,
+      @tanikun-domain.OverrideValue::Slots([]),
+    ),
+  )
+  assert_unknown_offering(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([unknown_offering_override]),
+      ),
+    ),
+    unknown_offering,
+  )
+
+  let empty_slots = credit_slot_override(offering, [])
+  assert_missing_offering_slots(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([empty_slots]),
+      ),
+    ),
+  )
 }

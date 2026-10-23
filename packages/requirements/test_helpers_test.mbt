@@ -293,3 +293,58 @@ fn[T] assert_profile_requirement_set_mismatch(
     _ => fail("expected ProfileRequirementSetMismatch")
   }
 }
+
+///|
+fn[T] assert_retired_course_enrollment(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.CourseId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::RetiredCourseEnrollment(course_id~) =>
+      assert_same_course_id(course_id, expected)
+    _ => fail("expected RetiredCourseEnrollment")
+  }
+}
+
+///|
+fn[T] assert_not_offered_enrollment(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.OfferingId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::NotOfferedEnrollment(offering_id~) =>
+      assert_eq(offering_id.value, expected.value)
+    _ => fail("expected NotOfferedEnrollment")
+  }
+}
+
+///|
+fn[T] assert_passed_snapshot_course_mismatch(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected_offering : @tanikun-domain.OfferingId,
+  expected_snapshot_course : @tanikun-domain.CourseId,
+  expected_offering_course : @tanikun-domain.CourseId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(
+      offering_id~,
+      snapshot_course_id~,
+      offering_course_id~
+    ) => {
+      assert_eq(offering_id.value, expected_offering.value)
+      assert_same_course_id(snapshot_course_id, expected_snapshot_course)
+      assert_same_course_id(offering_course_id, expected_offering_course)
+    }
+    _ => fail("expected PassedSnapshotCourseMismatch")
+  }
+}
+
+///|
+fn[T] assert_missing_offering_slots(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::MissingOfferingSlots => ()
+    _ => fail("expected MissingOfferingSlots")
+  }
+}

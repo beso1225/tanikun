@@ -122,6 +122,12 @@ pub fn Overrides::empty() -> Overrides {
 }
 
 ///|
+/// Returns a copy of the override entries.
+pub fn Overrides::entries(self : Overrides) -> Array[Override] {
+  self.entries.copy()
+}
+
+///|
 pub fn Overrides::len(self : Overrides) -> Int {
   self.entries.length()
 }
