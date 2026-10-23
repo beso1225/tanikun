@@ -123,13 +123,18 @@ fn credit_slot_override(
 fn credit_requirement_set(
   categories : Array[@tanikun-requirements.Category],
   assignments : Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)],
-) -> @tanikun-requirements.RequirementSet[Unit] raise Error {
+) -> @tanikun-requirements.RequirementSet[@tanikun-requirements.Rule] raise Error {
   let key = @tanikun-requirements.RequirementSetKey::new(
     program_id("applied-physics"),
     academic_year(2026),
   )
+  let rule = expect_ok(
+    @tanikun-requirements.Rule::total_minimum(credit_value(1)),
+  )
   expect_ok(
-    @tanikun-requirements.RequirementSet::new(key, categories, assignments, ()),
+    @tanikun-requirements.RequirementSet::new(
+      key, categories, assignments, rule,
+    ),
   )
 }
 
@@ -143,12 +148,12 @@ fn credit_profile(
 
 ///|
 fn credit_input(
-  set : @tanikun-requirements.RequirementSet[Unit],
+  set : @tanikun-requirements.RequirementSet[@tanikun-requirements.Rule],
   courses : Array[@tanikun-domain.Course],
   offerings : Array[@tanikun-domain.CourseOffering],
   enrollments : Array[@tanikun-domain.Enrollment],
   overrides : @tanikun-domain.Overrides,
-) -> @tanikun-requirements.EvaluationInput[Unit] raise Error {
+) -> @tanikun-requirements.EvaluationInput[@tanikun-requirements.Rule] raise Error {
   @tanikun-requirements.EvaluationInput::new(
     credit_profile("applied-physics", 2026),
     set,
@@ -869,5 +874,119 @@ test "unknown offering courses are reported by course id" {
       ),
     ),
     missing_low,
+  )
+}
+
+///|
+test "credit summary validates requirement rule references" {
+  let unknown_course = course_id("PHY999")
+  let rule = expect_ok(
+    @tanikun-requirements.Rule::course_set_minimum(
+      [unknown_course],
+      credit_value(2),
+    ),
+  )
+  let key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("applied-physics"),
+    academic_year(2026),
+  )
+  let set = expect_ok(
+    @tanikun-requirements.RequirementSet::new(key, [], [], rule),
+  )
+  assert_unknown_rule_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        set,
+        [credit_course("PHY101", 4)],
+        [],
+        [],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    unknown_course,
+  )
+}
+
+///|
+test "reference errors are selected across collections" {
+  let known = credit_course("PHY101", 4)
+  let offering = credit_offering("offering-1", known.id)
+  let missing_from_offering = course_id("PHY999")
+  let missing_from_override = course_id("PHY000")
+  let offering_with_missing_course = credit_offering(
+    "offering-2", missing_from_offering,
+  )
+  let course_override = expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Course(missing_from_override),
+      @tanikun-domain.OverrideAttribute::Credits,
+      @tanikun-domain.OverrideValue::Credits(credit_value(4)),
+    ),
+  )
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [known],
+        [offering, offering_with_missing_course],
+        [],
+        credit_overrides([course_override]),
+      ),
+    ),
+    missing_from_override,
+  )
+
+  let missing_from_override_offering = expect_ok(
+    @tanikun-domain.OfferingId::new("offering-a"),
+  )
+  let offering_override = expect_ok(
+    @tanikun-domain.Override::new(
+      @tanikun-domain.OverrideTarget::Offering(missing_from_override_offering),
+      @tanikun-domain.OverrideAttribute::Slots,
+      @tanikun-domain.OverrideValue::Slots([]),
+    ),
+  )
+  assert_unknown_offering(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [known],
+        [offering],
+        [planned_enrollment("offering-z")],
+        credit_overrides([offering_override]),
+      ),
+    ),
+    missing_from_override_offering,
+  )
+}
+
+///|
+test "retired course errors are selected by course id" {
+  let retired_high = credit_course_status(
+    "PHY999",
+    4,
+    @tanikun-domain.CourseStatus::Retired,
+  )
+  let retired_low = credit_course_status(
+    "PHY000",
+    4,
+    @tanikun-domain.CourseStatus::Retired,
+  )
+  let offering_high = credit_offering("offering-a", retired_high.id)
+  let offering_low = credit_offering("offering-z", retired_low.id)
+  assert_retired_course_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [retired_high, retired_low],
+        [offering_high, offering_low],
+        [
+          in_progress_enrollment("offering-a"),
+          in_progress_enrollment("offering-z"),
+        ],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    retired_low.id,
   )
 }
