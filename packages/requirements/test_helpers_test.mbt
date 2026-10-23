@@ -204,10 +204,7 @@ fn[T] assert_invalid_at_least_count(
   expected_child_count : Int,
 ) -> Unit raise Error {
   match expect_error(result) {
-    @tanikun-domain.DomainError::InvalidAtLeastCount(
-      count~,
-      child_count~,
-    ) => {
+    @tanikun-domain.DomainError::InvalidAtLeastCount(count~, child_count~) => {
       assert_eq(count, expected_count)
       assert_eq(child_count, expected_child_count)
     }

@@ -16,10 +16,7 @@ test "category minimum accepts one or more categories" {
   let physics = category_id("physics")
   let math = category_id("math")
   let single = expect_ok(
-    @tanikun-requirements.Rule::category_minimum(
-      [physics],
-      rule_threshold(4),
-    ),
+    @tanikun-requirements.Rule::category_minimum([physics], rule_threshold(4)),
   )
   expect_ok(single.validate(rule_scope([physics], [])))
   let group = expect_ok(
@@ -82,10 +79,7 @@ test "rule thresholds must be positive" {
   )
   let physics = category_id("physics")
   assert_invalid_rule_threshold(
-    @tanikun-requirements.Rule::category_minimum(
-      [physics],
-      rule_threshold(0),
-    ),
+    @tanikun-requirements.Rule::category_minimum([physics], rule_threshold(0)),
     0,
   )
   let mechanics = course_id("PHY101")
@@ -101,10 +95,7 @@ test "rule thresholds must be positive" {
 ///|
 test "category leaves reject empty and duplicate lists" {
   assert_empty_rule_categories(
-    @tanikun-requirements.Rule::category_minimum(
-      [],
-      rule_threshold(2),
-    ),
+    @tanikun-requirements.Rule::category_minimum([], rule_threshold(2)),
   )
   let physics = category_id("physics")
   assert_duplicate_rule_category(
@@ -118,19 +109,14 @@ test "category leaves reject empty and duplicate lists" {
 
 ///|
 test "course leaves reject empty and duplicate lists" {
-  assert_empty_rule_courses(
-    @tanikun-requirements.Rule::all_courses_passed([]),
-  )
+  assert_empty_rule_courses(@tanikun-requirements.Rule::all_courses_passed([]))
   let mechanics = course_id("PHY101")
   assert_duplicate_rule_course(
     @tanikun-requirements.Rule::all_courses_passed([mechanics, mechanics]),
     mechanics,
   )
   assert_empty_rule_courses(
-    @tanikun-requirements.Rule::course_set_minimum(
-      [],
-      rule_threshold(2),
-    ),
+    @tanikun-requirements.Rule::course_set_minimum([], rule_threshold(2)),
   )
   assert_duplicate_rule_course(
     @tanikun-requirements.Rule::course_set_minimum(
@@ -145,9 +131,7 @@ test "course leaves reject empty and duplicate lists" {
 test "rule nodes reject empty children" {
   assert_empty_rule_children(@tanikun-requirements.Rule::all([]))
   assert_empty_rule_children(@tanikun-requirements.Rule::any([]))
-  assert_empty_rule_children(
-    @tanikun-requirements.Rule::at_least(1, []),
-  )
+  assert_empty_rule_children(@tanikun-requirements.Rule::at_least(1, []))
 }
 
 ///|
@@ -209,9 +193,7 @@ test "rule validation recurses into nodes" {
   let unknown_category = category_id("unknown")
   let nested = expect_ok(
     @tanikun-requirements.Rule::all([
-      expect_ok(
-        @tanikun-requirements.Rule::total_minimum(rule_threshold(2)),
-      ),
+      expect_ok(@tanikun-requirements.Rule::total_minimum(rule_threshold(2))),
       expect_ok(
         @tanikun-requirements.Rule::category_minimum(
           [unknown_category],

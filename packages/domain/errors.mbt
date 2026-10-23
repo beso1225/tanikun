@@ -50,4 +50,13 @@ pub(all) enum DomainError {
     program_id~ : ProgramId,
     advancement_year~ : AcademicYear
   )
+  EmptyRuleCategories
+  DuplicateRuleCategory(id~ : CategoryId)
+  UnknownRuleCategory(id~ : CategoryId)
+  EmptyRuleCourses
+  DuplicateRuleCourse(course_id~ : CourseId)
+  UnknownRuleCourse(course_id~ : CourseId)
+  EmptyRuleChildren
+  InvalidRuleThreshold(credits~ : Credits)
+  InvalidAtLeastCount(count~ : Int, child_count~ : Int)
 }
