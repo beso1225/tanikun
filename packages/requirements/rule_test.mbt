@@ -207,3 +207,63 @@ test "rule validation recurses into nodes" {
     unknown_category,
   )
 }
+
+///|
+test "rule accessors expose defensive copies" {
+  let physics = category_id("physics")
+  let math = category_id("math")
+  let leaf = expect_ok(
+    @tanikun-requirements.Rule::category_minimum([physics], rule_threshold(2)),
+  )
+  let ids = expect_some(leaf.category_ids())
+  assert_same_category_id(ids[0], physics)
+  ids[0] = math
+  assert_same_category_id(expect_some(leaf.category_ids())[0], physics)
+  assert_eq(expect_some(leaf.min_credits()).half_units(), 2)
+  match leaf.children() {
+    None => ()
+    Some(_) => fail("expected a leaf")
+  }
+  match leaf.at_least_count() {
+    None => ()
+    Some(_) => fail("expected a leaf")
+  }
+  let node = expect_ok(@tanikun-requirements.Rule::all([leaf]))
+  assert_eq(expect_some(node.children()).length(), 1)
+  let at_least = expect_ok(@tanikun-requirements.Rule::at_least(1, [leaf]))
+  assert_eq(expect_some(at_least.at_least_count()), 1)
+}
+
+///|
+test "nested rules validate successfully and repeatedly" {
+  let physics = category_id("physics")
+  let mechanics = course_id("PHY101")
+  let category = expect_ok(
+    @tanikun-requirements.Rule::category_minimum([physics], rule_threshold(2)),
+  )
+  let course = expect_ok(
+    @tanikun-requirements.Rule::all_courses_passed([mechanics]),
+  )
+  let total = expect_ok(
+    @tanikun-requirements.Rule::total_minimum(rule_threshold(4)),
+  )
+  let inner = expect_ok(@tanikun-requirements.Rule::any([category, course]))
+  let at_least = expect_ok(
+    @tanikun-requirements.Rule::at_least(1, [total, course]),
+  )
+  let outer = expect_ok(@tanikun-requirements.Rule::all([inner, at_least]))
+  let scope = rule_scope([physics], [mechanics])
+  let _ = expect_ok(outer.validate(scope))
+  let _ = expect_ok(outer.validate(scope))
+}
+
+///|
+test "deep rule validation uses an iterative worklist" {
+  let mut rule = expect_ok(
+    @tanikun-requirements.Rule::total_minimum(rule_threshold(2)),
+  )
+  for _ in 0..<1600 {
+    rule = expect_ok(@tanikun-requirements.Rule::all([rule]))
+  }
+  let _ = expect_ok(rule.validate(rule_scope([], [])))
+}

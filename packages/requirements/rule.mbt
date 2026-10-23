@@ -133,118 +133,111 @@ pub fn Rule::at_least(
 }
 
 ///|
+/// Returns a copy of the category IDs for a category-minimum rule.
+pub fn Rule::category_ids(self : Rule) -> Array[@tanikun-domain.CategoryId]? {
+  match self.kind {
+    CategoryMinimum(categories~, ..) => Some(categories.copy())
+    _ => None
+  }
+}
+
+///|
+/// Returns a copy of the course IDs for a course-based leaf.
+pub fn Rule::course_ids(self : Rule) -> Array[@tanikun-domain.CourseId]? {
+  match self.kind {
+    AllCoursesPassed(courses~) => Some(courses.copy())
+    CourseSetMinimum(courses~, ..) => Some(courses.copy())
+    _ => None
+  }
+}
+
+///|
+/// Returns the minimum credits for a credit-based leaf.
+pub fn Rule::min_credits(self : Rule) -> @tanikun-domain.Credits? {
+  match self.kind {
+    CategoryMinimum(min_credits~, ..) => Some(min_credits)
+    TotalMinimum(min_credits~) => Some(min_credits)
+    CourseSetMinimum(min_credits~, ..) => Some(min_credits)
+    _ => None
+  }
+}
+
+///|
+/// Returns a copy of the children for a node.
+pub fn Rule::children(self : Rule) -> Array[Rule]? {
+  match self.kind {
+    All(children~) => Some(children.copy())
+    Any(children~) => Some(children.copy())
+    AtLeast(children~, ..) => Some(children.copy())
+    _ => None
+  }
+}
+
+///|
+/// Returns the threshold count for an `AtLeast` node.
+pub fn Rule::at_least_count(self : Rule) -> Int? {
+  match self.kind {
+    AtLeast(count~, ..) => Some(count)
+    _ => None
+  }
+}
+
+///|
 /// Validates that every category and course reference exists in the scope.
+///
+/// The worklist avoids recursion, so deeply nested trees do not overflow the
+/// call stack.
 pub fn Rule::validate(
   self : Rule,
   scope : RuleScope,
 ) -> Result[Unit, @tanikun-domain.DomainError] {
-  match self.kind {
-    CategoryMinimum(categories~, min_credits~) => {
-      match validate_rule_threshold(min_credits) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      match validate_rule_categories(categories) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      for category in categories {
-        if !scope.contains_category(category) {
-          return Err(
-            @tanikun-domain.DomainError::UnknownRuleCategory(id=category),
-          )
+  let pending = [self]
+  while !pending.is_empty() {
+    let rule = match pending.pop() {
+      Some(rule) => rule
+      None => break
+    }
+    match rule.kind {
+      CategoryMinimum(categories~, ..) =>
+        for category in categories {
+          if !scope.contains_category(category) {
+            return Err(
+              @tanikun-domain.DomainError::UnknownRuleCategory(id=category),
+            )
+          }
         }
-      }
-    }
-    TotalMinimum(min_credits~) =>
-      match validate_rule_threshold(min_credits) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-    AllCoursesPassed(courses~) => {
-      match validate_rule_courses(courses) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      for course in courses {
-        if !scope.contains_course(course) {
-          return Err(
-            @tanikun-domain.DomainError::UnknownRuleCourse(course_id=course),
-          )
+      TotalMinimum(_) => ()
+      AllCoursesPassed(courses~) =>
+        for course in courses {
+          if !scope.contains_course(course) {
+            return Err(
+              @tanikun-domain.DomainError::UnknownRuleCourse(course_id=course),
+            )
+          }
         }
-      }
-    }
-    CourseSetMinimum(courses~, min_credits~) => {
-      match validate_rule_threshold(min_credits) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      match validate_rule_courses(courses) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      for course in courses {
-        if !scope.contains_course(course) {
-          return Err(
-            @tanikun-domain.DomainError::UnknownRuleCourse(course_id=course),
-          )
+      CourseSetMinimum(courses~, ..) =>
+        for course in courses {
+          if !scope.contains_course(course) {
+            return Err(
+              @tanikun-domain.DomainError::UnknownRuleCourse(course_id=course),
+            )
+          }
         }
-      }
-    }
-    All(children~) => {
-      match validate_rule_children(children) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      match validate_rule_references(children, scope) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-    }
-    Any(children~) => {
-      match validate_rule_children(children) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      match validate_rule_references(children, scope) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-    }
-    AtLeast(count~, children~) => {
-      match validate_rule_children(children) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
-      if count < 1 || count > children.length() {
-        return Err(
-          @tanikun-domain.DomainError::InvalidAtLeastCount(
-            count~,
-            child_count=children.length(),
-          ),
-        )
-      }
-      match validate_rule_references(children, scope) {
-        Err(error) => return Err(error)
-        Ok(_) => ()
-      }
+      All(children~) => push_rule_children(pending, children)
+      Any(children~) => push_rule_children(pending, children)
+      AtLeast(children~, ..) => push_rule_children(pending, children)
     }
   }
   Ok(())
 }
 
 ///|
-fn validate_rule_references(
-  children : Array[Rule],
-  scope : RuleScope,
-) -> Result[Unit, @tanikun-domain.DomainError] {
-  for child in children {
-    match child.validate(scope) {
-      Err(error) => return Err(error)
-      Ok(_) => ()
-    }
+fn push_rule_children(pending : Array[Rule], children : Array[Rule]) -> Unit {
+  let mut index = children.length()
+  while index > 0 {
+    index = index - 1
+    pending.push(children[index])
   }
-  Ok(())
 }
 
 ///|

@@ -21,6 +21,10 @@ pub(all) enum IdField {
 
 ///|
 /// A typed domain validation failure.
+///
+/// Phase 1 intentionally uses one flat error type across the domain and
+/// requirements packages. Revisit the split when the API error model is
+/// designed.
 pub(all) enum DomainError {
   InvalidCredits(half_units~ : Int)
   InvalidAcademicYear(year~ : Int)
