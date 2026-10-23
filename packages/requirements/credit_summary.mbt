@@ -61,6 +61,10 @@ pub fn credit_summary(
     Ok(enrollments) => enrollments
     Err(error) => return Err(error)
   }
+  let rule_errors = requirement_rule_reference_errors(
+    input.requirement_set,
+    courses,
+  )
   let unknown_courses : Array[@tanikun-domain.CourseId] = []
   let unknown_offerings : Array[@tanikun-domain.OfferingId] = []
   let retired_courses : Array[@tanikun-domain.CourseId] = []
@@ -185,6 +189,30 @@ pub fn credit_summary(
   not_offered_offerings.sort_by(fn(left, right) { left.compare(right) })
   snapshot_mismatches.sort_by(fn(left, right) { left.0.compare(right.0) })
 
+  let mut rule_course_error : @tanikun-domain.DomainError? = None
+  for error in rule_errors {
+    match error {
+      @tanikun-domain.DomainError::UnknownRuleCategory(_) => return Err(error)
+      @tanikun-domain.DomainError::UnknownRuleCourse(_) =>
+        match rule_course_error {
+          None => rule_course_error = Some(error)
+          Some(_) => ()
+        }
+      _ => ()
+    }
+  }
+  match rule_course_error {
+    Some(error) =>
+      match error {
+        @tanikun-domain.DomainError::UnknownRuleCourse(course_id~) =>
+          if unknown_courses.is_empty() ||
+            course_id.compare(unknown_courses[0]) < 0 {
+            return Err(error)
+          }
+        _ => ()
+      }
+    None => ()
+  }
   if !unknown_courses.is_empty() {
     return Err(
       @tanikun-domain.DomainError::UnknownCourse(course_id=unknown_courses[0]),
@@ -233,10 +261,6 @@ pub fn credit_summary(
     }
   }
 
-  match validate_requirement_rule(input.requirement_set, courses) {
-    Err(error) => return Err(error)
-    Ok(_) => ()
-  }
   match validate_slot_overrides(override_entries, offerings, input.overrides) {
     Err(error) => return Err(error)
     Ok(_) => ()
@@ -414,6 +438,41 @@ fn sort_override_entries(entries : Array[@tanikun-domain.Override]) -> Unit {
 }
 
 ///|
+fn day_rank(day : @tanikun-domain.DayOfWeek) -> Int {
+  match day {
+    @tanikun-domain.DayOfWeek::Monday => 0
+    @tanikun-domain.DayOfWeek::Tuesday => 1
+    @tanikun-domain.DayOfWeek::Wednesday => 2
+    @tanikun-domain.DayOfWeek::Thursday => 3
+    @tanikun-domain.DayOfWeek::Friday => 4
+    @tanikun-domain.DayOfWeek::Saturday => 5
+    @tanikun-domain.DayOfWeek::Sunday => 6
+  }
+}
+
+///|
+fn compare_slot(
+  left : @tanikun-domain.Slot,
+  right : @tanikun-domain.Slot,
+) -> Int {
+  let left_day = day_rank(left.day)
+  let right_day = day_rank(right.day)
+  if left_day != right_day {
+    if left_day < right_day {
+      -1
+    } else {
+      1
+    }
+  } else if left.period.value < right.period.value {
+    -1
+  } else if left.period.value > right.period.value {
+    1
+  } else {
+    0
+  }
+}
+
+///|
 fn validate_slot_overrides(
   entries : Array[@tanikun-domain.Override],
   offerings : Array[@tanikun-domain.CourseOffering],
@@ -425,6 +484,22 @@ fn validate_slot_overrides(
       @tanikun-domain.OverrideTarget::Offering(offering_id) =>
         match entry.attribute {
           @tanikun-domain.OverrideAttribute::Slots => {
+            match entry.slots() {
+              Some(values) => {
+                let sorted = values.copy()
+                sorted.sort_by(compare_slot)
+                for index in 1..<sorted.length() {
+                  if sorted[index - 1] == sorted[index] {
+                    return Err(
+                      @tanikun-domain.DomainError::DuplicateOfferingSlot(
+                        slot=sorted[index],
+                      ),
+                    )
+                  }
+                }
+              }
+              None => ()
+            }
             let offering = match find_offering(offerings, offering_id) {
               Some(offering) => offering
               None =>
@@ -445,10 +520,10 @@ fn validate_slot_overrides(
 }
 
 ///|
-fn validate_requirement_rule(
+fn requirement_rule_reference_errors(
   requirement_set : RequirementSet[Rule],
   courses : Array[@tanikun-domain.Course],
-) -> Result[Unit, @tanikun-domain.DomainError] {
+) -> Array[@tanikun-domain.DomainError] {
   let categories : Array[@tanikun-domain.CategoryId] = []
   for category in requirement_set.categories() {
     categories.push(category.id)
@@ -457,5 +532,7 @@ fn validate_requirement_rule(
   for course in courses {
     course_ids.push(course.id)
   }
-  requirement_set.rule().validate(RuleScope::new(categories, course_ids))
+  requirement_set
+  .rule()
+  .reference_errors(RuleScope::new(categories, course_ids))
 }

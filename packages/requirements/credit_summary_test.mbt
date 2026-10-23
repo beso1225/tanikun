@@ -1004,3 +1004,110 @@ test "credit summary validates category-table course references" {
     unknown,
   )
 }
+
+///|
+fn credit_requirement_set_with_rule(
+  categories : Array[@tanikun-requirements.Category],
+  assignments : Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)],
+  rule : @tanikun-requirements.Rule,
+) -> @tanikun-requirements.RequirementSet[@tanikun-requirements.Rule] raise Error {
+  let key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("applied-physics"),
+    academic_year(2026),
+  )
+  expect_ok(
+    @tanikun-requirements.RequirementSet::new(
+      key, categories, assignments, rule,
+    ),
+  )
+}
+
+///|
+test "rule course errors join the deterministic course selection" {
+  let known = credit_course("PHY101", 4)
+  let rule_missing_low = course_id("PHY000")
+  let offering_missing_high = course_id("PHY999")
+  let rule = expect_ok(
+    @tanikun-requirements.Rule::course_set_minimum(
+      [rule_missing_low],
+      credit_value(2),
+    ),
+  )
+  let set = credit_requirement_set_with_rule([], [], rule)
+  assert_unknown_rule_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        set,
+        [known],
+        [credit_offering("offering-1", offering_missing_high)],
+        [],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    rule_missing_low,
+  )
+
+  let rule_missing_high = course_id("PHY999")
+  let offering_missing_low = course_id("PHY000")
+  let high_rule = expect_ok(
+    @tanikun-requirements.Rule::course_set_minimum(
+      [rule_missing_high],
+      credit_value(2),
+    ),
+  )
+  let high_set = credit_requirement_set_with_rule([], [], high_rule)
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        high_set,
+        [known],
+        [credit_offering("offering-2", offering_missing_low)],
+        [],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    offering_missing_low,
+  )
+}
+
+///|
+test "duplicate slot overrides report the canonical slot" {
+  let course = credit_course("PHY101", 4)
+  let offering = credit_regular_offering("offering-1", course.id)
+  let monday = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Monday,
+    expect_ok(@tanikun-domain.Period::new(1)),
+  )
+  let tuesday = @tanikun-domain.Slot::new(
+    @tanikun-domain.DayOfWeek::Tuesday,
+    expect_ok(@tanikun-domain.Period::new(1)),
+  )
+  let first = credit_slot_override(offering, [tuesday, tuesday, monday, monday])
+  let second = credit_slot_override(offering, [monday, monday, tuesday, tuesday])
+  assert_duplicate_offering_slot(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([first]),
+      ),
+    ),
+    @tanikun-domain.DayOfWeek::Monday,
+    1,
+  )
+  assert_duplicate_offering_slot(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [course],
+        [offering],
+        [],
+        credit_overrides([second]),
+      ),
+    ),
+    @tanikun-domain.DayOfWeek::Monday,
+    1,
+  )
+}

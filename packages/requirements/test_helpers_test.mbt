@@ -348,3 +348,18 @@ fn[T] assert_missing_offering_slots(
     _ => fail("expected MissingOfferingSlots")
   }
 }
+
+///|
+fn[T] assert_duplicate_offering_slot(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected_day : @tanikun-domain.DayOfWeek,
+  expected_period : Int,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::DuplicateOfferingSlot(slot~) => {
+      assert_true(slot.day == expected_day)
+      assert_eq(slot.period.value, expected_period)
+    }
+    _ => fail("expected DuplicateOfferingSlot")
+  }
+}
