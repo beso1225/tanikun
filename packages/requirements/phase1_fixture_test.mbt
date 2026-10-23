@@ -8,6 +8,9 @@
 /// - categorized, uncategorized, and retired courses;
 /// - an override active after a pass, and an override on an in-progress course.
 ///
+/// Explicit corrections are deferred: `correct_enrollment` is not implemented
+/// in Phase 1 yet, so this fixture will be extended when it lands.
+///
 /// Expected golden values:
 ///
 /// | Mode      | Total | Elective | Foundation | Lab | Seminar | Root rule     |
@@ -83,6 +86,8 @@ fn phase1_fixture() -> @tanikun-requirements.EvaluationInput[
       @tanikun-domain.OfferingSchedule::YearLong,
       @tanikun-domain.OfferingStatus::Offered,
     ),
+    // R1 is retired and its offering is not offered; only the historical
+    // passed enrollment may reference this pair.
     phase1_offering(
       "offering-r1",
       r1.id,
@@ -318,6 +323,21 @@ test "phase 1 golden fixture evaluates all projection modes" {
   assert_eq(category_total(evaluation.credits.confirmed), 10)
   assert_eq(category_total(evaluation.credits.standard), 13)
   assert_eq(category_total(evaluation.credits.optimistic), 14)
+  assert_eq(
+    evaluation.credits.confirmed.total.half_units() -
+    category_total(evaluation.credits.confirmed),
+    8,
+  )
+  assert_eq(
+    evaluation.credits.standard.total.half_units() -
+    category_total(evaluation.credits.standard),
+    8,
+  )
+  assert_eq(
+    evaluation.credits.optimistic.total.half_units() -
+    category_total(evaluation.credits.optimistic),
+    8,
+  )
 
   let confirmed = evaluation.requirements.confirmed
   let standard = evaluation.requirements.standard
