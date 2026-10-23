@@ -331,6 +331,8 @@ fn accumulate_credits(
     Ok(_) => ()
   }
 
+  // Projected entries may contain duplicate courses; this merge is the single
+  // deduplication point before the mode summaries are built.
   let standard_entries = passed_entries.copy()
   for entry in in_progress_entries {
     if !course_in_entries(standard_entries, entry.0) {

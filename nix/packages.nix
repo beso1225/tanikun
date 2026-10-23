@@ -15,6 +15,7 @@ let
       ../apps/web/public/index.html
       ../apps/web/styles
       ../packages
+      ../scripts
       ../tests/integration
       ../spikes
       ../moon.work

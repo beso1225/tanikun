@@ -83,12 +83,12 @@ test-automerge: build
 test-d1:
     XDG_CONFIG_HOME="$PWD/.cache/wrangler-config" WRANGLER_LOG_PATH=.wrangler/logs pnpm exec vitest run --config vitest.config.mts
 
-# Install the mutation-testing tool (network required; run once per MOON_HOME).
+# Install the mutation-testing tool inside `nix develop` (network required).
 turtles_version := "0.4.5"
 setup-mutation:
     moon install f4ah6o/turtles/cmd/turtles@{{ turtles_version }}
 
-# Run mutation testing. This is intentionally not a CI gate yet.
+# Run mutation testing inside `nix develop`; not a CI gate yet.
 mutate:
     @command -v turtles >/dev/null || (echo "run: just setup-mutation" >&2; exit 1)
     turtles --dir packages/domain --target js --jobs 2 --fail-under 0 --json .cache/turtles-domain.json

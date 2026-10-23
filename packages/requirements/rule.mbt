@@ -245,6 +245,7 @@ pub fn Rule::reference_errors(
   }
   category_failures.sort_by(fn(left, right) { left.0.compare(right.0) })
   course_failures.sort_by(fn(left, right) { left.0.compare(right.0) })
+  // Category errors sort before course errors, each by ID.
   let errors : Array[@tanikun-domain.DomainError] = []
   for failure in category_failures {
     errors.push(failure.1)
