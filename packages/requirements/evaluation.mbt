@@ -59,70 +59,24 @@ pub fn RuleContext::new(
   by_course : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)],
   passed_courses : Array[@tanikun-domain.CourseId],
 ) -> RuleContext {
-  let by_category = unique_category_credits(by_category)
-  let by_course = unique_course_credits(by_course)
-  let passed_courses = unique_course_ids(passed_courses)
+  let by_category = unique_sorted_by(by_category, fn(entry) { entry.0 }, fn(
+    left,
+    right,
+  ) {
+    left.compare(right)
+  })
+  let by_course = unique_sorted_by(by_course, fn(entry) { entry.0 }, fn(
+    left,
+    right,
+  ) {
+    left.compare(right)
+  })
+  let passed_courses = unique_sorted_by(
+    passed_courses,
+    fn(course_id) { course_id },
+    fn(left, right) { left.compare(right) },
+  )
   { total, by_category, by_course, passed_courses, }
-}
-
-///|
-fn unique_category_credits(
-  entries : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)],
-) -> Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)] {
-  let unique : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)] = []
-  for entry in entries {
-    let mut seen = false
-    for existing in unique {
-      if existing.0 == entry.0 {
-        seen = true
-      }
-    }
-    if !seen {
-      unique.push(entry)
-    }
-  }
-  unique.sort_by(fn(left, right) { left.0.compare(right.0) })
-  unique
-}
-
-///|
-fn unique_course_credits(
-  entries : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)],
-) -> Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)] {
-  let unique : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)] = []
-  for entry in entries {
-    let mut seen = false
-    for existing in unique {
-      if existing.0 == entry.0 {
-        seen = true
-      }
-    }
-    if !seen {
-      unique.push(entry)
-    }
-  }
-  unique.sort_by(fn(left, right) { left.0.compare(right.0) })
-  unique
-}
-
-///|
-fn unique_course_ids(
-  course_ids : Array[@tanikun-domain.CourseId],
-) -> Array[@tanikun-domain.CourseId] {
-  let unique : Array[@tanikun-domain.CourseId] = []
-  for course_id in course_ids {
-    let mut seen = false
-    for existing in unique {
-      if existing == course_id {
-        seen = true
-      }
-    }
-    if !seen {
-      unique.push(course_id)
-    }
-  }
-  unique.sort_by(fn(left, right) { left.compare(right) })
-  unique
 }
 
 ///|
@@ -149,6 +103,28 @@ pub fn RuleContext::passed_courses(
   self : RuleContext,
 ) -> Array[@tanikun-domain.CourseId] {
   self.passed_courses.copy()
+}
+
+///|
+fn[T, K] unique_sorted_by(
+  items : Array[T],
+  key : (T) -> K,
+  compare : (K, K) -> Int,
+) -> Array[T] {
+  let unique : Array[T] = []
+  for item in items {
+    let mut seen = false
+    for existing in unique {
+      if compare(key(existing), key(item)) == 0 {
+        seen = true
+      }
+    }
+    if !seen {
+      unique.push(item)
+    }
+  }
+  unique.sort_by(fn(left, right) { compare(key(left), key(right)) })
+  unique
 }
 
 ///|
@@ -199,12 +175,8 @@ pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
       }
     }
   }
-  // The stack only empties after returning the root result.
-  {
-    satisfaction: Unsatisfied,
-    progress: Children(satisfied=0, partial=0, total=0),
-    children: [],
-  }
+  // Unreachable: the stack only empties after returning the root result.
+  panic()
 }
 
 ///|
