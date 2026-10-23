@@ -38,6 +38,10 @@ pub fn CreditSummary::category_credits(
 
 ///|
 /// Accumulates confirmed, standard projected, and optimistic projected credits.
+///
+/// Phase 1 note: this function performs the fail-fast validation it needs
+/// inline. The collecting `validate(input)` API in #16 will share these rules;
+/// keep their ordering conventions aligned when it lands.
 pub fn[Rule] credit_summary(
   input : EvaluationInput[Rule],
 ) -> Result[Projection[CreditSummary], @tanikun-domain.DomainError] {
@@ -97,6 +101,8 @@ pub fn[Rule] credit_summary(
       @tanikun-domain.EnrollmentStatus::Confirmed(
         @tanikun-domain.ConfirmedGrade::Passed(snapshot~, ..)
       ) => {
+        // A snapshot is taken from the offering's course at pass time, so a
+        // mismatch means corrupted history rather than a valid domain state.
         if snapshot.course_id != offering.course_id {
           return Err(
             @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(
@@ -191,6 +197,8 @@ pub fn[Rule] credit_summary(
     }
   }
 
+  // Re-aggregation is deliberate: the nested projection entries are small and
+  // one summary builder per mode keeps the accumulation readable.
   let confirmed = match
     build_credit_summary(input.requirement_set, passed_entries) {
     Ok(summary) => summary

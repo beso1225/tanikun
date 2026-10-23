@@ -9,6 +9,8 @@ pub(all) enum OverrideTarget {
 pub extend OverrideTarget with Eq::{not_equal, equal}
 
 ///|
+/// Orders course targets before offering targets, then by ID. Used to make
+/// override validation deterministic.
 pub impl Compare for OverrideTarget with fn compare(self, other) {
   match (self, other) {
     (Course(left), Course(right)) => left.compare(right)
@@ -33,6 +35,7 @@ pub(all) enum OverrideAttribute {
 pub extend OverrideAttribute with Eq::{not_equal, equal}
 
 ///|
+/// Orders attributes for deterministic override validation.
 pub impl Compare for OverrideAttribute with fn compare(self, other) {
   match (self, other) {
     (DisplayName, DisplayName) => 0

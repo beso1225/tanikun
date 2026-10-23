@@ -27,3 +27,45 @@ pub fn[Rule] EvaluationInput::new(
     overrides,
   }
 }
+
+///|
+pub fn[Rule] EvaluationInput::profile(
+  self : EvaluationInput[Rule],
+) -> @tanikun-domain.AcademicProfile {
+  self.profile
+}
+
+///|
+pub fn[Rule] EvaluationInput::requirement_set(
+  self : EvaluationInput[Rule],
+) -> RequirementSet[Rule] {
+  self.requirement_set
+}
+
+///|
+pub fn[Rule] EvaluationInput::courses(
+  self : EvaluationInput[Rule],
+) -> Array[@tanikun-domain.Course] {
+  self.courses.copy()
+}
+
+///|
+pub fn[Rule] EvaluationInput::offerings(
+  self : EvaluationInput[Rule],
+) -> Array[@tanikun-domain.CourseOffering] {
+  self.offerings.copy()
+}
+
+///|
+pub fn[Rule] EvaluationInput::enrollments(
+  self : EvaluationInput[Rule],
+) -> Array[@tanikun-domain.Enrollment] {
+  self.enrollments.copy()
+}
+
+///|
+pub fn[Rule] EvaluationInput::overrides(
+  self : EvaluationInput[Rule],
+) -> @tanikun-domain.Overrides {
+  self.overrides
+}
