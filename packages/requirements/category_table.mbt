@@ -71,3 +71,15 @@ fn contains_category(
   }
   false
 }
+
+///|
+/// Returns a copy of the assigned course IDs.
+pub fn CategoryTable::course_ids(
+  self : CategoryTable,
+) -> Array[@tanikun-domain.CourseId] {
+  let ids = []
+  for assignment in self.assignments {
+    ids.push(assignment.0)
+  }
+  ids
+}

@@ -8,6 +8,14 @@ pub struct OfferingId {
 pub extend OfferingId with Eq::{not_equal, equal}
 
 ///|
+pub impl Compare for OfferingId with fn compare(self, other) {
+  compare_code_units(self.value, other.value)
+}
+
+///|
+pub extend OfferingId with Compare::{op_lt, op_le, op_ge, compare, op_gt}
+
+///|
 pub fn OfferingId::new(value : String) -> Result[OfferingId, DomainError] {
   if is_blank(value) {
     Err(DomainError::EmptyIdField(kind=IdKind::Offering, field=IdField::Value))

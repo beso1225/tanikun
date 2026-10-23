@@ -267,3 +267,16 @@ test "deep rule validation uses an iterative worklist" {
   }
   let _ = expect_ok(rule.validate(rule_scope([], [])))
 }
+
+///|
+test "rule reference errors are sorted by kind and id" {
+  let high = course_id("PHY999")
+  let low = course_id("PHY000")
+  let rule = expect_ok(
+    @tanikun-requirements.Rule::course_set_minimum(
+      [high, low],
+      rule_threshold(2),
+    ),
+  )
+  assert_unknown_rule_course(rule.validate(rule_scope([], [])), low)
+}
