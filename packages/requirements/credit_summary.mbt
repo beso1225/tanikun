@@ -49,22 +49,6 @@ pub fn credit_summary(
     input.profile.advancement_year != input.requirement_set.key.advancement_year {
     return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
   }
-  let courses = match validate_unique_courses(input.courses) {
-    Ok(courses) => courses
-    Err(error) => return Err(error)
-  }
-  let offerings = match validate_unique_offerings(input.offerings) {
-    Ok(offerings) => offerings
-    Err(error) => return Err(error)
-  }
-  let enrollments = match validate_unique_enrollments(input.enrollments) {
-    Ok(enrollments) => enrollments
-    Err(error) => return Err(error)
-  }
-  let rule_errors = requirement_rule_reference_errors(
-    input.requirement_set,
-    courses,
-  )
   let course_failures : Array[
     (@tanikun-domain.CourseId, @tanikun-domain.DomainError),
   ] = []
@@ -72,6 +56,56 @@ pub fn credit_summary(
     (@tanikun-domain.OfferingId, @tanikun-domain.DomainError),
   ] = []
   let mut category_failure : @tanikun-domain.DomainError? = None
+
+  let courses = input.courses.copy()
+  courses.sort_by(fn(left, right) { left.id.compare(right.id) })
+  for index in 1..<courses.length() {
+    if courses[index - 1].id == courses[index].id {
+      course_failures.push(
+        (
+          courses[index].id,
+          @tanikun-domain.DomainError::DuplicateCourseId(id=courses[index].id),
+        ),
+      )
+    }
+  }
+
+  let offerings = input.offerings.copy()
+  offerings.sort_by(fn(left, right) { left.id.compare(right.id) })
+  for index in 1..<offerings.length() {
+    if offerings[index - 1].id == offerings[index].id {
+      offering_failures.push(
+        (
+          offerings[index].id,
+          @tanikun-domain.DomainError::DuplicateOfferingId(
+            id=offerings[index].id,
+          ),
+        ),
+      )
+    }
+  }
+
+  let enrollments = input.enrollments.copy()
+  enrollments.sort_by(fn(left, right) {
+    left.offering_id.compare(right.offering_id)
+  })
+  for index in 1..<enrollments.length() {
+    if enrollments[index - 1].offering_id == enrollments[index].offering_id {
+      offering_failures.push(
+        (
+          enrollments[index].offering_id,
+          @tanikun-domain.DomainError::DuplicateEnrollment(
+            offering_id=enrollments[index].offering_id,
+          ),
+        ),
+      )
+    }
+  }
+
+  let rule_errors = requirement_rule_reference_errors(
+    input.requirement_set,
+    courses,
+  )
 
   for error in rule_errors {
     match error {
@@ -252,6 +286,20 @@ pub fn credit_summary(
     }
   }
 
+  passed_entries.sort_by(fn(left, right) { left.0.compare(right.0) })
+  for index in 1..<passed_entries.length() {
+    if passed_entries[index - 1].0 == passed_entries[index].0 {
+      course_failures.push(
+        (
+          passed_entries[index].0,
+          @tanikun-domain.DomainError::DuplicatePassedCourse(
+            course_id=passed_entries[index].0,
+          ),
+        ),
+      )
+    }
+  }
+
   course_failures.sort_by(compare_course_failures)
   offering_failures.sort_by(compare_offering_failures)
   match category_failure {
@@ -263,17 +311,6 @@ pub fn credit_summary(
   }
   if !offering_failures.is_empty() {
     return Err(offering_failures[0].1)
-  }
-
-  passed_entries.sort_by(fn(left, right) { left.0.compare(right.0) })
-  for index in 1..<passed_entries.length() {
-    if passed_entries[index - 1].0 == passed_entries[index].0 {
-      return Err(
-        @tanikun-domain.DomainError::DuplicatePassedCourse(
-          course_id=passed_entries[index].0,
-        ),
-      )
-    }
   }
 
   match validate_slot_overrides(override_entries, offerings, input.overrides) {
@@ -391,62 +428,14 @@ fn find_offering(
 }
 
 ///|
-fn validate_unique_courses(
-  courses : Array[@tanikun-domain.Course],
-) -> Result[Array[@tanikun-domain.Course], @tanikun-domain.DomainError] {
-  let sorted = courses.copy()
-  sorted.sort_by(fn(left, right) { left.id.compare(right.id) })
-  for index in 1..<sorted.length() {
-    if sorted[index - 1].id == sorted[index].id {
-      return Err(
-        @tanikun-domain.DomainError::DuplicateCourseId(id=sorted[index].id),
-      )
-    }
-  }
-  Ok(sorted)
-}
-
-///|
-fn validate_unique_offerings(
-  offerings : Array[@tanikun-domain.CourseOffering],
-) -> Result[Array[@tanikun-domain.CourseOffering], @tanikun-domain.DomainError] {
-  let sorted = offerings.copy()
-  sorted.sort_by(fn(left, right) { left.id.compare(right.id) })
-  for index in 1..<sorted.length() {
-    if sorted[index - 1].id == sorted[index].id {
-      return Err(
-        @tanikun-domain.DomainError::DuplicateOfferingId(id=sorted[index].id),
-      )
-    }
-  }
-  Ok(sorted)
-}
-
-///|
-fn validate_unique_enrollments(
-  enrollments : Array[@tanikun-domain.Enrollment],
-) -> Result[Array[@tanikun-domain.Enrollment], @tanikun-domain.DomainError] {
-  let sorted = enrollments.copy()
-  sorted.sort_by(fn(left, right) { left.offering_id.compare(right.offering_id) })
-  for index in 1..<sorted.length() {
-    if sorted[index - 1].offering_id == sorted[index].offering_id {
-      return Err(
-        @tanikun-domain.DomainError::DuplicateEnrollment(
-          offering_id=sorted[index].offering_id,
-        ),
-      )
-    }
-  }
-  Ok(sorted)
-}
-
-///|
 fn course_failure_rank(error : @tanikun-domain.DomainError) -> Int {
   match error {
-    @tanikun-domain.DomainError::UnknownCourse(_) => 0
-    @tanikun-domain.DomainError::UnknownRuleCourse(_) => 1
-    @tanikun-domain.DomainError::RetiredCourseEnrollment(_) => 2
-    _ => 3
+    @tanikun-domain.DomainError::DuplicateCourseId(_) => 0
+    @tanikun-domain.DomainError::DuplicatePassedCourse(_) => 1
+    @tanikun-domain.DomainError::UnknownCourse(_) => 2
+    @tanikun-domain.DomainError::UnknownRuleCourse(_) => 3
+    @tanikun-domain.DomainError::RetiredCourseEnrollment(_) => 4
+    _ => 5
   }
 }
 
@@ -474,10 +463,12 @@ fn compare_course_failures(
 ///|
 fn offering_failure_rank(error : @tanikun-domain.DomainError) -> Int {
   match error {
-    @tanikun-domain.DomainError::UnknownOffering(_) => 0
-    @tanikun-domain.DomainError::NotOfferedEnrollment(_) => 1
-    @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(..) => 2
-    _ => 3
+    @tanikun-domain.DomainError::DuplicateOfferingId(_) => 0
+    @tanikun-domain.DomainError::DuplicateEnrollment(_) => 1
+    @tanikun-domain.DomainError::UnknownOffering(_) => 2
+    @tanikun-domain.DomainError::NotOfferedEnrollment(_) => 3
+    @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(..) => 4
+    _ => 5
   }
 }
 

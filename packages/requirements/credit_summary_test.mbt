@@ -1154,3 +1154,46 @@ test "course and offering failures are selected by entity id" {
     not_offered.id,
   )
 }
+
+///|
+test "duplicate and eligibility failures are selected by entity id" {
+  let retired_low = credit_course_status(
+    "PHY000",
+    4,
+    @tanikun-domain.CourseStatus::Retired,
+  )
+  let duplicate_high = credit_course("PHY999", 4)
+  let retired_offering = credit_offering("offering-1", retired_low.id)
+  assert_retired_course_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [retired_low, duplicate_high, duplicate_high],
+        [retired_offering],
+        [in_progress_enrollment("offering-1")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    retired_low.id,
+  )
+
+  let active = credit_course("PHY101", 4)
+  let not_offered = credit_offering_status(
+    "offering-a",
+    active.id,
+    @tanikun-domain.OfferingStatus::NotOffered,
+  )
+  let duplicate_offering = credit_offering("offering-z", active.id)
+  assert_not_offered_enrollment(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        credit_requirement_set([], []),
+        [active],
+        [not_offered, duplicate_offering, duplicate_offering],
+        [planned_enrollment("offering-a")],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    not_offered.id,
+  )
+}
