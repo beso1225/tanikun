@@ -63,4 +63,10 @@ pub(all) enum DomainError {
   EmptyRuleChildren
   InvalidRuleThreshold(credits~ : Credits)
   InvalidAtLeastCount(count~ : Int, child_count~ : Int)
+  DuplicateOfferingId(id~ : OfferingId)
+  DuplicateEnrollment(offering_id~ : OfferingId)
+  UnknownOffering(offering_id~ : OfferingId)
+  UnknownCourse(course_id~ : CourseId)
+  DuplicatePassedCourse(course_id~ : CourseId)
+  ProfileRequirementSetMismatch
 }
