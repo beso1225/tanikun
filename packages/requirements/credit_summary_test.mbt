@@ -837,3 +837,37 @@ test "override validation order is deterministic" {
     second_unknown,
   )
 }
+
+///|
+test "unknown offering courses are reported by course id" {
+  let known = credit_course("PHY101", 4)
+  let missing_high = course_id("PHY999")
+  let missing_low = course_id("PHY000")
+  let high_offering = credit_offering("offering-a", missing_high)
+  let low_offering = credit_offering("offering-z", missing_low)
+  let set = credit_requirement_set([], [])
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        set,
+        [known],
+        [high_offering, low_offering],
+        [],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    missing_low,
+  )
+  assert_unknown_course(
+    @tanikun-requirements.credit_summary(
+      credit_input(
+        set,
+        [known],
+        [low_offering, high_offering],
+        [],
+        @tanikun-domain.Overrides::empty(),
+      ),
+    ),
+    missing_low,
+  )
+}

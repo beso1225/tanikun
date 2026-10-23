@@ -61,16 +61,18 @@ pub fn[Rule] credit_summary(
     Ok(enrollments) => enrollments
     Err(error) => return Err(error)
   }
+  let missing_courses : Array[@tanikun-domain.CourseId] = []
   for offering in offerings {
     match find_course(courses, offering.course_id) {
       Some(_) => ()
-      None =>
-        return Err(
-          @tanikun-domain.DomainError::UnknownCourse(
-            course_id=offering.course_id,
-          ),
-        )
+      None => missing_courses.push(offering.course_id)
     }
+  }
+  missing_courses.sort_by(fn(left, right) { left.compare(right) })
+  if !missing_courses.is_empty() {
+    return Err(
+      @tanikun-domain.DomainError::UnknownCourse(course_id=missing_courses[0]),
+    )
   }
   match validate_overrides(courses, offerings, input.overrides) {
     Err(error) => return Err(error)
