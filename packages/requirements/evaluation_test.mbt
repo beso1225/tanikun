@@ -478,3 +478,95 @@ test "node satisfaction is independent of child order" {
     @tanikun-requirements.Satisfaction::Satisfied,
   )
 }
+
+///|
+test "all-courses-passed does not count projected enrollments" {
+  let course = credit_course("PHY101", 4)
+  let set = credit_requirement_set_with_rule(
+    [],
+    [],
+    expect_ok(@tanikun-requirements.Rule::all_courses_passed([course.id])),
+  )
+  let input = credit_input(
+    set,
+    [course],
+    [credit_offering("offering-1", course.id)],
+    [in_progress_enrollment("offering-1")],
+    @tanikun-domain.Overrides::empty(),
+  )
+  let evaluation = expect_ok(@tanikun-requirements.evaluate(input))
+  assert_eq(evaluation.credits.confirmed.total.half_units(), 0)
+  assert_eq(evaluation.credits.standard.total.half_units(), 4)
+  assert_eq(evaluation.credits.optimistic.total.half_units(), 4)
+  assert_satisfaction(
+    evaluation.requirements.confirmed,
+    @tanikun-requirements.Satisfaction::Unsatisfied,
+  )
+  assert_satisfaction(
+    evaluation.requirements.standard,
+    @tanikun-requirements.Satisfaction::Unsatisfied,
+  )
+  assert_satisfaction(
+    evaluation.requirements.optimistic,
+    @tanikun-requirements.Satisfaction::Unsatisfied,
+  )
+  assert_courses_progress(evaluation.requirements.standard, 0, 1)
+}
+
+///|
+test "rule context normalizes duplicate ids consistently" {
+  let core = category_id("core")
+  let mechanics = course_id("PHY101")
+  let context = eval_context(
+    @tanikun-domain.Credits::zero(),
+    [(core, credit_value(2)), (core, credit_value(4))],
+    [(mechanics, credit_value(2)), (mechanics, credit_value(4))],
+    [mechanics, mechanics],
+  )
+  assert_eq(context.by_category().length(), 1)
+  assert_eq(context.by_course().length(), 1)
+  assert_eq(context.passed_courses().length(), 1)
+
+  let category_result = @tanikun-requirements.evaluate_rule(
+    expect_ok(
+      @tanikun-requirements.Rule::category_minimum([core], credit_value(4)),
+    ),
+    context,
+  )
+  assert_credits_progress(category_result, 2, 4)
+  assert_satisfaction(
+    category_result,
+    @tanikun-requirements.Satisfaction::Partial,
+  )
+
+  let course_result = @tanikun-requirements.evaluate_rule(
+    expect_ok(
+      @tanikun-requirements.Rule::course_set_minimum(
+        [mechanics],
+        credit_value(4),
+      ),
+    ),
+    context,
+  )
+  assert_credits_progress(course_result, 2, 4)
+  let passed_result = @tanikun-requirements.evaluate_rule(
+    expect_ok(@tanikun-requirements.Rule::all_courses_passed([mechanics])),
+    context,
+  )
+  assert_courses_progress(passed_result, 1, 1)
+}
+
+///|
+test "deep rule evaluation uses an explicit worklist" {
+  let mut rule = expect_ok(
+    @tanikun-requirements.Rule::total_minimum(credit_value(2)),
+  )
+  for _ in 0..<2000 {
+    rule = expect_ok(@tanikun-requirements.Rule::all([rule]))
+  }
+  let result = @tanikun-requirements.evaluate_rule(
+    rule,
+    eval_context(credit_value(2), [], [], []),
+  )
+  assert_satisfaction(result, @tanikun-requirements.Satisfaction::Satisfied)
+}

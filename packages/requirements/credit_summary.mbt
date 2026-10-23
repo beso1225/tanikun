@@ -385,6 +385,7 @@ pub fn credit_summary(
     Ok(data) => data
     Err(error) => return Err(error)
   }
+  // CreditSummary conversion stays centralized in CreditModeData::to_summary.
   Ok({
     confirmed: data.confirmed.to_summary(),
     standard: data.standard.to_summary(),

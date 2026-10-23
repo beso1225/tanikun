@@ -45,26 +45,84 @@ pub struct RuleContext {
 }
 
 ///|
+/// Builds a rule context.
+///
+/// Category, course, and passed-course IDs are sorted and deduplicated. When a
+/// duplicate category or course ID is supplied, the first entry wins.
+///
+/// `passed_courses` is intentionally mode-independent: only confirmed passed
+/// enrollments count. Projected enrollments contribute to credit-based leaves
+/// but do not make `AllCoursesPassed` satisfied.
 pub fn RuleContext::new(
   total : @tanikun-domain.Credits,
   by_category : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)],
   by_course : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)],
   passed_courses : Array[@tanikun-domain.CourseId],
 ) -> RuleContext {
-  let by_category = by_category.copy()
-  by_category.sort_by(fn(left, right) { left.0.compare(right.0) })
-  let by_course = by_course.copy()
-  by_course.sort_by(fn(left, right) { left.0.compare(right.0) })
-  let sorted_passed = passed_courses.copy()
-  sorted_passed.sort_by(fn(left, right) { left.compare(right) })
-  let unique_passed : Array[@tanikun-domain.CourseId] = []
-  for course_id in sorted_passed {
-    if unique_passed.is_empty() ||
-      unique_passed[unique_passed.length() - 1] != course_id {
-      unique_passed.push(course_id)
+  let by_category = unique_category_credits(by_category)
+  let by_course = unique_course_credits(by_course)
+  let passed_courses = unique_course_ids(passed_courses)
+  { total, by_category, by_course, passed_courses, }
+}
+
+///|
+fn unique_category_credits(
+  entries : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)],
+) -> Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)] {
+  let unique : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)] = []
+  for entry in entries {
+    let mut seen = false
+    for existing in unique {
+      if existing.0 == entry.0 {
+        seen = true
+      }
+    }
+    if !seen {
+      unique.push(entry)
     }
   }
-  { total, by_category, by_course, passed_courses: unique_passed, }
+  unique.sort_by(fn(left, right) { left.0.compare(right.0) })
+  unique
+}
+
+///|
+fn unique_course_credits(
+  entries : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)],
+) -> Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)] {
+  let unique : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)] = []
+  for entry in entries {
+    let mut seen = false
+    for existing in unique {
+      if existing.0 == entry.0 {
+        seen = true
+      }
+    }
+    if !seen {
+      unique.push(entry)
+    }
+  }
+  unique.sort_by(fn(left, right) { left.0.compare(right.0) })
+  unique
+}
+
+///|
+fn unique_course_ids(
+  course_ids : Array[@tanikun-domain.CourseId],
+) -> Array[@tanikun-domain.CourseId] {
+  let unique : Array[@tanikun-domain.CourseId] = []
+  for course_id in course_ids {
+    let mut seen = false
+    for existing in unique {
+      if existing == course_id {
+        seen = true
+      }
+    }
+    if !seen {
+      unique.push(course_id)
+    }
+  }
+  unique.sort_by(fn(left, right) { left.compare(right) })
+  unique
 }
 
 ///|
@@ -94,17 +152,73 @@ pub fn RuleContext::passed_courses(
 }
 
 ///|
+priv struct EvalFrame {
+  rule : Rule
+  child_index : Int
+  results : Array[RuleResult]
+}
+
+///|
 /// Evaluates one rule for one projection mode.
 pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
+  let stack : Array[EvalFrame] = [{ rule, child_index: 0, results: [], }]
+  while !stack.is_empty() {
+    let index = stack.length() - 1
+    let frame = stack[index]
+    match evaluate_leaf(frame.rule, context) {
+      Some(result) => {
+        let _ = stack.pop()
+        if stack.is_empty() {
+          return result
+        }
+        stack[stack.length() - 1].results.push(result)
+      }
+      None => {
+        let children = match frame.rule.kind {
+          All(children~) => children
+          Any(children~) => children
+          AtLeast(children~, ..) => children
+          _ => []
+        }
+        if frame.child_index < children.length() {
+          let child = children[frame.child_index]
+          stack[index] = {
+            rule: frame.rule,
+            child_index: frame.child_index + 1,
+            results: frame.results,
+          }
+          stack.push({ rule: child, child_index: 0, results: [], })
+        } else {
+          let result = evaluate_node(frame.rule, frame.results)
+          let _ = stack.pop()
+          if stack.is_empty() {
+            return result
+          }
+          stack[stack.length() - 1].results.push(result)
+        }
+      }
+    }
+  }
+  // The stack only empties after returning the root result.
+  {
+    satisfaction: Unsatisfied,
+    progress: Children(satisfied=0, partial=0, total=0),
+    children: [],
+  }
+}
+
+///|
+fn evaluate_leaf(rule : Rule, context : RuleContext) -> RuleResult? {
   match rule.kind {
     CategoryMinimum(categories~, min_credits~) => {
       let mut achieved = @tanikun-domain.Credits::zero()
       for category in categories {
         achieved = achieved.add(context.category_credits(category))
       }
-      credit_result(achieved, min_credits)
+      Some(credit_result(achieved, min_credits))
     }
-    TotalMinimum(min_credits~) => credit_result(context.total, min_credits)
+    TotalMinimum(min_credits~) =>
+      Some(credit_result(context.total, min_credits))
     AllCoursesPassed(courses~) => {
       let mut passed = 0
       for course in courses {
@@ -112,22 +226,28 @@ pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
           passed = passed + 1
         }
       }
-      {
+      Some({
         satisfaction: courses_satisfaction(passed, courses.length()),
         progress: Courses(passed~, total=courses.length()),
         children: [],
-      }
+      })
     }
     CourseSetMinimum(courses~, min_credits~) => {
       let mut achieved = @tanikun-domain.Credits::zero()
       for course in courses {
         achieved = achieved.add(context.course_credits(course))
       }
-      credit_result(achieved, min_credits)
+      Some(credit_result(achieved, min_credits))
     }
-    All(children~) => {
-      let results = evaluate_children(children, context)
-      let counts = count_results(results)
+    _ => None
+  }
+}
+
+///|
+fn evaluate_node(rule : Rule, results : Array[RuleResult]) -> RuleResult {
+  let counts = count_results(results)
+  match rule.kind {
+    All(_) => {
       let satisfaction = if counts.satisfied == results.length() {
         Satisfied
       } else if counts.satisfied == 0 && counts.partial == 0 {
@@ -145,9 +265,7 @@ pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
         children: results,
       }
     }
-    Any(children~) => {
-      let results = evaluate_children(children, context)
-      let counts = count_results(results)
+    Any(_) => {
       let satisfaction = if counts.satisfied > 0 {
         Satisfied
       } else if counts.partial > 0 {
@@ -165,9 +283,7 @@ pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
         children: results,
       }
     }
-    AtLeast(count~, children~) => {
-      let results = evaluate_children(children, context)
-      let counts = count_results(results)
+    AtLeast(count~, ..) => {
       let satisfaction = if counts.satisfied >= count {
         Satisfied
       } else if counts.satisfied + counts.partial >= count {
@@ -185,6 +301,12 @@ pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
         children: results,
       }
     }
+    _ =>
+      {
+        satisfaction: Unsatisfied,
+        progress: Children(satisfied=0, partial=0, total=0),
+        children: [],
+      }
   }
 }
 
@@ -192,18 +314,6 @@ pub fn evaluate_rule(rule : Rule, context : RuleContext) -> RuleResult {
 priv struct ResultCounts {
   satisfied : Int
   partial : Int
-}
-
-///|
-fn evaluate_children(
-  children : Array[Rule],
-  context : RuleContext,
-) -> Array[RuleResult] {
-  let results : Array[RuleResult] = []
-  for child in children {
-    results.push(evaluate_rule(child, context))
-  }
-  results
 }
 
 ///|
@@ -330,6 +440,7 @@ pub fn evaluate(
     data.optimistic.by_course,
     data.optimistic.passed_courses,
   )
+  // CreditSummary conversion stays centralized in CreditModeData::to_summary.
   Ok({
     credits: {
       confirmed: data.confirmed.to_summary(),
