@@ -106,3 +106,111 @@ fn[T] assert_duplicate_requirement_set(
     _ => fail("expected DuplicateRequirementSet")
   }
 }
+
+///|
+fn[T] assert_invalid_rule_threshold(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected_half_units : Int,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::InvalidRuleThreshold(credits~) =>
+      assert_eq(credits.half_units(), expected_half_units)
+    _ => fail("expected InvalidRuleThreshold")
+  }
+}
+
+///|
+fn[T] assert_empty_rule_categories(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyRuleCategories => ()
+    _ => fail("expected EmptyRuleCategories")
+  }
+}
+
+///|
+fn[T] assert_duplicate_rule_category(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.CategoryId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::DuplicateRuleCategory(id~) =>
+      assert_same_category_id(id, expected)
+    _ => fail("expected DuplicateRuleCategory")
+  }
+}
+
+///|
+fn[T] assert_unknown_rule_category(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.CategoryId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::UnknownRuleCategory(id~) =>
+      assert_same_category_id(id, expected)
+    _ => fail("expected UnknownRuleCategory")
+  }
+}
+
+///|
+fn[T] assert_empty_rule_courses(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyRuleCourses => ()
+    _ => fail("expected EmptyRuleCourses")
+  }
+}
+
+///|
+fn[T] assert_duplicate_rule_course(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.CourseId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::DuplicateRuleCourse(course_id~) =>
+      assert_same_course_id(course_id, expected)
+    _ => fail("expected DuplicateRuleCourse")
+  }
+}
+
+///|
+fn[T] assert_unknown_rule_course(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.CourseId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::UnknownRuleCourse(course_id~) =>
+      assert_same_course_id(course_id, expected)
+    _ => fail("expected UnknownRuleCourse")
+  }
+}
+
+///|
+fn[T] assert_empty_rule_children(
+  result : Result[T, @tanikun-domain.DomainError],
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::EmptyRuleChildren => ()
+    _ => fail("expected EmptyRuleChildren")
+  }
+}
+
+///|
+fn[T] assert_invalid_at_least_count(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected_count : Int,
+  expected_child_count : Int,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::InvalidAtLeastCount(
+      count~,
+      child_count~,
+    ) => {
+      assert_eq(count, expected_count)
+      assert_eq(child_count, expected_child_count)
+    }
+    _ => fail("expected InvalidAtLeastCount")
+  }
+}
