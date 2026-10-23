@@ -61,3 +61,34 @@ test "category table rejects unknown categories" {
     unknown,
   )
 }
+
+///|
+test "category table lookup handles larger tables" {
+  let alpha = category("alpha", "Alpha")
+  let beta = category("beta", "Beta")
+  let gamma = category("gamma", "Gamma")
+  let first = course_id("PHY101")
+  let middle = course_id("PHY102")
+  let last = course_id("PHY103")
+  let table = expect_ok(
+    @tanikun-requirements.CategoryTable::new(
+      [(last, gamma.id), (first, alpha.id), (middle, beta.id)],
+      [alpha, beta, gamma],
+    ),
+  )
+  assert_same_category_id(expect_some(table.lookup(first)), alpha.id)
+  assert_same_category_id(expect_some(table.lookup(middle)), beta.id)
+  assert_same_category_id(expect_some(table.lookup(last)), gamma.id)
+  match table.lookup(course_id("PHY100")) {
+    None => ()
+    Some(_) => fail("expected a miss before the first entry")
+  }
+  match table.lookup(course_id("PHY101A")) {
+    None => ()
+    Some(_) => fail("expected a miss between entries")
+  }
+  match table.lookup(course_id("PHY999")) {
+    None => ()
+    Some(_) => fail("expected a miss after the last entry")
+  }
+}
