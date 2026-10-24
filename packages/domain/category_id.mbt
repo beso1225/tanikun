@@ -17,16 +17,8 @@ pub extend CategoryId with Compare::{op_lt, op_le, op_ge, compare, op_gt}
 
 ///|
 pub fn CategoryId::new(value : String) -> Result[CategoryId, DomainError] {
-  if is_blank(value) {
-    Err(DomainError::EmptyIdField(kind=IdKind::Category, field=IdField::Value))
-  } else if has_control_character(value) {
-    Err(
-      DomainError::ControlCharacterInId(
-        kind=IdKind::Category,
-        field=IdField::Value,
-      ),
-    )
-  } else {
-    Ok({ value, })
+  match validate_single_id(value, IdKind::Category) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ value, })
   }
 }

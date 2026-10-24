@@ -13,28 +13,9 @@ pub fn CourseId::new(
   namespace_part : String,
   local_part : String,
 ) -> Result[CourseId, DomainError] {
-  if is_blank(namespace_part) {
-    Err(
-      DomainError::EmptyIdField(kind=IdKind::Course, field=IdField::Namespace),
-    )
-  } else if is_blank(local_part) {
-    Err(DomainError::EmptyIdField(kind=IdKind::Course, field=IdField::Local))
-  } else if has_control_character(namespace_part) {
-    Err(
-      DomainError::ControlCharacterInId(
-        kind=IdKind::Course,
-        field=IdField::Namespace,
-      ),
-    )
-  } else if has_control_character(local_part) {
-    Err(
-      DomainError::ControlCharacterInId(
-        kind=IdKind::Course,
-        field=IdField::Local,
-      ),
-    )
-  } else {
-    Ok({ namespace_part, local_part, })
+  match validate_course_id(namespace_part, local_part) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ namespace_part, local_part, })
   }
 }
 

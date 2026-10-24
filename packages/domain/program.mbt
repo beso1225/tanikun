@@ -9,17 +9,9 @@ pub extend ProgramId with Eq::{not_equal, equal}
 
 ///|
 pub fn ProgramId::new(value : String) -> Result[ProgramId, DomainError] {
-  if is_blank(value) {
-    Err(DomainError::EmptyIdField(kind=IdKind::Program, field=IdField::Value))
-  } else if has_control_character(value) {
-    Err(
-      DomainError::ControlCharacterInId(
-        kind=IdKind::Program,
-        field=IdField::Value,
-      ),
-    )
-  } else {
-    Ok({ value, })
+  match validate_single_id(value, IdKind::Program) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ value, })
   }
 }
 
