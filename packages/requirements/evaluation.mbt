@@ -35,6 +35,10 @@ pub fn RuleResult::children(self : RuleResult) -> Array[RuleResult] {
 
 ///|
 /// The mode-specific data used to evaluate a rule tree.
+///
+/// Construction copies and sorts category/course entries and deduplicates
+/// passed courses. `passed_courses` is intentionally mode-independent; see
+/// `RuleContext::new`.
 pub struct RuleContext {
   priv total : @tanikun-domain.Credits
   priv by_category : Array[

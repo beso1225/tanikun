@@ -1,5 +1,9 @@
 ///|
 /// The complete pure input for credit accumulation and requirement evaluation.
+///
+/// The constructor owns copies of the course/offering/enrollment arrays and
+/// accessors return copies. The requirement set and overrides are immutable
+/// values.
 pub struct EvaluationInput[Rule] {
   priv profile : @tanikun-domain.AcademicProfile
   priv requirement_set : RequirementSet[Rule]

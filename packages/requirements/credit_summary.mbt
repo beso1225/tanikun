@@ -1,5 +1,5 @@
 ///|
-/// The three projection modes for a value.
+/// The three projection modes for a value; shared by credits and requirements.
 pub struct Projection[T] {
   confirmed : T
   standard : T
@@ -37,6 +37,8 @@ pub fn CreditSummary::category_credits(
 }
 
 ///|
+/// Internal per-mode credit data. The public projection is produced only through
+/// `CreditModeData::to_summary`.
 priv struct CreditModeData {
   total : @tanikun-domain.Credits
   by_category : Array[(@tanikun-domain.CategoryId, @tanikun-domain.Credits)]
@@ -50,6 +52,7 @@ fn CreditModeData::to_summary(self : CreditModeData) -> CreditSummary {
 }
 
 ///|
+/// Internal confirmed/standard/optimistic credit data.
 priv struct CreditAccumulation {
   confirmed : CreditModeData
   standard : CreditModeData
@@ -57,14 +60,26 @@ priv struct CreditAccumulation {
 }
 
 ///|
-/// Accumulates confirmed, standard projected, and optimistic projected credits.
+/// Validated mode entries produced by `prepare_evaluation`.
 ///
-/// Phase 1 note: this function performs the fail-fast validation it needs
-/// inline. The collecting `validate(input)` API will share these rules; keep
-/// their ordering conventions aligned when it lands.
-fn accumulate_credits(
+/// Validation-only callers such as `correct_enrollment` discard these entries.
+priv struct EvaluationPlan {
+  passed_entries : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)]
+  in_progress_entries : Array[
+    (@tanikun-domain.CourseId, @tanikun-domain.Credits),
+  ]
+  planned_entries : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)]
+}
+
+///|
+/// Validates an evaluation input and collects the mode entries needed for
+/// credit summaries and rule evaluation.
+///
+/// This is the single fail-fast validation path shared by `accumulate_credits`
+/// and `correct_enrollment`.
+fn prepare_evaluation(
   input : EvaluationInput[Rule],
-) -> Result[CreditAccumulation, @tanikun-domain.DomainError] {
+) -> Result[EvaluationPlan, @tanikun-domain.DomainError] {
   if input.profile.program_id != input.requirement_set.key.program_id ||
     input.profile.advancement_year != input.requirement_set.key.advancement_year {
     return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
@@ -313,8 +328,22 @@ fn accumulate_credits(
     }
   }
 
-  course_failures.sort_by(compare_course_failures)
-  offering_failures.sort_by(compare_offering_failures)
+  course_failures.sort_by(fn(left, right) {
+    compare_tagged_failures(
+      left,
+      right,
+      fn(left_id, right_id) { left_id.compare(right_id) },
+      course_failure_rank,
+    )
+  })
+  offering_failures.sort_by(fn(left, right) {
+    compare_tagged_failures(
+      left,
+      right,
+      fn(left_id, right_id) { left_id.compare(right_id) },
+      offering_failure_rank,
+    )
+  })
   match category_failure {
     Some(error) => return Err(error)
     None => ()
@@ -331,30 +360,46 @@ fn accumulate_credits(
     Ok(_) => ()
   }
 
+  Ok({ passed_entries, in_progress_entries, planned_entries, })
+}
+
+///|
+/// Accumulates confirmed, standard projected, and optimistic projected credits.
+fn accumulate_credits(
+  input : EvaluationInput[Rule],
+) -> Result[CreditAccumulation, @tanikun-domain.DomainError] {
+  let plan = match prepare_evaluation(input) {
+    Ok(plan) => plan
+    Err(error) => return Err(error)
+  }
   // Projected entries may contain duplicate courses; this merge is the single
   // deduplication point before the mode summaries are built.
-  let standard_entries = passed_entries.copy()
-  for entry in in_progress_entries {
+  let standard_entries = plan.passed_entries.copy()
+  for entry in plan.in_progress_entries {
     if !course_in_entries(standard_entries, entry.0) {
       standard_entries.push(entry)
     }
   }
   let optimistic_entries = standard_entries.copy()
-  for entry in planned_entries {
+  for entry in plan.planned_entries {
     if !course_in_entries(optimistic_entries, entry.0) {
       optimistic_entries.push(entry)
     }
   }
 
   let passed_courses : Array[@tanikun-domain.CourseId] = []
-  for entry in passed_entries {
+  for entry in plan.passed_entries {
     passed_courses.push(entry.0)
   }
 
   // Re-aggregation is deliberate: the nested projection entries are small and
   // one mode builder keeps the accumulation readable.
   let confirmed = match
-    build_credit_mode(input.requirement_set, passed_entries, passed_courses) {
+    build_credit_mode(
+      input.requirement_set,
+      plan.passed_entries,
+      passed_courses,
+    ) {
     Ok(mode) => mode
     Err(error) => return Err(error)
   }
@@ -480,16 +525,18 @@ fn course_failure_rank(error : @tanikun-domain.DomainError) -> Int {
 }
 
 ///|
-fn compare_course_failures(
-  left : (@tanikun-domain.CourseId, @tanikun-domain.DomainError),
-  right : (@tanikun-domain.CourseId, @tanikun-domain.DomainError),
+fn[Key] compare_tagged_failures(
+  left : (Key, @tanikun-domain.DomainError),
+  right : (Key, @tanikun-domain.DomainError),
+  compare_key : (Key, Key) -> Int,
+  rank : (@tanikun-domain.DomainError) -> Int,
 ) -> Int {
-  let order = left.0.compare(right.0)
+  let order = compare_key(left.0, right.0)
   if order != 0 {
     order
   } else {
-    let left_rank = course_failure_rank(left.1)
-    let right_rank = course_failure_rank(right.1)
+    let left_rank = rank(left.1)
+    let right_rank = rank(right.1)
     if left_rank == right_rank {
       0
     } else if left_rank < right_rank {
@@ -509,27 +556,6 @@ fn offering_failure_rank(error : @tanikun-domain.DomainError) -> Int {
     @tanikun-domain.DomainError::NotOfferedEnrollment(_) => 3
     @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(..) => 4
     _ => 5
-  }
-}
-
-///|
-fn compare_offering_failures(
-  left : (@tanikun-domain.OfferingId, @tanikun-domain.DomainError),
-  right : (@tanikun-domain.OfferingId, @tanikun-domain.DomainError),
-) -> Int {
-  let order = left.0.compare(right.0)
-  if order != 0 {
-    order
-  } else {
-    let left_rank = offering_failure_rank(left.1)
-    let right_rank = offering_failure_rank(right.1)
-    if left_rank == right_rank {
-      0
-    } else if left_rank < right_rank {
-      -1
-    } else {
-      1
-    }
   }
 }
 

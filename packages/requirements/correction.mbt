@@ -13,7 +13,7 @@ pub fn correct_enrollment(
   previous_offering : @tanikun-domain.OfferingId,
   corrected : @tanikun-domain.Enrollment,
 ) -> Result[EvaluationInput[Rule], @tanikun-domain.DomainError] {
-  match accumulate_credits(input) {
+  match prepare_evaluation(input) {
     Ok(_) => ()
     Err(error) => return Err(error)
   }
@@ -42,7 +42,7 @@ pub fn correct_enrollment(
     enrollments,
     input.overrides(),
   )
-  match accumulate_credits(updated) {
+  match prepare_evaluation(updated) {
     Ok(_) => Ok(updated)
     Err(error) => Err(error)
   }
