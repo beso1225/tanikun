@@ -1,5 +1,5 @@
 ///|
-/// The three projection modes for a value.
+/// The three projection modes for a value; shared by credits and requirements.
 pub struct Projection[T] {
   confirmed : T
   standard : T
@@ -60,8 +60,9 @@ priv struct CreditAccumulation {
 }
 
 ///|
-/// Validated mode entries produced by `prepare_evaluation`; accumulation and
-/// correction share this validation result.
+/// Validated mode entries produced by `prepare_evaluation`.
+///
+/// Validation-only callers such as `correct_enrollment` discard these entries.
 priv struct EvaluationPlan {
   passed_entries : Array[(@tanikun-domain.CourseId, @tanikun-domain.Credits)]
   in_progress_entries : Array[
