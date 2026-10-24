@@ -59,3 +59,10 @@ test "course id compares namespaces before local parts" {
   assert_true(alpha.compare(beta) < 0)
   assert_eq(alpha.compare(alpha), 0)
 }
+
+///|
+test "course id reports blank parts before control characters" {
+  // Both parts are invalid: the local part is blank and the namespace has a
+  // control character. The current validation order reports the blank part.
+  assert_empty_course_local(@tanikun-domain.CourseId::new("master\n", ""))
+}
