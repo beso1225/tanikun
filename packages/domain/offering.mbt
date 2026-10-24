@@ -17,17 +17,9 @@ pub extend OfferingId with Compare::{op_lt, op_le, op_ge, compare, op_gt}
 
 ///|
 pub fn OfferingId::new(value : String) -> Result[OfferingId, DomainError] {
-  if is_blank(value) {
-    Err(DomainError::EmptyIdField(kind=IdKind::Offering, field=IdField::Value))
-  } else if has_control_character(value) {
-    Err(
-      DomainError::ControlCharacterInId(
-        kind=IdKind::Offering,
-        field=IdField::Value,
-      ),
-    )
-  } else {
-    Ok({ value, })
+  match validate_single_id(value, IdKind::Offering) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ value, })
   }
 }
 
