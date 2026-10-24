@@ -363,3 +363,15 @@ fn[T] assert_duplicate_offering_slot(
     _ => fail("expected DuplicateOfferingSlot")
   }
 }
+
+///|
+fn[T] assert_unknown_enrollment(
+  result : Result[T, @tanikun-domain.DomainError],
+  expected : @tanikun-domain.OfferingId,
+) -> Unit raise Error {
+  match expect_error(result) {
+    @tanikun-domain.DomainError::UnknownEnrollment(offering_id~) =>
+      assert_true(offering_id == expected)
+    _ => fail("expected UnknownEnrollment")
+  }
+}

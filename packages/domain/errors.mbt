@@ -66,6 +66,7 @@ pub(all) enum DomainError {
   DuplicateOfferingId(id~ : OfferingId)
   DuplicateEnrollment(offering_id~ : OfferingId)
   UnknownOffering(offering_id~ : OfferingId)
+  UnknownEnrollment(offering_id~ : OfferingId)
   UnknownCourse(course_id~ : CourseId)
   DuplicatePassedCourse(course_id~ : CourseId)
   ProfileRequirementSetMismatch
