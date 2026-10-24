@@ -412,3 +412,48 @@ test "phase 1 golden fixture records every rule result" {
   assert_courses_progress(standard_at_least_children[2], 2, 2)
   assert_courses_progress(optimistic_at_least_children[2], 2, 2)
 }
+
+///|
+test "phase 1 fixture supports explicit correction" {
+  let original = phase1_fixture()
+  let snapshot = expect_ok(
+    @tanikun-domain.PassedCourseSnapshot::new(
+      course_id("PHY501"),
+      "PHY501",
+      credit_value(3),
+    ),
+  )
+  let corrected_enrollment = @tanikun-domain.Enrollment::passed(
+    expect_ok(@tanikun-domain.OfferingId::new("offering-e1")),
+    @tanikun-domain.PassingGrade::Good,
+    snapshot,
+  )
+  let corrected = expect_ok(
+    @tanikun-requirements.correct_enrollment(
+      original,
+      expect_ok(@tanikun-domain.OfferingId::new("offering-e1")),
+      corrected_enrollment,
+    ),
+  )
+  let before = expect_ok(@tanikun-requirements.evaluate(original))
+  let after = expect_ok(@tanikun-requirements.evaluate(corrected))
+  assert_eq(before.credits.confirmed.total.half_units(), 18)
+  assert_eq(after.credits.confirmed.total.half_units(), 21)
+  assert_eq(after.credits.standard.total.half_units(), 21)
+  assert_eq(after.credits.optimistic.total.half_units(), 22)
+  assert_category_credits(
+    after.credits.confirmed,
+    category_id("elective"),
+    3,
+  )
+  assert_satisfaction(
+    before.requirements.confirmed,
+    @tanikun-requirements.Satisfaction::Partial,
+  )
+  assert_satisfaction(
+    after.requirements.confirmed,
+    @tanikun-requirements.Satisfaction::Satisfied,
+  )
+  let unchanged = expect_ok(@tanikun-requirements.evaluate(original))
+  assert_eq(unchanged.credits.confirmed.total.half_units(), 18)
+}
