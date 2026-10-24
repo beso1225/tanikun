@@ -441,11 +441,7 @@ test "phase 1 fixture supports explicit correction" {
   assert_eq(after.credits.confirmed.total.half_units(), 21)
   assert_eq(after.credits.standard.total.half_units(), 21)
   assert_eq(after.credits.optimistic.total.half_units(), 22)
-  assert_category_credits(
-    after.credits.confirmed,
-    category_id("elective"),
-    3,
-  )
+  assert_category_credits(after.credits.confirmed, category_id("elective"), 3)
   assert_satisfaction(
     before.requirements.confirmed,
     @tanikun-requirements.Satisfaction::Partial,

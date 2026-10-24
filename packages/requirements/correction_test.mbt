@@ -79,10 +79,7 @@ test "correction rejects a duplicate corrected offering" {
       credit_offering("offering-1", course.id),
       credit_offering("offering-2", course.id),
     ],
-    [
-      planned_enrollment("offering-1"),
-      planned_enrollment("offering-2"),
-    ],
+    [planned_enrollment("offering-1"), planned_enrollment("offering-2")],
     @tanikun-domain.Overrides::empty(),
   )
   assert_duplicate_enrollment(
@@ -92,5 +89,33 @@ test "correction rejects a duplicate corrected offering" {
       planned_enrollment("offering-2"),
     ),
     expect_ok(@tanikun-domain.OfferingId::new("offering-2")),
+  )
+}
+
+///|
+test "correction validates the corrected enrollment" {
+  let input = correction_input()
+  let other = credit_course("PHY102", 4)
+  let snapshot = expect_ok(
+    @tanikun-domain.PassedCourseSnapshot::new(
+      other.id,
+      other.name,
+      credit_value(4),
+    ),
+  )
+  let corrected = @tanikun-domain.Enrollment::passed(
+    expect_ok(@tanikun-domain.OfferingId::new("offering-1")),
+    @tanikun-domain.PassingGrade::Good,
+    snapshot,
+  )
+  assert_passed_snapshot_course_mismatch(
+    @tanikun-requirements.correct_enrollment(
+      input,
+      expect_ok(@tanikun-domain.OfferingId::new("offering-1")),
+      corrected,
+    ),
+    expect_ok(@tanikun-domain.OfferingId::new("offering-1")),
+    other.id,
+    course_id("PHY101"),
   )
 }
