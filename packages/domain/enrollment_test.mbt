@@ -1,26 +1,4 @@
 ///|
-fn enrollment_offering_id() -> @tanikun-domain.OfferingId raise Error {
-  expect_ok(@tanikun-domain.OfferingId::new("offering-1"))
-}
-
-///|
-fn enrollment_course_id() -> @tanikun-domain.CourseId raise Error {
-  expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))
-}
-
-///|
-fn enrollment_snapshot() -> @tanikun-domain.PassedCourseSnapshot raise Error {
-  let credits = expect_ok(@tanikun-domain.Credits::new(4))
-  expect_ok(
-    @tanikun-domain.PassedCourseSnapshot::new(
-      enrollment_course_id(),
-      "Physics",
-      credits,
-    ),
-  )
-}
-
-///|
 test "passed course snapshot validates and preserves course data" {
   let course_id = enrollment_course_id()
   let credits = expect_ok(@tanikun-domain.Credits::new(4))

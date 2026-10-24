@@ -1,15 +1,4 @@
 ///|
-fn make_course(
-  local_part : String,
-  name : String,
-  credits : @tanikun-domain.Credits,
-  status : @tanikun-domain.CourseStatus,
-) -> @tanikun-domain.Course raise Error {
-  let id = expect_ok(@tanikun-domain.CourseId::new("master", local_part))
-  expect_ok(@tanikun-domain.Course::new(id, name, credits, status))
-}
-
-///|
 test "course rejects an empty display name" {
   let credits = expect_ok(@tanikun-domain.Credits::new(2))
   let id = expect_ok(@tanikun-domain.CourseId::new("master", "PHY101"))

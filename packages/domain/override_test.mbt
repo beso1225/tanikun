@@ -1,40 +1,4 @@
 ///|
-fn override_course() -> @tanikun-domain.Course raise Error {
-  make_course(
-    "PHY101",
-    "Physics",
-    expect_ok(@tanikun-domain.Credits::new(4)),
-    @tanikun-domain.CourseStatus::Active,
-  )
-}
-
-///|
-fn override_credits(half_units : Int) -> @tanikun-domain.Credits raise Error {
-  expect_ok(@tanikun-domain.Credits::new(half_units))
-}
-
-///|
-fn override_target_course(
-  course : @tanikun-domain.Course,
-) -> @tanikun-domain.OverrideTarget {
-  @tanikun-domain.OverrideTarget::Course(course.id)
-}
-
-///|
-fn override_target_offering(
-  offering : @tanikun-domain.CourseOffering,
-) -> @tanikun-domain.OverrideTarget {
-  @tanikun-domain.OverrideTarget::Offering(offering.id)
-}
-
-///|
-fn override_set(
-  entries : Array[@tanikun-domain.Override],
-) -> @tanikun-domain.Overrides raise Error {
-  expect_ok(@tanikun-domain.Overrides::new(entries))
-}
-
-///|
 test "course display name override applies to display and planned enrollments" {
   let course = override_course()
   let entry = expect_ok(

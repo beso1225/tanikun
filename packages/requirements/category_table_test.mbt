@@ -1,22 +1,4 @@
 ///|
-fn category_id(value : String) -> @tanikun-domain.CategoryId raise Error {
-  expect_ok(@tanikun-domain.CategoryId::new(value))
-}
-
-///|
-fn category(
-  id : String,
-  name : String,
-) -> @tanikun-requirements.Category raise Error {
-  expect_ok(@tanikun-requirements.Category::new(category_id(id), name))
-}
-
-///|
-fn course_id(local_part : String) -> @tanikun-domain.CourseId raise Error {
-  expect_ok(@tanikun-domain.CourseId::new("master", local_part))
-}
-
-///|
 test "category table maps courses and leaves others uncategorized" {
   let physics = category("physics", "Physics")
   let math = category("math", "Mathematics")
