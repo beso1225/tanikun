@@ -1,17 +1,4 @@
 ///|
-fn rule_threshold(half_units : Int) -> @tanikun-domain.Credits raise Error {
-  expect_ok(@tanikun-domain.Credits::new(half_units))
-}
-
-///|
-fn rule_scope(
-  categories : Array[@tanikun-domain.CategoryId],
-  courses : Array[@tanikun-domain.CourseId],
-) -> @tanikun-requirements.RuleScope {
-  @tanikun-requirements.RuleScope::new(categories, courses)
-}
-
-///|
 test "category minimum accepts one or more categories" {
   let physics = category_id("physics")
   let math = category_id("math")

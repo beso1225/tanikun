@@ -1,27 +1,4 @@
 ///|
-fn program_id(value : String) -> @tanikun-domain.ProgramId raise Error {
-  expect_ok(@tanikun-domain.ProgramId::new(value))
-}
-
-///|
-fn academic_year(value : Int) -> @tanikun-domain.AcademicYear raise Error {
-  expect_ok(@tanikun-domain.AcademicYear::new(value))
-}
-
-///|
-fn requirement_set(
-  key : @tanikun-requirements.RequirementSetKey,
-  categories : Array[@tanikun-requirements.Category],
-  assignments : Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)],
-  rule : String,
-) -> Result[
-  @tanikun-requirements.RequirementSet[String],
-  @tanikun-domain.DomainError,
-] {
-  @tanikun-requirements.RequirementSet::new(key, categories, assignments, rule)
-}
-
-///|
 test "requirement set stores its key, categories, table, and rule" {
   let program = program_id("applied-physics")
   let year = academic_year(2026)
