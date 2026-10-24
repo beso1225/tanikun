@@ -1,18 +1,26 @@
 ///|
 /// Replaces one enrollment and validates the resulting dataset.
 ///
-/// The input is immutable: the previous entry is removed, the corrected entry
-/// is appended, and a new `EvaluationInput` is returned only after validation.
-/// Only an explicit correction can introduce a regenerated passed snapshot.
+/// The input is validated first, so a correction cannot repair an already
+/// invalid dataset. The input is immutable: one previous entry is removed, the
+/// corrected entry is appended, and a new `EvaluationInput` is returned only
+/// after validation. `corrected` may reference a different offering, in which
+/// case the enrollment is effectively moved; appending also means enrollment
+/// order can change. Only an explicit correction can introduce a regenerated
+/// passed snapshot.
 pub fn correct_enrollment(
   input : EvaluationInput[Rule],
   previous_offering : @tanikun-domain.OfferingId,
   corrected : @tanikun-domain.Enrollment,
 ) -> Result[EvaluationInput[Rule], @tanikun-domain.DomainError] {
+  match accumulate_credits(input) {
+    Ok(_) => ()
+    Err(error) => return Err(error)
+  }
   let enrollments : Array[@tanikun-domain.Enrollment] = []
   let mut found = false
   for enrollment in input.enrollments() {
-    if enrollment.offering_id == previous_offering {
+    if !found && enrollment.offering_id == previous_offering {
       found = true
     } else {
       enrollments.push(enrollment)

@@ -119,3 +119,25 @@ test "correction validates the corrected enrollment" {
     course_id("PHY101"),
   )
 }
+
+///|
+test "correction rejects an already invalid input" {
+  let course = credit_course("PHY101", 4)
+  let input = credit_input(
+    credit_requirement_set([], []),
+    [course],
+    [credit_offering("offering-1", course.id)],
+    [in_progress_enrollment("offering-1"), planned_enrollment("offering-1")],
+    @tanikun-domain.Overrides::empty(),
+  )
+  let offering = expect_ok(@tanikun-domain.OfferingId::new("offering-1"))
+  assert_duplicate_enrollment(@tanikun-requirements.evaluate(input), offering)
+  assert_duplicate_enrollment(
+    @tanikun-requirements.correct_enrollment(
+      input,
+      offering,
+      correction_passed("offering-1", course, 4),
+    ),
+    offering,
+  )
+}

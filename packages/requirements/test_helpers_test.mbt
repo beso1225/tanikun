@@ -371,7 +371,7 @@ fn[T] assert_unknown_enrollment(
 ) -> Unit raise Error {
   match expect_error(result) {
     @tanikun-domain.DomainError::UnknownEnrollment(offering_id~) =>
-      assert_eq(offering_id.value, expected.value)
+      assert_true(offering_id == expected)
     _ => fail("expected UnknownEnrollment")
   }
 }
