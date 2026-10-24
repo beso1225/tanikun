@@ -36,8 +36,10 @@ lint checks.
 
 ## Baseline
 
-Recorded on 2026-10-24 with `--target js --jobs 2` after the #35–#37
-refactors. The machine-readable baseline, including every accepted survivor, is
+Recorded on 2026-10-24 with `--target js --jobs 2` after the #35–#36
+production refactors. #37 consolidated test files, which mutation testing
+excludes, so it does not move this baseline. The machine-readable baseline,
+including every accepted survivor, is
 [mutation-baseline.json](mutation-baseline.json).
 
 | Package      | Mutants | Killed | Survived | Timeout |  Score | Public | Private |
@@ -59,6 +61,11 @@ The mutation run also motivated two production simplifications:
   deduplication point
 - rule reference errors are grouped by entity kind and concatenated after
   sorting, so categories sort before courses without a rank comparator
+
+The requirements survivor count fell from 22 to 15 because #43 merged
+`compare_course_failures` and `compare_offering_failures` into
+`compare_tagged_failures`. The merged function carries one copy of the seven
+rank-branch mutants instead of two.
 
 Both changes are pinned by the existing behavior tests.
 
