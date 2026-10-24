@@ -13,24 +13,10 @@ pub fn CourseId::new(
   namespace_part : String,
   local_part : String,
 ) -> Result[CourseId, DomainError] {
-  match validate_id_blank(namespace_part, IdKind::Course, IdField::Namespace) {
-    Err(error) => return Err(error)
-    Ok(_) => ()
+  match validate_course_id(namespace_part, local_part) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ namespace_part, local_part, })
   }
-  match validate_id_blank(local_part, IdKind::Course, IdField::Local) {
-    Err(error) => return Err(error)
-    Ok(_) => ()
-  }
-  match
-    validate_id_control(namespace_part, IdKind::Course, IdField::Namespace) {
-    Err(error) => return Err(error)
-    Ok(_) => ()
-  }
-  match validate_id_control(local_part, IdKind::Course, IdField::Local) {
-    Err(error) => return Err(error)
-    Ok(_) => ()
-  }
-  Ok({ namespace_part, local_part, })
 }
 
 ///|
