@@ -110,6 +110,20 @@ fn slots_label(slots : Array[@tanikun-domain.Slot]) -> String {
 }
 
 ///|
+fn product_mark() -> Html {
+  div(
+    attrs=@html.Attrs::build().aria_hidden("true"),
+    class="grid h-7 w-7 grid-cols-2 gap-[2px]",
+    [
+      div(class="bg-primary", ([] : Array[Html])),
+      div(class="bg-primary-soft", ([] : Array[Html])),
+      div(class="bg-primary-soft", ([] : Array[Html])),
+      div(class="bg-accent", ([] : Array[Html])),
+    ],
+  )
+}
+
+///|
 fn find_block(
   blocks : Array[@app.ScheduledBlock],
   day : @tanikun-domain.DayOfWeek,
@@ -129,9 +143,9 @@ fn term_tabs(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   for term in @app.PlannerTerm::values() {
     let selected = state.selected_term == term
     let class_name = if selected {
-      "flex w-full items-center justify-center border-b border-l-4 border-l-accent border-rule bg-primary px-3 py-3 text-center text-white md:justify-start"
+      "flex w-full items-center justify-center border-b border-l-4 border-l-accent border-rule bg-primary-soft px-3 py-3 text-center text-ink md:justify-start"
     } else {
-      "flex w-full items-center justify-center border-b border-l-4 border-l-transparent border-rule bg-paper px-3 py-3 text-center hover:bg-primary-soft md:justify-start"
+      "flex w-full items-center justify-center border-b border-l-4 border-l-transparent border-rule bg-paper px-3 py-3 text-center text-muted hover:bg-canvas md:justify-start"
     }
     tabs.push(
       button(
@@ -202,7 +216,7 @@ fn timetable_grid(
   let header : Array[Html] = [
     th(
       scope=@html.Scope::Col,
-      class="w-14 border-b border-rule bg-canvas p-2 text-left text-[11px] font-normal text-muted",
+      class="w-14 border-b border-rule bg-canvas p-2 text-left text-xs font-normal text-muted",
       "時限",
     ),
   ]
@@ -210,7 +224,7 @@ fn timetable_grid(
     header.push(
       th(
         scope=@html.Scope::Col,
-        class="border-b border-rule bg-canvas p-2 text-left text-[11px] font-normal text-muted",
+        class="border-b border-rule bg-canvas p-2 text-left text-xs font-normal text-muted",
         day_label(day),
       ),
     )
@@ -220,7 +234,7 @@ fn timetable_grid(
     let cells : Array[Html] = [
       th(
         scope=@html.Scope::Row,
-        class="w-14 border-b border-rule p-2 text-[11px] font-normal text-muted",
+        class="w-14 border-b border-rule p-2 text-xs font-normal text-muted",
         "\{period}",
       ),
     ]
@@ -228,7 +242,7 @@ fn timetable_grid(
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
           td(
-            class="h-20 border-b border-rule bg-primary-soft/40 p-2 align-top",
+            class="h-16 border-b border-rule bg-primary-soft/60 p-2 align-top",
             [
               div(class="flex h-full flex-col justify-between", [
                 span(
@@ -251,7 +265,7 @@ fn timetable_grid(
             ],
           )
         None =>
-          td(class="h-20 border-b border-rule p-1 align-middle", [
+          td(class="h-16 border-b border-rule p-1 align-middle", [
             button(
               id=slot_id(day, period),
               title="\{day_label(day)}\{period}限に科目を追加",
@@ -410,7 +424,7 @@ fn picker_panel(
       div(class="fixed inset-0 z-50 flex items-start justify-center p-4", [
         div(
           id="picker-backdrop",
-          class="absolute inset-0 bg-ink/30 backdrop-blur-sm",
+          class="absolute inset-0 bg-ink/40",
           on_click=emit(@app.PlannerMsg::ClosePicker),
           ([] : Array[Html]),
         ),
@@ -442,7 +456,7 @@ fn picker_panel(
                     ),
                     button(
                       id="close-picker",
-                      class="border-0 bg-transparent p-0 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-danger",
+                      class="min-h-11 border-0 bg-transparent px-2 text-xs text-muted hover:text-danger",
                       on_click=emit(@app.PlannerMsg::ClosePicker),
                       "閉じる",
                     ),
@@ -492,15 +506,15 @@ fn planner_view(
       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:border focus:border-primary focus:bg-paper focus:px-3 focus:py-2",
       "時間割へスキップ",
     ),
-    header(class="border-b border-ink pb-4", [
-      div(class="flex flex-wrap items-end justify-between gap-3", [
-        h1(
-          class="text-3xl font-bold tracking-tight md:text-4xl",
-          "応物単位くん",
-        ),
+    header(class="border-b border-ink pb-3", [
+      div(class="flex items-center justify-between gap-4", [
+        div(class="flex items-center gap-3", [
+          product_mark(),
+          h1(class="text-2xl font-bold tracking-tight", "応物単位くん"),
+        ]),
         p(
           class="text-right text-xs leading-5 text-muted",
-          "\{state.profile.advancement_year.year()}年度\n応用物理",
+          "\{state.profile.advancement_year.year()}年度 応用物理",
         ),
       ]),
     ]),
