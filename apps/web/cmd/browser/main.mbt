@@ -261,7 +261,7 @@ fn timetable_grid(
                 button(
                   id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
                   title="削除",
-                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+                  class="-mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
                   on_click=emit(
                     @app.PlannerMsg::RemoveEnrollment(
                       offering_id=block.offering_id,
@@ -336,7 +336,7 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
           button(
             id="remove-\{entry.offering_id.value}",
             title="削除",
-            class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+            class="-mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
             on_click=emit(
               @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
             ),
