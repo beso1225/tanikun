@@ -93,6 +93,16 @@ test(
     assert.equal(await page.locator("#timetable thead th").count(), 6);
     const headers = await page.locator("#timetable thead th").allTextContents();
     assert.deepEqual(headers, ["時限", "月", "火", "水", "木", "金"]);
+
+    const dayCellWidths = await page
+      .locator("#timetable tbody tr")
+      .first()
+      .locator("td")
+      .evaluateAll((cells) =>
+        cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
+      );
+    assert.equal(dayCellWidths.length, 5);
+    assert.equal(new Set(dayCellWidths).size, 1);
     await page.getByText("Physics I", { exact: true }).waitFor();
     await page.getByText("Physics Lab", { exact: true }).waitFor();
     await page.locator("#off-grid").getByText("Seminar S").waitFor();

@@ -133,7 +133,7 @@ fn hidden_blocks(
 fn timetable_grid(state : @app.PlannerState) -> Html {
   let blocks = state.scheduled_blocks(state.selected_term)
   let days = state.visible_day_values()
-  let header : Array[Html] = [th(class="p-2 text-left", "時限")]
+  let header : Array[Html] = [th(class="w-16 p-2 text-left", "時限")]
   for day in days {
     header.push(th(class="p-2 text-left", day_label(day)))
   }
@@ -143,10 +143,10 @@ fn timetable_grid(state : @app.PlannerState) -> Html {
     for day in days {
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
-          td(class="border border-action bg-white p-2 align-top", [
+          td(class="h-16 border border-action bg-white p-2 align-top", [
             span(class="text-sm font-medium", block.course_name),
           ])
-        None => td(class="border border-action p-2", ([] : Array[Html]))
+        None => td(class="h-16 border border-action p-2", ([] : Array[Html]))
       }
       cells.push(cell)
     }
@@ -154,10 +154,11 @@ fn timetable_grid(state : @app.PlannerState) -> Html {
   }
   let hidden = hidden_blocks(state, blocks)
   let children : Array[Html] = [
-    table(id="timetable", class="mt-4 w-full border-collapse text-sm", [
-      thead(header),
-      tbody(rows),
-    ]),
+    table(
+      id="timetable",
+      class="mt-4 w-full table-fixed border-collapse text-sm",
+      [thead(header), tbody(rows)],
+    ),
   ]
   if hidden > 0 {
     children.push(
