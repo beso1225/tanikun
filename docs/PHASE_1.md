@@ -2,14 +2,14 @@
 
 ## Status
 
-Design contract for Phase 1. Implementation is tracked by issues #7–#19.
+Phase 1 implementation. `packages/domain` and `packages/requirements` implement
+the model below. Issue #19 records the Done evidence.
 
-This document fixes the model before code so that the domain, requirement,
-credit, and evaluation issues share the same semantics. It is consistent with
+This document records the Phase 1 contract. It is consistent with
 [the initial design](INITIAL_DESIGN.md), [the technical review](TECH_REVIEW.md),
 [ADR-0001](adr/0001-course-identity-by-stable-id.md) through
-[ADR-0005](adr/0005-requirement-rules-and-credit-semantics.md), and
-[the glossary](../GLOSSARY.md).
+[ADR-0005](adr/0005-requirement-rules-and-credit-semantics.md),
+[the glossary](../GLOSSARY.md), and the [documentation index](README.md).
 
 Phase 1 is deliberately pure MoonBit. UI, Workers, D1, Automerge, IndexedDB,
 persistence, JSON contracts, and HTTP APIs are out of scope.
@@ -23,8 +23,13 @@ Phase 1 must deterministically derive, from fictional in-memory input:
 - satisfied, partially satisfied, or unsatisfied requirement trees for each
   projection mode.
 
-It is complete when the golden test from issue #17 demonstrates those values
-and the checks from issue #18 pass on Linux CI.
+Phase 1 Done requires all of the following:
+
+- the golden fixture in `packages/requirements/phase1_fixture_test.mbt`
+  demonstrates credits and requirement results for all three modes;
+- `just test`, `just lint`, and `nix flake check path:.` pass on Linux CI;
+- the mutation baseline is recorded in [MUTATION.md](MUTATION.md);
+- issue #19 records the evidence and closes the milestone.
 
 ## Module ownership
 
@@ -438,9 +443,10 @@ courses with a passed enrollment in that mode.
   schedules, invalid override combinations, invalid rule references, and
   profile/requirement-set mismatch.
 
-## Fixture plan
+## Fixture
 
-Issue #17 will add one fictional program with:
+The fixture in `packages/requirements/phase1_fixture_test.mbt` contains one
+fictional program with:
 
 - categories and a category table, including an uncategorized course;
 - courses with 0.5, 1, 1.5, and 2 credits, plus a retired course;
@@ -450,9 +456,9 @@ Issue #17 will add one fictional program with:
   correction;
 - a rule tree containing every Phase 1 leaf and node type.
 
-The golden test will record confirmed, standard projected, and optimistic
-projected totals, per-category credits, and each rule result. The fixture lives
-in the requirements test package; no JSON serialization is needed in Phase 1.
+The golden test records confirmed, standard projected, and optimistic projected
+totals, per-category credits, and each rule result. The fixture lives in the
+requirements test package; Phase 1 needs no JSON serialization.
 
 ## Verification commands
 

@@ -2,7 +2,7 @@
 
 Phase 1 uses [`turtles`](https://mooncakes.io/docs/f4ah6o/turtles) to measure
 whether the domain and requirements tests detect behavioral changes. Mutation
-testing is local evidence, not a required CI gate yet.
+testing is local evidence, not a required CI check.
 
 ## Setup
 
@@ -36,7 +36,7 @@ lint checks.
 
 ## Baseline
 
-Recorded on 2026-10-24 with `--target js --jobs 2` after the #35–#36
+Recorded on 2026-10-24 with `--target js --jobs 2` after the #35 and #36
 production refactors. #37 consolidated test files, which mutation testing
 excludes, so it does not move this baseline. The machine-readable baseline,
 including every accepted survivor, is
@@ -67,7 +67,7 @@ The requirements survivor count fell from 22 to 15 because #43 merged
 `compare_tagged_failures`. The merged function carries one copy of the seven
 rank-branch mutants instead of two.
 
-Both changes are pinned by the existing behavior tests.
+These changes are pinned by the existing behavior tests.
 
 ## Accepted mutants
 
@@ -88,9 +88,9 @@ defensive checks whose mutated branch is unreachable for valid evaluation input.
 | `requirements/credit_summary.mbt:602` | slot period-ordering branches      | Same duplicate-slot canonicalization.                                                                      |
 | `requirements/category_table.mbt:52`  | `low = middle + 1` to `middle - 1` | Non-terminating lookup mutant; the harness times out.                                                      |
 
-## Ratchet
+## Threshold policy
 
 When the accepted set is reduced or a stable threshold is agreed, add
-`--fail-under <baseline>` to `just mutate`. Do not gate CI at 100%: the current
+`--fail-under <threshold>` to `just mutate`. Do not gate CI at 100%: the current
 private score reflects comparator/defensive branches that are not reachable
 through the public API.

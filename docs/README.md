@@ -1,0 +1,20 @@
+# Documentation
+
+Start with the current Phase 1 documents.
+
+## Current
+
+- [Phase 1 contract and implementation](PHASE_1.md)
+- [Mutation testing](MUTATION.md)
+- [Mutation baseline](mutation-baseline.json)
+- [Glossary](../GLOSSARY.md)
+- [Architecture decision records](adr/README.md)
+
+## Historical
+
+These documents record earlier phases and design reviews. They are useful for
+context, but they are not current setup instructions.
+
+- [Phase 0 development foundation](PHASE_0.md)
+- [Initial design](INITIAL_DESIGN.md)
+- [Technical review](TECH_REVIEW.md)

@@ -1,32 +1,44 @@
 # 応物単位くん (Tanikun)
 
-応用物理学科向けに、単位や卒業要件を計画するローカルファーストWebアプリです。
-現在は開発初期（Phase 0）で、ビルド・Worker・ブラウザテストの基盤が動く状態です。
+Tanikun は大学の単位と卒業要件を計画するローカルファーストの Web アプリです。
+MoonBit で実装しています。
+
+Phase 1 では純粋なドメインモデル、単位集計、要件評価を実装しました。
+Phase 1 の完了確認は [issue #19](https://github.com/beso1225/tanikun/issues/19)
+で行います。UI、永続化、同期は後の Phase で追加します。
 
 **English:** [README.md](README.md)
+
+## 状態
+
+- Phase 0: ビルド、Worker、ブラウザテストの基盤。記録は
+  [docs/PHASE_0.md](docs/PHASE_0.md) にあり、これは履歴です。
+- Phase 1: 純粋なドメインと要件評価。契約と現在の挙動は
+  [docs/PHASE_1.md](docs/PHASE_1.md) にあります。
+- 後の Phase: UI、永続化、同期。未着手です。
 
 ## 構成
 
 - MoonBit（Rabbita / Warren）
 - Cloudflare Workers
 - Tailwind CSS v4
-- Nix（MoonBitとシステムツールの固定）
-- fnm + corepack（Node.js 24.22.1とpnpm 12.9.0）
+- Nix（MoonBit とシステムツールの固定）
+- fnm と corepack（Node.js 24.22.1 と pnpm 12.9.0）
 
-## クイックスタート
+## セットアップ
 
-必要なもの: flake対応のNix。direnvは任意です。
+flake に対応した Nix が必要です。direnv は任意です。
 
-初回のシェル起動時に、fnmが`.node-version`のNode.js 24.22.1を取得し、
-corepackが固定版のpnpmを提供します。Node.jsをグローバルにインストールする
-必要はありません。CIは`actions/setup-node`を使い、fnmのフックを省略します。
+初回のシェル起動時に、fnm が `.node-version` の Node.js 24.22.1 を取得します。
+corepack が固定版の pnpm を提供するため、Node.js をグローバルにインストールする
+必要はありません。CI は `actions/setup-node` を使い、fnm のフックを省略します。
 
 ```sh
 git clone git@github.com:beso1225/tanikun.git
 cd tanikun
 direnv allow            # または nix develop
 
-just setup-web          # Warrenを導入（初回のみ・ネットワーク必要）
+just setup-web          # Warren を導入（初回のみ・ネットワーク必要）
 pnpm install --frozen-lockfile
 
 just dev-web            # http://127.0.0.1:4300
@@ -35,44 +47,43 @@ just dev-api            # http://127.0.0.1:8787/api/health
 
 `dev-web` と `dev-api` は別々のターミナルで起動してください。
 
-## Lintと整形
+## よく使うコマンド
 
 ```sh
-pnpm install --frozen-lockfile
-just lint
-just fmt
+just test               # ビルドと MoonBit・export テスト
+just lint               # 整形、型、リポジトリの lint
+just fmt                # 利用可能な formatter を適用
+nix flake check path:.  # pure domain を含む sandbox チェック
 ```
 
-`just lint` はMoonBitのチェック、Nixのlint、Justの整形確認、oxlint/oxfmt、
-editorconfig-checker、markdownlint-cli2、stylelint、actionlint、zizmorを実行します。
-`just fmt` は利用可能なformatterを適用します。
+`just test` には MoonBit のツールチェーンが必要です。Web のツール、ブラウザ、
+Worker、D1 のテストには `pnpm install` が必要です。`just` には `test-css`、
+`test-browser`、`test-worker`、`test-automerge`、`test-d1` もあります。
 
-## テスト
+Mutation testing は任意で、CI の必須チェックではありません。
 
 ```sh
-just check
-just test
-just test-css
-just test-browser
-just test-worker
-just test-automerge
-just test-d1
+nix develop
+just setup-mutation     # 初回のみ・ネットワーク必要
+just mutate
 ```
 
-`test-browser` は `just setup-web`、`test-worker` / `test-automerge` /
-`test-d1` は `pnpm install` が前提です。
-
-## 開発フロー
-
-変更はpull request経由で取り込みます。`main` では `linux` と `lint` のCIチェックが
-必須で、直接push・force push・ブランチ削除は禁止されています。
+baseline と accepted mutant は [docs/MUTATION.md](docs/MUTATION.md) にあります。
 
 ## ドキュメント
 
-- [Phase 0の計画と検証記録](docs/PHASE_0.md)
-- [Phase 1の設計契約](docs/PHASE_1.md)
-- [初期設計](docs/INITIAL_DESIGN.md)
+- [ドキュメント一覧](docs/README.md)
+- [Phase 1 の契約と実装](docs/PHASE_1.md)
+- [Mutation testing](docs/MUTATION.md)
 - [用語集](GLOSSARY.md)
+- [Architecture decision records](docs/adr/README.md)
+- [Phase 0 の記録](docs/PHASE_0.md)、[初期設計](docs/INITIAL_DESIGN.md)、
+  [技術レビュー](docs/TECH_REVIEW.md) は履歴です。
+
+## 開発の進め方
+
+変更は pull request 経由で取り込みます。`main` では `linux` と `lint` の CI
+チェックが必須です。直接 push、force push、ブランチ削除は禁止されています。
 
 ## ライセンス
 
