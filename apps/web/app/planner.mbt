@@ -106,19 +106,74 @@ pub fn UiError::from_domain(
       "科目名を入力してください"
     @tanikun-domain.DomainError::DuplicateCourseId(_) =>
       "科目IDが重複しています"
+    @tanikun-domain.DomainError::EmptyOfferingTerms =>
+      "開講学期を指定してください"
+    @tanikun-domain.DomainError::DuplicateOfferingTerm(_) =>
+      "開講学期が重複しています"
+    @tanikun-domain.DomainError::MixedOfferingTerms =>
+      "同じセメスターの学期を指定してください"
+    @tanikun-domain.DomainError::MissingOfferingSlots =>
+      "曜限を指定してください"
+    @tanikun-domain.DomainError::UnexpectedOfferingSlots =>
+      "この開講では曜限を指定できません"
+    @tanikun-domain.DomainError::DuplicateOfferingSlot(_) =>
+      "曜限が重複しています"
+    @tanikun-domain.DomainError::DuplicateOverride(..) =>
+      "同じ上書きが重複しています"
+    @tanikun-domain.DomainError::InvalidOverrideCombination(..) =>
+      "この属性にはこの値を使えません"
+    @tanikun-domain.DomainError::EmptyOverrideText =>
+      "上書きの値を入力してください"
+    @tanikun-domain.DomainError::EmptyProgramName =>
+      "プログラム名を入力してください"
+    @tanikun-domain.DomainError::EmptyCategoryName =>
+      "区分名を入力してください"
+    @tanikun-domain.DomainError::DuplicateCategoryId(_) =>
+      "区分IDが重複しています"
+    @tanikun-domain.DomainError::UnknownCategory(_) =>
+      "区分が見つかりません"
+    @tanikun-domain.DomainError::DuplicateCategoryAssignment(_) =>
+      "科目の区分が重複しています"
+    @tanikun-domain.DomainError::DuplicateRequirementSet(..) =>
+      "同じプログラムと年度の要件セットがあります"
+    @tanikun-domain.DomainError::EmptyRuleCategories =>
+      "区分を指定してください"
+    @tanikun-domain.DomainError::DuplicateRuleCategory(_) =>
+      "ルールの区分が重複しています"
+    @tanikun-domain.DomainError::UnknownRuleCategory(_) =>
+      "ルールの区分が見つかりません"
+    @tanikun-domain.DomainError::EmptyRuleCourses =>
+      "科目を指定してください"
+    @tanikun-domain.DomainError::DuplicateRuleCourse(_) =>
+      "ルールの科目が重複しています"
+    @tanikun-domain.DomainError::UnknownRuleCourse(_) =>
+      "ルールの科目が見つかりません"
+    @tanikun-domain.DomainError::EmptyRuleChildren =>
+      "ルールの子がありません"
+    @tanikun-domain.DomainError::InvalidRuleThreshold(_) =>
+      "ルールの単位数が正しくありません"
+    @tanikun-domain.DomainError::InvalidAtLeastCount(..) =>
+      "ルールの個数が子の数と合いません"
     @tanikun-domain.DomainError::DuplicateOfferingId(_) =>
       "開講IDが重複しています"
     @tanikun-domain.DomainError::DuplicateEnrollment(_) =>
       "同じ開講がすでに登録されています"
-    @tanikun-domain.DomainError::UnknownCourse(_) =>
-      "科目が見つかりません"
     @tanikun-domain.DomainError::UnknownOffering(_) =>
       "開講が見つかりません"
+    @tanikun-domain.DomainError::UnknownEnrollment(_) =>
+      "履修が見つかりません"
+    @tanikun-domain.DomainError::UnknownCourse(_) =>
+      "科目が見つかりません"
+    @tanikun-domain.DomainError::DuplicatePassedCourse(_) =>
+      "合格した科目が重複しています"
+    @tanikun-domain.DomainError::ProfileRequirementSetMismatch =>
+      "プロファイルと要件セットが一致しません"
+    @tanikun-domain.DomainError::RetiredCourseEnrollment(_) =>
+      "過去科目は履修できません"
     @tanikun-domain.DomainError::NotOfferedEnrollment(_) =>
       "この年度には開講されていません"
-    @tanikun-domain.DomainError::EmptyRuleChildren =>
-      "ルールの子がありません"
-    _ => "入力内容を確認してください"
+    @tanikun-domain.DomainError::PassedSnapshotCourseMismatch(..) =>
+      "合格時の科目情報が開講と一致しません"
   }
   UiError::new(target, UiErrorKind::DomainValidation, message)
 }
@@ -290,7 +345,7 @@ fn term_in_terms(
 }
 
 ///|
-fn offering_available_in_term(
+fn offering_occupies_term(
   offering : @tanikun-domain.CourseOffering,
   planner_term : PlannerTerm,
 ) -> Bool {
@@ -312,17 +367,23 @@ fn find_slot_conflict(
   offering : @tanikun-domain.CourseOffering,
 ) -> @tanikun-domain.Slot? {
   let slots = offering.slots()
-  for enrollment in state.enrollments {
-    match find_offering(state.offerings, enrollment.offering_id) {
-      Some(other) =>
-        for slot in slots {
-          for other_slot in other.slots() {
-            if slot == other_slot {
-              return Some(slot)
+  for planner_term in PlannerTerm::values() {
+    if offering_occupies_term(offering, planner_term) {
+      for enrollment in state.enrollments {
+        match find_offering(state.offerings, enrollment.offering_id) {
+          Some(other) =>
+            if offering_occupies_term(other, planner_term) {
+              for slot in slots {
+                for other_slot in other.slots() {
+                  if slot == other_slot {
+                    return Some(slot)
+                  }
+                }
+              }
             }
-          }
+          None => ()
         }
-      None => ()
+      }
     }
   }
   None
@@ -347,7 +408,7 @@ fn add_offering(
       TimetableError::DuplicateEnrollment(offering_id=id).to_ui(),
     )
   }
-  if !offering_available_in_term(offering, state.selected_term) {
+  if !offering_occupies_term(offering, state.selected_term) {
     return with_error(
       state,
       TimetableError::NotOfferedInTerm(offering_id=id).to_ui(),

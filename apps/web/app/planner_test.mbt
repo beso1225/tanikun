@@ -272,3 +272,98 @@ test "domain validation errors map to a UI validation error" {
   assert_true(error.kind == @app.UiErrorKind::DomainValidation)
   assert_eq(error.message, "科目名を入力してください")
 }
+
+///|
+test "the same slot in different terms is allowed" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_offering("offering-2", course, @tanikun-domain.Term::S2, [
+      planner_slot(@tanikun-domain.DayOfWeek::Monday, 1),
+    ]),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-2")),
+  )
+  assert_eq(state.enrollments.length(), 2)
+  match state.error {
+    None => ()
+    Some(_) => fail("expected no slot conflict across terms")
+  }
+}
+
+///|
+test "a year-long offering conflicts with S1 and A1 slots" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  let year = planner_expect_ok(@tanikun-domain.AcademicYear::new(2026))
+  state.offerings.push(
+    planner_expect_ok(
+      @tanikun-domain.CourseOffering::new(
+        planner_offering_id("year-long"),
+        course.id,
+        year,
+        @tanikun-domain.OfferingSchedule::YearLong,
+        @tanikun-domain.OfferingStatus::Offered,
+        [planner_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
+      ),
+    ),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("year-long")),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  match state.error {
+    Some(error) => assert_true(error.kind == @app.UiErrorKind::SlotConflict)
+    None => fail("expected a year-long conflict in S1")
+  }
+
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_expect_ok(
+      @tanikun-domain.CourseOffering::new(
+        planner_offering_id("year-long"),
+        course.id,
+        year,
+        @tanikun-domain.OfferingSchedule::YearLong,
+        @tanikun-domain.OfferingStatus::Offered,
+        [planner_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
+      ),
+    ),
+  )
+  state.offerings.push(
+    planner_offering("offering-a1", course, @tanikun-domain.Term::A1, [
+      planner_slot(@tanikun-domain.DayOfWeek::Monday, 1),
+    ]),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A1),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("year-long")),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-a1")),
+  )
+  match state.error {
+    Some(error) => assert_true(error.kind == @app.UiErrorKind::SlotConflict)
+    None => fail("expected a year-long conflict in A1")
+  }
+}
