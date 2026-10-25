@@ -157,6 +157,9 @@ test(
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
+    await page.waitForFunction(
+      () => document.activeElement?.id === "catalogue-search",
+    );
     assert.equal(await page.locator("#picker-backdrop").count(), 1);
     assert.equal(await page.locator("#picker").getAttribute("role"), "dialog");
     assert.equal(

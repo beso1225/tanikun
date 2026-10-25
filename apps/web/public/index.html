@@ -23,7 +23,13 @@
           true,
         );
         new MutationObserver(() => {
-          if (picker() || !returnFocus) return;
+          const panel = picker();
+          if (panel && !panel.contains(document.activeElement)) {
+            (
+              panel.querySelector("input") ?? panel.querySelector("button")
+            )?.focus();
+          }
+          if (panel || !returnFocus) return;
           const target = returnFocus;
           returnFocus = null;
           if (target.isConnected) target.focus();

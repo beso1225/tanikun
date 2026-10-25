@@ -309,7 +309,7 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
         ]),
         button(
           id="remove-\{entry.offering_id.value}",
-          class="shrink-0 border-0 bg-transparent p-1 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-primary",
+          class="shrink-0 border-0 bg-transparent p-1 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-danger",
           on_click=emit(
             @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
           ),
@@ -370,7 +370,7 @@ fn picker_panel(
         let action = if entry.enrolled {
           button(
             id="remove-picker-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 border border-danger bg-canvas px-4 py-2 text-sm text-danger hover:bg-danger hover:text-white",
+            class="min-h-11 min-w-20 shrink-0 border border-rule bg-canvas px-4 py-2 text-sm text-ink hover:border-danger hover:bg-danger hover:text-white",
             on_click=emit(
               @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
             ),
