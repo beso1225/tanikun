@@ -143,7 +143,9 @@ test(
     assert.ok(pickerText.includes("S2"));
     assert.ok(!pickerText.includes("通常"));
     await page.locator("#catalogue-search").fill("missing");
-    await page.getByText("該当する科目がありません").waitFor();
+    await page
+      .getByText("この条件に合う科目はありません。検索語を変えてください")
+      .waitFor();
     await page.locator("#catalogue-search").fill("");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });

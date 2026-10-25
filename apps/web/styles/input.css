@@ -1,22 +1,47 @@
 @import "tailwindcss" source("..");
 
 @theme {
-  --color-canvas: #f6f8f4;
-  --color-ink: #24352c;
-  --color-action: #526b5b;
-  --color-focus: #366947;
+  --color-canvas: #f1f3ee;
+  --color-paper: #fbfcf8;
+  --color-ink: #182822;
+  --color-pine: #2f5546;
+  --color-pine-soft: #e2ece4;
+  --color-vermilion: #ad3f2f;
+  --color-rule: #c9d3c8;
+  --color-muted: #66756b;
+  --font-sans:
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+  --font-display: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+
+  /* Keep the old token names working while views migrate. */
+  --color-action: #2f5546;
+  --color-focus: #ad3f2f;
 }
 
 @layer base {
   body {
-    @apply m-0 bg-canvas font-sans text-ink;
+    @apply m-0 bg-canvas font-sans text-ink antialiased;
   }
 
   button {
-    @apply cursor-pointer rounded-md border border-action bg-white px-4 py-2.5 text-ink;
+    @apply cursor-pointer transition-colors duration-150;
   }
 
   button:focus-visible {
-    @apply outline-3 outline-offset-3 outline-focus;
+    @apply outline-3 outline-offset-2 outline-vermilion;
+  }
+
+  ::selection {
+    background: var(--color-pine-soft);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
