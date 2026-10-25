@@ -7,6 +7,7 @@ using @html {
   div,
   h1,
   h2,
+  input,
   nav,
   p,
   section,
@@ -42,6 +43,48 @@ fn credits_label(credits : @tanikun-domain.Credits) -> String {
   } else {
     "\{half / 2}.5"
   }
+}
+
+///|
+fn term_label(term : @tanikun-domain.Term) -> String {
+  match term {
+    @tanikun-domain.Term::S1 => "S1"
+    @tanikun-domain.Term::S2 => "S2"
+    @tanikun-domain.Term::A1 => "A1"
+    @tanikun-domain.Term::A2 => "A2"
+  }
+}
+
+///|
+fn semester_label(semester : @tanikun-domain.Semester) -> String {
+  match semester {
+    @tanikun-domain.Semester::S => "S"
+    @tanikun-domain.Semester::A => "A"
+    @tanikun-domain.Semester::W => "W"
+  }
+}
+
+///|
+fn schedule_label(schedule : @tanikun-domain.OfferingSchedule) -> String {
+  match schedule {
+    @tanikun-domain.OfferingSchedule::Regular(terms~) =>
+      "通常 " + terms.map(term_label).join(", ")
+    @tanikun-domain.OfferingSchedule::YearLong => "通年"
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      "集中 " + semester_label(semester)
+  }
+}
+
+///|
+fn slots_label(slots : Array[@tanikun-domain.Slot]) -> String {
+  if slots.is_empty() {
+    return "曜限なし"
+  }
+  let labels : Array[String] = []
+  for slot in slots {
+    labels.push("\{day_label(slot.day)}\{slot.period.value()}")
+  }
+  labels.join(", ")
 }
 
 ///|
@@ -118,7 +161,10 @@ fn range_controls(
 }
 
 ///|
-fn timetable_grid(state : @app.PlannerState) -> Html {
+fn timetable_grid(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
   let blocks = state.scheduled_blocks(state.selected_term)
   let days = state.visible_day_values()
   let header : Array[Html] = [th(class="w-16 p-2 text-left", "時限")]
@@ -133,6 +179,14 @@ fn timetable_grid(state : @app.PlannerState) -> Html {
         Some(block) =>
           td(class="h-16 border border-action bg-white p-2 align-top", [
             span(class="text-sm font-medium", block.course_name),
+            button(
+              id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+              class="mt-1 rounded-md border border-action bg-white px-2 py-1 text-xs",
+              on_click=emit(
+                @app.PlannerMsg::RemoveEnrollment(offering_id=block.offering_id),
+              ),
+              "削除",
+            ),
           ])
         None => td(class="h-16 border border-action p-2", ([] : Array[Html]))
       }
@@ -161,7 +215,7 @@ fn timetable_grid(state : @app.PlannerState) -> Html {
 }
 
 ///|
-fn off_grid(state : @app.PlannerState) -> Html {
+fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   let entries = state.off_grid_entries(state.selected_term)
   if entries.is_empty() {
     return p(class="mt-4 text-sm", "集中講義はありません")
@@ -169,14 +223,71 @@ fn off_grid(state : @app.PlannerState) -> Html {
   let items : Array[Html] = []
   for entry in entries {
     items.push(
-      p(
-        class="mt-1",
-        "\{entry.course_name} (\{credits_label(entry.credits)}単位)",
-      ),
+      div(class="mt-1 flex items-center gap-2", [
+        span("\{entry.course_name} (\{credits_label(entry.credits)}単位)"),
+        button(
+          id="remove-\{entry.offering_id.value}",
+          class="rounded-md border border-action bg-white px-2 py-1 text-xs",
+          on_click=emit(
+            @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
+          ),
+          "削除",
+        ),
+      ]),
     )
   }
   section(id="off-grid", class="mt-4", [
     h2(class="text-lg font-bold", "集中講義"),
+    div(items),
+  ])
+}
+
+///|
+fn catalogue_panel(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  let entries = state.catalogue_entries(state.selected_term)
+  let items : Array[Html] = []
+  for entry in entries {
+    let detail = "\{credits_label(entry.credits)}単位 / \{schedule_label(entry.schedule)} / \{slots_label(entry.slots)}"
+    let action = if entry.enrolled {
+      button(
+        id="enrolled-\{entry.offering_id.value}",
+        disabled=true,
+        class="mt-2 rounded-md border border-action bg-white px-2 py-1 text-xs",
+        "登録済み",
+      )
+    } else {
+      button(
+        id="add-offering-\{entry.offering_id.value}",
+        class="mt-2 rounded-md border border-action bg-white px-2 py-1 text-xs",
+        on_click=emit(
+          @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
+        ),
+        "追加",
+      )
+    }
+    items.push(
+      div(class="border-b border-action p-2", [
+        p(class="font-medium", entry.course_name),
+        p(class="text-xs", detail),
+        action,
+      ]),
+    )
+  }
+  if items.is_empty() {
+    items.push(p(class="p-2 text-sm", "該当する科目がありません"))
+  }
+  section(id="catalogue", class="w-80", [
+    h2(class="text-lg font-bold", "科目を追加"),
+    input(
+      id="catalogue-search",
+      class="mt-2 w-full rounded-md border border-action bg-white p-2 text-sm",
+      placeholder="科目名で検索",
+      value=state.catalogue_query,
+      on_input=fn(query) { emit(@app.PlannerMsg::UpdateCatalogueQuery(query~)) },
+    ),
     div(items),
   ])
 }
@@ -189,16 +300,26 @@ fn planner_view(
   let grid = if state.selected_term == @app.PlannerTerm::W {
     p(class="mt-4 text-sm", "Wでは時間割のグリッドを使いません")
   } else {
-    timetable_grid(state)
+    timetable_grid(state, emit)
   }
-  div(class="mx-auto max-w-6xl p-6", [
+  let children : Array[Html] = [
     h1(class="text-3xl font-bold", "応物単位くん"),
     p(class="mt-2 text-sm", "Phase 2 timetable planner"),
     term_tabs(state, emit),
     range_controls(state, emit),
-    grid,
-    off_grid(state),
-  ])
+    div(class="mt-4 flex flex-wrap items-start gap-6", [
+      div(class="min-w-0 flex-1", [grid, off_grid(state, emit)]),
+      catalogue_panel(state, emit),
+    ]),
+  ]
+  match state.error {
+    Some(error) =>
+      children.push(
+        p(id="planner-error", class="mt-4 text-sm text-red-700", error.message),
+      )
+    None => ()
+  }
+  div(class="mx-auto max-w-6xl p-6", children)
 }
 
 ///|

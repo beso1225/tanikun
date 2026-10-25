@@ -103,9 +103,20 @@ test(
       );
     assert.equal(dayCellWidths.length, 5);
     assert.equal(new Set(dayCellWidths).size, 1);
-    await page.getByText("Physics I", { exact: true }).waitFor();
-    await page.getByText("Physics Lab", { exact: true }).waitFor();
+    await page
+      .locator("#timetable")
+      .getByText("Physics I", { exact: true })
+      .waitFor();
+    await page
+      .locator("#timetable")
+      .getByText("Physics Lab", { exact: true })
+      .waitFor();
     await page.locator("#off-grid").getByText("Seminar S").waitFor();
+
+    await page.locator("#catalogue-search").fill("missing");
+    await page.getByText("該当する科目がありません").waitFor();
+    await page.locator("#catalogue-search").fill("");
+    await page.locator("#catalogue").getByText("Physics I").waitFor();
 
     await page.locator("#add-day").click();
     await page.getByText("6日", { exact: true }).waitFor();
@@ -119,15 +130,43 @@ test(
     await page.getByText("7限", { exact: true }).waitFor();
     assert.equal(await page.locator("#timetable tbody tr").count(), 7);
 
+    await page.locator("#term-S2").click();
+    await page.locator("#add-offering-phy102-s2").waitFor();
+    await page.locator("#add-offering-phy102-s2").click();
+    await page
+      .locator("#timetable")
+      .getByText("Physics II", { exact: true })
+      .waitFor();
+    await page.locator("#enrolled-phy102-s2").waitFor();
+    await page
+      .locator('#timetable button[id^="remove-phy102-s2"]')
+      .first()
+      .click();
+    await page.locator("#add-offering-phy102-s2").waitFor();
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics II", { exact: true })
+        .count(),
+      0,
+    );
+
     await page.locator("#term-A1").click();
     await page.locator("#off-grid").getByText("Seminar A").waitFor();
-    await page.getByText("Physics Lab", { exact: true }).waitFor();
+    await page
+      .locator("#timetable")
+      .getByText("Physics Lab", { exact: true })
+      .waitFor();
 
     await page.locator("#term-W").click();
     await page
       .getByText("Wでは時間割のグリッドを使いません", { exact: true })
       .waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
+    await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
+    await page.locator("#remove-phy501-w").click();
+    await page.getByText("集中講義はありません").waitFor();
+    await page.locator("#add-offering-phy501-w").click();
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
 
     assert.deepEqual(errors, []);

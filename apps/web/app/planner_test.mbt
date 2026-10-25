@@ -459,3 +459,31 @@ test "visible slot boundaries and hidden block count" {
   )
   assert_eq(state.hidden_scheduled_block_count(@app.PlannerTerm::S1), 1)
 }
+
+///|
+test "catalogue filters by term, query, and enrollment" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_offering("offering-s2", course, @tanikun-domain.Term::S2, [
+      planner_slot(@tanikun-domain.DayOfWeek::Tuesday, 2),
+    ]),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("offering-1")),
+  )
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 1)
+  assert_true(state.catalogue_entries(@app.PlannerTerm::S1)[0].enrolled)
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S2).length(), 1)
+  assert_true(!state.catalogue_entries(@app.PlannerTerm::S2)[0].enrolled)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCatalogueQuery(query="Physics"),
+  )
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 1)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCatalogueQuery(query="missing"),
+  )
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 0)
+}

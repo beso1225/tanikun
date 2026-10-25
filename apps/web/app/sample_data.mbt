@@ -115,9 +115,6 @@ pub fn sample_state() -> PlannerState {
       sample_ok(@tanikun-domain.OfferingId::new("phy101-s1")),
     ),
     @tanikun-domain.Enrollment::planned(
-      sample_ok(@tanikun-domain.OfferingId::new("phy102-s2")),
-    ),
-    @tanikun-domain.Enrollment::planned(
       sample_ok(@tanikun-domain.OfferingId::new("phy201-year")),
     ),
     @tanikun-domain.Enrollment::planned(

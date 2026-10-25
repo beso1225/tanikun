@@ -237,6 +237,7 @@ pub struct PlannerState {
   selected_term : PlannerTerm
   selected_offering : @tanikun-domain.OfferingId?
   error : UiError?
+  catalogue_query : String
   visible_days : Int
   visible_periods : Int
   revision : Int
@@ -277,6 +278,7 @@ pub fn PlannerState::new(
     selected_term: S1,
     selected_offering: None,
     error: None,
+    catalogue_query: "",
     visible_days: 5,
     visible_periods: 6,
     revision: 0,
@@ -292,6 +294,7 @@ pub(all) enum PlannerMsg {
   ClearOfferingSelection
   AddOffering(offering_id~ : @tanikun-domain.OfferingId)
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
+  UpdateCatalogueQuery(query~ : String)
   IncreaseVisibleDays
   DecreaseVisibleDays
   IncreaseVisiblePeriods
@@ -317,6 +320,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
+    UpdateCatalogueQuery(query~) => bump({ ..state, catalogue_query: query, })
     IncreaseVisibleDays =>
       if state.visible_days < 7 {
         bump({ ..state, visible_days: state.visible_days + 1, })
@@ -514,6 +518,17 @@ pub struct ScheduledBlock {
 }
 
 ///|
+/// One offering shown in the catalogue for the selected term.
+pub struct CatalogueEntry {
+  offering_id : @tanikun-domain.OfferingId
+  course_name : String
+  credits : @tanikun-domain.Credits
+  schedule : @tanikun-domain.OfferingSchedule
+  slots : Array[@tanikun-domain.Slot]
+  enrolled : Bool
+}
+
+///|
 /// One intensive offering in the selected term's off-grid list.
 pub struct OffGridEntry {
   offering_id : @tanikun-domain.OfferingId
@@ -532,6 +547,35 @@ fn find_course(
     }
   }
   None
+}
+
+///|
+pub fn PlannerState::catalogue_entries(
+  self : PlannerState,
+  term : PlannerTerm,
+) -> Array[CatalogueEntry] {
+  let entries : Array[CatalogueEntry] = []
+  for offering in self.offerings {
+    if offering_occupies_term(offering, term) &&
+      offering.status == @tanikun-domain.OfferingStatus::Offered {
+      match find_course(self.catalogue, offering.course_id) {
+        Some(course) =>
+          if self.catalogue_query.is_empty() ||
+            course.name.contains(self.catalogue_query) {
+            entries.push({
+              offering_id: offering.id,
+              course_name: course.name,
+              credits: course.credits,
+              schedule: offering.schedule(),
+              slots: offering.slots(),
+              enrolled: has_enrollment(self.enrollments, offering.id),
+            })
+          }
+        None => ()
+      }
+    }
+  }
+  entries
 }
 
 ///|
