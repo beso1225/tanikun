@@ -3,9 +3,9 @@
 Tanikun は大学の単位と卒業要件を計画するローカルファーストの Web アプリです。
 MoonBit で実装しています。
 
-Phase 1 では純粋なドメインモデル、単位集計、要件評価を実装しました。
-Phase 1 の完了確認は [issue #19](https://github.com/beso1225/tanikun/issues/19)
-で行います。UI、永続化、同期は後の Phase で追加します。
+Phase 1 は完了し、純粋なドメインモデル、単位集計、要件評価を実装しました。
+結果は [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) にあります。
+UI、永続化、同期は後続の Phase で追加する予定です。
 
 **English:** [README.md](README.md)
 
@@ -13,8 +13,8 @@ Phase 1 の完了確認は [issue #19](https://github.com/beso1225/tanikun/issue
 
 - Phase 0: ビルド、Worker、ブラウザテストの基盤。記録は
   [docs/PHASE_0.md](docs/PHASE_0.md) にあり、これは履歴です。
-- Phase 1: 純粋なドメインと要件評価。契約と現在の挙動は
-  [docs/PHASE_1.md](docs/PHASE_1.md) にあります。
+- Phase 1: 完了。契約は [docs/PHASE_1.md](docs/PHASE_1.md)、
+  結果は [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) にあります。
 - 後の Phase: UI、永続化、同期。未着手です。
 
 ## 構成
@@ -73,7 +73,8 @@ baseline と accepted mutant は [docs/MUTATION.md](docs/MUTATION.md) にあり�
 ## ドキュメント
 
 - [ドキュメント一覧](docs/README.md)
-- [Phase 1 の契約と実装](docs/PHASE_1.md)
+- [Phase 1 の契約](docs/PHASE_1.md)
+- [Phase 1 の結果](docs/PHASE_1_RESULTS.md)
 - [Mutation testing](docs/MUTATION.md)
 - [用語集](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)

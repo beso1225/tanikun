@@ -2,8 +2,8 @@
 
 ## Status
 
-Phase 1 implementation. `packages/domain` and `packages/requirements` implement
-the model below. Issue #19 records the Done evidence.
+Phase 1 is complete. `packages/domain` and `packages/requirements` implement the
+model below. The evidence is in [PHASE_1_RESULTS.md](PHASE_1_RESULTS.md).
 
 This document records the Phase 1 contract. It is consistent with
 [the initial design](INITIAL_DESIGN.md), [the technical review](TECH_REVIEW.md),
@@ -23,9 +23,8 @@ Phase 1 must deterministically derive, from fictional in-memory input:
 - satisfied, partially satisfied, or unsatisfied requirement trees for each
   projection mode.
 
-The following checklist defines Phase 1 completion. Issue #19 records the
-evidence and closes the milestone. Until #19 closes, treat the checklist as
-pending.
+Phase 1 meets the following completion conditions. The evidence is in
+[PHASE_1_RESULTS.md](PHASE_1_RESULTS.md).
 
 - the golden fixture in `packages/requirements/phase1_fixture_test.mbt`
   demonstrates credits and requirement results for all three modes;
