@@ -103,6 +103,12 @@ test(
       );
     assert.equal(dayCellWidths.length, 5);
     assert.equal(new Set(dayCellWidths).size, 1);
+    assert.equal(
+      await page
+        .locator("main#main-content")
+        .evaluate((element) => getComputedStyle(element).overflowY),
+      "visible",
+    );
     await page.locator("#slot-1-1").focus();
     assert.equal(
       await page

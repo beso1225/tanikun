@@ -591,11 +591,10 @@ fn planner_view(
     ),
     div(class="flex min-h-0 flex-1 flex-col md:flex-row", [
       term_section(state, emit),
-      main_(
-        id="main-content",
-        class="min-w-0 flex-1 overflow-auto p-4 md:p-5",
-        [grid, off_grid(state, emit)],
-      ),
+      main_(id="main-content", class="min-w-0 flex-1 p-4 md:p-5", [
+        grid,
+        off_grid(state, emit),
+      ]),
     ]),
   ]
   match state.error {
