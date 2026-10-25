@@ -233,7 +233,7 @@ fn timetable_grid(
     header.push(
       th(
         scope=@html.Scope::Col,
-        class="border-b border-rule bg-canvas px-3 py-2 text-center text-xs font-medium text-muted",
+        class="border-b border-rule bg-canvas px-3 py-2 text-left text-xs font-medium text-muted",
         day_label(day),
       ),
     )
@@ -252,25 +252,23 @@ fn timetable_grid(
         Some(block) =>
           td(class="h-16 border-b border-rule p-1.5 align-top", [
             div(
-              class="flex h-full flex-col justify-between rounded-md bg-primary-soft px-2 py-1.5",
+              class="flex h-full items-start justify-between gap-1 rounded-md bg-primary-soft px-2 py-1.5",
               [
                 span(
-                  class="block break-words text-sm font-medium text-ink",
+                  class="min-w-0 break-words text-sm font-medium text-ink",
                   block.course_name,
                 ),
-                div(class="flex justify-end", [
-                  button(
-                    id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-                    title="削除",
-                    class="flex h-7 w-7 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
-                    on_click=emit(
-                      @app.PlannerMsg::RemoveEnrollment(
-                        offering_id=block.offering_id,
-                      ),
+                button(
+                  id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+                  title="削除",
+                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+                  on_click=emit(
+                    @app.PlannerMsg::RemoveEnrollment(
+                      offering_id=block.offering_id,
                     ),
-                    [span("×"), span(class="sr-only", "削除")],
                   ),
-                ]),
+                  [span("×"), span(class="sr-only", "削除")],
+                ),
               ],
             ),
           ])
@@ -301,7 +299,7 @@ fn timetable_grid(
       div(class="overflow-x-auto", [
         table(
           id="timetable",
-          class="w-full min-w-[44rem] table-fixed border-collapse text-sm",
+          class="w-full min-w-[44rem] table-fixed border-separate border-spacing-x-2 border-spacing-y-0 text-sm",
           [thead(header), tbody(rows)],
         ),
       ]),
@@ -326,10 +324,10 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   for entry in entries {
     items.push(
       div(
-        class="flex min-h-11 w-full items-center justify-between gap-3 border-b border-rule px-3 last:border-b-0",
+        class="flex min-h-12 w-full items-start justify-between gap-2 rounded-lg bg-primary-soft px-3 py-2",
         [
-          div(class="min-w-0 py-2", [
-            p(class="truncate text-sm", entry.course_name),
+          div(class="min-w-0", [
+            p(class="truncate text-sm font-medium text-ink", entry.course_name),
             p(
               class="mt-0.5 text-xs text-muted",
               "\{credits_label(entry.credits)}単位",
@@ -338,7 +336,7 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
           button(
             id="remove-\{entry.offering_id.value}",
             title="削除",
-            class="flex h-8 w-8 shrink-0 items-center justify-center rounded text-base text-muted hover:bg-canvas hover:text-danger",
+            class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
             on_click=emit(
               @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
             ),
@@ -363,7 +361,7 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
         "追加",
       ),
     ]),
-    div(class="overflow-hidden rounded-lg border border-rule bg-paper", items),
+    div(class="flex flex-col gap-2", items),
   ])
 }
 

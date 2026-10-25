@@ -70,3 +70,9 @@
     }
   }
 }
+
+@layer utilities {
+  #timetable tbody tr:last-child > * {
+    border-bottom-width: 0;
+  }
+}
