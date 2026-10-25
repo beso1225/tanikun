@@ -258,7 +258,7 @@ fn timetable_grid(
               class="h-full w-full border border-dashed border-rule bg-transparent p-0 text-sm text-muted opacity-40 hover:border-primary hover:bg-primary-soft hover:text-primary hover:opacity-100 focus:opacity-100",
               on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
               [
-                span("+"),
+                span(attrs=@html.Attrs::build().aria_hidden("true"), "+"),
                 span(
                   class="sr-only",
                   "\{day_label(day)}\{period}限に科目を追加",
