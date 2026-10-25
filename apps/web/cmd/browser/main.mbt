@@ -257,7 +257,7 @@ fn timetable_grid(
                 button(
                   id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
                   title="削除",
-                  class="absolute right-1 top-2 flex h-6 w-6 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+                  class="absolute -right-1 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-paper text-sm leading-none text-muted ring-1 ring-rule hover:text-danger",
                   on_click=emit(
                     @app.PlannerMsg::RemoveEnrollment(
                       offering_id=block.offering_id,
@@ -266,7 +266,7 @@ fn timetable_grid(
                   [span("×"), span(class="sr-only", "削除")],
                 ),
                 span(
-                  class="block break-words pr-6 pt-3 text-sm font-medium text-ink",
+                  class="block break-words pr-4 text-sm font-medium text-ink",
                   block.course_name,
                 ),
               ],
@@ -329,13 +329,13 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
           button(
             id="remove-\{entry.offering_id.value}",
             title="削除",
-            class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+            class="absolute -right-1 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-paper text-sm leading-none text-muted ring-1 ring-rule hover:text-danger",
             on_click=emit(
               @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
             ),
             [span("×"), span(class="sr-only", "削除")],
           ),
-          div(class="min-w-0 pr-7 pt-2", [
+          div(class="min-w-0 pr-6", [
             p(class="truncate text-sm font-medium text-ink", entry.course_name),
             p(
               class="mt-0.5 text-xs text-muted",
