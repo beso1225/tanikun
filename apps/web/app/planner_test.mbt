@@ -574,3 +574,23 @@ test "the all-courses picker lists the selected term" {
   let state = @app.update_planner(state, @app.PlannerMsg::OpenCataloguePicker)
   assert_eq(state.picker_entries().length(), 1)
 }
+
+///|
+test "opening a new picker resets the search query" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenCataloguePicker,
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCatalogueQuery(query="Physics"),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=1,
+    ),
+  )
+  assert_eq(state.catalogue_query, "")
+}

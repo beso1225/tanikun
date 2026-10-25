@@ -249,7 +249,7 @@ fn timetable_grid(
             button(
               id=slot_id(day, period),
               title="\{day_label(day)}\{period}限に科目を追加",
-              class="h-full w-full border border-dashed border-rule bg-transparent p-0 text-sm text-muted hover:border-pine hover:bg-pine-soft hover:text-pine",
+              class="h-full w-full border border-dashed border-rule bg-transparent p-0 text-sm text-muted hover:border-primary hover:bg-primary-soft hover:text-primary",
               on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
               "+",
             ),
@@ -351,13 +351,13 @@ fn picker_panel(
           button(
             id="enrolled-\{entry.offering_id.value}",
             disabled=true,
-            class="shrink-0 border border-rule bg-canvas px-3 py-1.5 text-xs text-muted",
+            class="min-h-11 shrink-0 border border-rule bg-canvas px-4 py-2 text-sm text-muted",
             "登録済み",
           )
         } else {
           button(
             id="add-offering-\{entry.offering_id.value}",
-            class="shrink-0 border border-pine bg-pine px-3 py-1.5 text-xs text-white hover:bg-ink",
+            class="min-h-11 shrink-0 border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-ink",
             on_click=emit(
               @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
             ),
@@ -396,7 +396,7 @@ fn picker_panel(
                   h2(class="font-semibold text-lg", picker_label(target)),
                   button(
                     id="close-picker",
-                    class="border-0 bg-transparent p-0 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-vermilion",
+                    class="border-0 bg-transparent p-0 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-danger",
                     on_click=emit(@app.PlannerMsg::ClosePicker),
                     "閉じる",
                   ),

@@ -320,7 +320,13 @@ pub(all) enum PlannerMsg {
 pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
   match msg {
     SelectTerm(term~) =>
-      bump({ ..state, selected_term: term, error: None, picker: None, })
+      bump({
+        ..state,
+        selected_term: term,
+        error: None,
+        picker: None,
+        catalogue_query: "",
+      })
     SelectOffering(offering_id~) =>
       match find_offering(state.offerings, offering_id) {
         Some(_) =>
@@ -336,11 +342,20 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
     OpenSlotPicker(day~, period~) =>
-      bump({ ..state, picker: Some(PickerTarget::Slot(day~, period~)), })
+      bump({
+        ..state,
+        picker: Some(PickerTarget::Slot(day~, period~)),
+        catalogue_query: "",
+      })
     OpenIntensivePicker =>
-      bump({ ..state, picker: Some(PickerTarget::Intensive), })
-    OpenCataloguePicker => bump({ ..state, picker: Some(PickerTarget::All), })
-    ClosePicker => bump({ ..state, picker: None, })
+      bump({
+        ..state,
+        picker: Some(PickerTarget::Intensive),
+        catalogue_query: "",
+      })
+    OpenCataloguePicker =>
+      bump({ ..state, picker: Some(PickerTarget::All), catalogue_query: "", })
+    ClosePicker => bump({ ..state, picker: None, catalogue_query: "", })
     UpdateCatalogueQuery(query~) => bump({ ..state, catalogue_query: query, })
     IncreaseVisibleDays =>
       if state.visible_days < 7 {

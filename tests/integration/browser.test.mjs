@@ -134,11 +134,13 @@ test(
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
     await page.locator("#picker").getByText("Physics II").waitFor();
+    await page.locator("#catalogue-search").fill("Physics");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
     assert.equal(await page.locator("#picker-backdrop").count(), 1);
+    assert.equal(await page.locator("#catalogue-search").inputValue(), "");
     const pickerText = await page.locator("#picker").innerText();
     assert.ok(pickerText.includes("S2"));
     assert.ok(!pickerText.includes("通常"));
@@ -161,6 +163,14 @@ test(
       .click();
     await page.locator("#slot-1-2").click();
     await page.locator("#add-offering-phy102-s2").waitFor();
+    const addStyle = await page
+      .locator("#add-offering-phy102-s2")
+      .evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        height: element.getBoundingClientRect().height,
+      }));
+    assert.notEqual(addStyle.background, "rgba(0, 0, 0, 0)");
+    assert.ok(addStyle.height >= 40);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
