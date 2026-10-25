@@ -103,6 +103,13 @@ test(
       );
     assert.equal(dayCellWidths.length, 5);
     assert.equal(new Set(dayCellWidths).size, 1);
+    await page.locator("#slot-1-1").focus();
+    assert.equal(
+      await page
+        .locator("#slot-1-1")
+        .evaluate((element) => getComputedStyle(element).outlineColor),
+      "rgb(37, 75, 138)",
+    );
     await page
       .locator("#timetable")
       .getByText("Physics I", { exact: true })
@@ -151,7 +158,58 @@ test(
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
     assert.equal(await page.locator("#picker-backdrop").count(), 1);
+    assert.equal(await page.locator("#picker").getAttribute("role"), "dialog");
+    assert.equal(
+      await page.locator("#picker").getAttribute("aria-modal"),
+      "true",
+    );
+    assert.equal(
+      await page.locator("#picker").getAttribute("aria-labelledby"),
+      "picker-title",
+    );
+    assert.equal(
+      await page.getByRole("textbox", { name: "科目名で検索" }).count(),
+      1,
+    );
+    assert.equal(
+      await page.getByRole("button", { name: /火2限に科目を追加/ }).count(),
+      1,
+    );
+    assert.equal(
+      await page.locator('#timetable thead th[scope="col"]').count(),
+      7,
+    );
+    assert.ok(
+      (await page.locator('#timetable tbody th[scope="row"]').count()) >= 6,
+    );
+    assert.equal(await page.locator("main#main-content").count(), 1);
+    assert.equal(
+      await page
+        .locator("body")
+        .evaluate((body) => getComputedStyle(body).overflow),
+      "hidden",
+    );
     assert.equal(await page.locator("#catalogue-search").inputValue(), "");
+    await page.locator("#add-offering-phy102-s2").focus();
+    await page.keyboard.press("Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "close-picker",
+    );
+
+    await page.keyboard.press("Escape");
+    await page.locator("#picker").waitFor({ state: "detached" });
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "slot-1-2",
+    );
+    await page.locator("#slot-1-2").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#picker-backdrop").click({ position: { x: 5, y: 5 } });
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#slot-1-2").click();
+    await page.locator("#picker").waitFor();
+
     const pickerText = await page.locator("#picker").innerText();
     assert.ok(pickerText.includes("S2"));
     assert.ok(!pickerText.includes("通常"));

@@ -8,7 +8,7 @@
   --color-primary-soft: #dbe6f5;
   --color-accent: #c8901f;
   --color-rule: #cbd4df;
-  --color-muted: #667183;
+  --color-muted: #5a6478;
   --color-danger: #b33a3a;
   --font-sans:
     "Avenir Next", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
@@ -24,7 +24,9 @@
   }
 
   button {
-    @apply cursor-pointer transition-colors duration-150;
+    @apply cursor-pointer;
+    transition-property: background-color, border-color, color;
+    transition-duration: 150ms;
   }
 
   button:focus-visible {
@@ -33,6 +35,10 @@
 
   ::selection {
     background: var(--color-primary-soft);
+  }
+
+  body:has(#picker) {
+    overflow: hidden;
   }
 
   @media (prefers-reduced-motion: reduce) {

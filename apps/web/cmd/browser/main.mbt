@@ -5,10 +5,13 @@ using @rabbita {type Emit, type Html, type Val}
 using @html {
   button,
   div,
+  a,
   h1,
   h2,
   header,
   input,
+  label,
+  main_,
   nav,
   p,
   section,
@@ -198,6 +201,7 @@ fn timetable_grid(
   let days = state.visible_day_values()
   let header : Array[Html] = [
     th(
+      scope=@html.Scope::Col,
       class="w-14 border-b border-rule bg-canvas p-2 text-left text-[11px] font-normal text-muted",
       "時限",
     ),
@@ -205,6 +209,7 @@ fn timetable_grid(
   for day in days {
     header.push(
       th(
+        scope=@html.Scope::Col,
         class="border-b border-rule bg-canvas p-2 text-left text-[11px] font-normal text-muted",
         day_label(day),
       ),
@@ -214,6 +219,7 @@ fn timetable_grid(
   for period in state.visible_period_values() {
     let cells : Array[Html] = [
       th(
+        scope=@html.Scope::Row,
         class="w-14 border-b border-rule p-2 text-[11px] font-normal text-muted",
         "\{period}",
       ),
@@ -251,7 +257,13 @@ fn timetable_grid(
               title="\{day_label(day)}\{period}限に科目を追加",
               class="h-full w-full border border-dashed border-rule bg-transparent p-0 text-sm text-muted hover:border-primary hover:bg-primary-soft hover:text-primary",
               on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
-              "+",
+              [
+                span("+"),
+                span(
+                  class="sr-only",
+                  "\{day_label(day)}\{period}限に科目を追加",
+                ),
+              ],
             ),
           ])
       }
@@ -395,41 +407,68 @@ fn picker_panel(
           ),
         )
       }
-      div(
-        id="picker-backdrop",
-        class="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 p-4 backdrop-blur-sm",
-        [
-          section(
-            id="picker",
-            class="mt-[8vh] w-full max-w-xl border border-ink border-t-4 border-t-primary bg-paper p-5 shadow-2xl",
-            [
-              div(
-                class="flex items-start justify-between gap-4 border-b border-rule pb-3",
-                [
-                  h2(class="font-semibold text-lg", picker_label(target)),
-                  button(
-                    id="close-picker",
-                    class="border-0 bg-transparent p-0 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-danger",
-                    on_click=emit(@app.PlannerMsg::ClosePicker),
-                    "閉じる",
-                  ),
-                ],
-              ),
-              input(
-                id="catalogue-search",
-                class="mt-3 w-full border-b border-rule bg-transparent px-0 py-2 text-sm outline-none focus:border-primary",
-                placeholder="科目名で検索",
-                value=state.catalogue_query,
-                autofocus=true,
-                on_input=fn(query) {
-                  emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
-                },
-              ),
-              div(class="mt-1 divide-y divide-rule", items),
-            ],
-          ),
-        ],
-      )
+      div(class="fixed inset-0 z-50 flex items-start justify-center p-4", [
+        div(
+          id="picker-backdrop",
+          class="absolute inset-0 bg-ink/30 backdrop-blur-sm",
+          on_click=emit(@app.PlannerMsg::ClosePicker),
+          ([] : Array[Html]),
+        ),
+        div(
+          class="relative z-10 mt-[8vh] w-full max-w-xl",
+          on_keydown=fn(event) {
+            if event.key() == "Escape" {
+              emit(@app.PlannerMsg::ClosePicker)
+            } else {
+              @rabbita.none
+            }
+          },
+          [
+            section(
+              id="picker",
+              class="w-full border border-ink border-t-4 border-t-primary bg-paper p-5 shadow-2xl",
+              attrs=@html.Attrs::build()
+                .role("dialog")
+                .aria_modal("true")
+                .aria_labelledby("picker-title"),
+              [
+                div(
+                  class="flex items-start justify-between gap-4 border-b border-rule pb-3",
+                  [
+                    h2(
+                      id="picker-title",
+                      class="font-semibold text-lg",
+                      picker_label(target),
+                    ),
+                    button(
+                      id="close-picker",
+                      class="border-0 bg-transparent p-0 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-danger",
+                      on_click=emit(@app.PlannerMsg::ClosePicker),
+                      "閉じる",
+                    ),
+                  ],
+                ),
+                label(
+                  for_="catalogue-search",
+                  class="sr-only",
+                  "科目名で検索",
+                ),
+                input(
+                  id="catalogue-search",
+                  class="mt-3 w-full border-b border-rule bg-transparent px-0 py-2 text-sm outline-none focus:border-primary",
+                  placeholder="科目名で検索",
+                  value=state.catalogue_query,
+                  autofocus=true,
+                  on_input=fn(query) {
+                    emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
+                  },
+                ),
+                div(class="mt-1 divide-y divide-rule", items),
+              ],
+            ),
+          ],
+        ),
+      ])
     }
   }
 }
@@ -448,6 +487,11 @@ fn planner_view(
     timetable_grid(state, emit)
   }
   let children : Array[Html] = [
+    a(
+      href="#main-content",
+      class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:border focus:border-primary focus:bg-paper focus:px-3 focus:py-2",
+      "時間割へスキップ",
+    ),
     header(class="border-b border-ink pb-4", [
       div(class="flex flex-wrap items-end justify-between gap-3", [
         h1(
@@ -492,7 +536,11 @@ fn planner_view(
       )
     None => ()
   }
-  div(class="mx-auto max-w-6xl px-4 py-6 md:px-6", children)
+  main_(
+    id="main-content",
+    class="mx-auto max-w-6xl px-4 py-6 md:px-6",
+    children,
+  )
 }
 
 ///|
