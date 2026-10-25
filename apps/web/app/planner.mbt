@@ -643,3 +643,18 @@ fn day_rank(day : @tanikun-domain.DayOfWeek) -> Int {
     @tanikun-domain.DayOfWeek::Sunday => 6
   }
 }
+
+///|
+/// Counts scheduled blocks outside the current visible range.
+pub fn PlannerState::hidden_scheduled_block_count(
+  self : PlannerState,
+  term : PlannerTerm,
+) -> Int {
+  let mut count = 0
+  for block in self.scheduled_blocks(term) {
+    if !self.is_visible_slot(block.day, block.period) {
+      count = count + 1
+    }
+  }
+  count
+}

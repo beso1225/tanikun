@@ -439,3 +439,23 @@ test "S and A intensives stay off-grid in their semester terms" {
   assert_eq(state.off_grid_entries(@app.PlannerTerm::W).length(), 1)
   assert_eq(state.scheduled_blocks(@app.PlannerTerm::S1).length(), 1)
 }
+
+///|
+test "visible slot boundaries and hidden block count" {
+  let state = planner_state()
+  let period_6 = planner_slot(@tanikun-domain.DayOfWeek::Friday, 6)
+  let period_7 = planner_slot(@tanikun-domain.DayOfWeek::Monday, 7)
+  let saturday = planner_slot(@tanikun-domain.DayOfWeek::Saturday, 1)
+  assert_true(state.is_visible_slot(period_6.day, period_6.period))
+  assert_true(!state.is_visible_slot(saturday.day, saturday.period))
+  assert_true(!state.is_visible_slot(period_7.day, period_7.period))
+
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_offering("late", course, @tanikun-domain.Term::S1, [period_7]),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("late")),
+  )
+  assert_eq(state.hidden_scheduled_block_count(@app.PlannerTerm::S1), 1)
+}

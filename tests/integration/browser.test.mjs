@@ -125,7 +125,7 @@ test(
 
     await page.locator("#term-W").click();
     await page
-      .getByText("Wは集中講義のみを扱います", { exact: true })
+      .getByText("Wでは時間割のグリッドを使いません", { exact: true })
       .waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();

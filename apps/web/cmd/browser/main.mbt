@@ -33,6 +33,8 @@ fn day_label(day : @tanikun-domain.DayOfWeek) -> String {
 }
 
 ///|
+/// Formats a whole-unit label. `Credits` stores half-units, so odd values end
+/// in `.5`.
 fn credits_label(credits : @tanikun-domain.Credits) -> String {
   let half = credits.half_units()
   if half % 2 == 0 {
@@ -116,20 +118,6 @@ fn range_controls(
 }
 
 ///|
-fn hidden_blocks(
-  state : @app.PlannerState,
-  blocks : Array[@app.ScheduledBlock],
-) -> Int {
-  let mut count = 0
-  for block in blocks {
-    if !state.is_visible_slot(block.day, block.period) {
-      count = count + 1
-    }
-  }
-  count
-}
-
-///|
 fn timetable_grid(state : @app.PlannerState) -> Html {
   let blocks = state.scheduled_blocks(state.selected_term)
   let days = state.visible_day_values()
@@ -152,7 +140,7 @@ fn timetable_grid(state : @app.PlannerState) -> Html {
     }
     rows.push(tr(cells))
   }
-  let hidden = hidden_blocks(state, blocks)
+  let hidden = state.hidden_scheduled_block_count(state.selected_term)
   let children : Array[Html] = [
     table(
       id="timetable",
@@ -199,7 +187,7 @@ fn planner_view(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   let grid = if state.selected_term == @app.PlannerTerm::W {
-    p(class="mt-4 text-sm", "Wは集中講義のみを扱います")
+    p(class="mt-4 text-sm", "Wでは時間割のグリッドを使いません")
   } else {
     timetable_grid(state)
   }
