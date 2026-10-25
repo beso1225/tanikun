@@ -567,3 +567,10 @@ test "adding from a picker closes it" {
   }
   assert_eq(state.enrollments.length(), 1)
 }
+
+///|
+test "the all-courses picker lists the selected term" {
+  let state = planner_state()
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenCataloguePicker)
+  assert_eq(state.picker_entries().length(), 1)
+}

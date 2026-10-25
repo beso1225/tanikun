@@ -294,6 +294,7 @@ fn picker_label(target : @app.PickerTarget) -> String {
     @app.PickerTarget::Slot(day~, period~) =>
       "\{day_label(day)}\{period}に追加"
     @app.PickerTarget::Intensive => "集中講義を追加"
+    @app.PickerTarget::All => "科目を追加"
   }
 }
 
@@ -395,6 +396,14 @@ fn planner_view(
     p(class="mt-2 text-sm", "Phase 2 timetable planner"),
     term_tabs(state, emit),
     range_controls(state, emit),
+    div(class="mt-4", [
+      button(
+        id="open-catalogue-picker",
+        class="rounded-md border border-action bg-white px-3 py-2 text-sm",
+        on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
+        "科目一覧から追加",
+      ),
+    ]),
     grid,
     off_grid(state, emit),
     picker_panel(state, emit),

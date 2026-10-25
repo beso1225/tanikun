@@ -131,6 +131,11 @@ test(
 
     await page.locator("#term-S2").click();
     assert.equal(await page.locator("#picker").count(), 0);
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#picker").getByText("Physics II").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
     assert.equal(await page.locator("#picker-backdrop").count(), 1);

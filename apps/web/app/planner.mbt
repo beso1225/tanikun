@@ -292,6 +292,7 @@ pub fn PlannerState::new(
 pub(all) enum PickerTarget {
   Slot(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
   Intensive
+  All
 }
 
 ///|
@@ -305,6 +306,7 @@ pub(all) enum PlannerMsg {
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
   OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
   OpenIntensivePicker
+  OpenCataloguePicker
   ClosePicker
   UpdateCatalogueQuery(query~ : String)
   IncreaseVisibleDays
@@ -337,6 +339,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({ ..state, picker: Some(PickerTarget::Slot(day~, period~)), })
     OpenIntensivePicker =>
       bump({ ..state, picker: Some(PickerTarget::Intensive), })
+    OpenCataloguePicker => bump({ ..state, picker: Some(PickerTarget::All), })
     ClosePicker => bump({ ..state, picker: None, })
     UpdateCatalogueQuery(query~) => bump({ ..state, catalogue_query: query, })
     IncreaseVisibleDays =>
@@ -624,6 +627,7 @@ pub fn PlannerState::picker_entries(
           @tanikun-domain.OfferingSchedule::Intensive(_) => true
           _ => false
         }
+      Some(PickerTarget::All) => true
       None => false
     }
     if matches {
