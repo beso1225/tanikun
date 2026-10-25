@@ -176,43 +176,51 @@ fn range_controls(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
-  div(class="flex items-center gap-1 rounded-md bg-canvas p-0.5 text-xs", [
-    button(
-      id="remove-day",
-      title="表示する曜日を減らす",
-      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-      disabled=state.visible_days <= 5,
-      on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
-      "-",
-    ),
-    span(class="min-w-6 text-center text-ink", "\{state.visible_days}日"),
-    button(
-      id="add-day",
-      title="表示する曜日を増やす",
-      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-      disabled=state.visible_days >= 7,
-      on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
-      "+",
-    ),
-    span(class="px-1 text-rule", "/"),
-    button(
-      id="remove-period",
-      title="表示する時限を減らす",
-      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-      disabled=state.visible_periods <= 6,
-      on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
-      "-",
-    ),
-    span(class="min-w-6 text-center text-ink", "\{state.visible_periods}限"),
-    button(
-      id="add-period",
-      title="表示する時限を増やす",
-      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-      disabled=state.visible_periods >= 10,
-      on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
-      "+",
-    ),
-  ])
+  div(
+    attrs=@html.Attrs::build().role("group").aria_label("表示範囲"),
+    class="flex items-center gap-1 rounded-md bg-canvas p-0.5 text-xs",
+    [
+      button(
+        id="remove-day",
+        title="表示する曜日を減らす",
+        attrs=@html.Attrs::build().aria_label("表示する曜日を減らす"),
+        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
+        disabled=state.visible_days <= 5,
+        on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
+        "-",
+      ),
+      span(class="min-w-6 text-center text-ink", "\{state.visible_days}日"),
+      button(
+        id="add-day",
+        title="表示する曜日を増やす",
+        attrs=@html.Attrs::build().aria_label("表示する曜日を増やす"),
+        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
+        disabled=state.visible_days >= 7,
+        on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
+        "+",
+      ),
+      span(class="px-1 text-rule", "/"),
+      button(
+        id="remove-period",
+        title="表示する時限を減らす",
+        attrs=@html.Attrs::build().aria_label("表示する時限を減らす"),
+        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
+        disabled=state.visible_periods <= 6,
+        on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
+        "-",
+      ),
+      span(class="min-w-6 text-center text-ink", "\{state.visible_periods}限"),
+      button(
+        id="add-period",
+        title="表示する時限を増やす",
+        attrs=@html.Attrs::build().aria_label("表示する時限を増やす"),
+        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
+        disabled=state.visible_periods >= 10,
+        on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
+        "+",
+      ),
+    ],
+  )
 }
 
 ///|
@@ -225,7 +233,7 @@ fn timetable_grid(
   let header : Array[Html] = [
     th(
       scope=@html.Scope::Col,
-      class="w-12 border-b border-rule bg-canvas px-3 py-2 text-left text-xs font-medium text-muted",
+      class="w-8 border-b border-rule bg-canvas px-1 py-2 text-left text-xs font-medium text-muted sm:w-12 sm:px-3",
       "時限",
     ),
   ]
@@ -233,7 +241,7 @@ fn timetable_grid(
     header.push(
       th(
         scope=@html.Scope::Col,
-        class="border-b border-rule bg-canvas px-3 py-2 text-left text-xs font-medium text-muted",
+        class="border-b border-rule bg-canvas px-1 py-2 text-left text-xs font-medium text-muted sm:px-3",
         day_label(day),
       ),
     )
@@ -243,37 +251,37 @@ fn timetable_grid(
     let cells : Array[Html] = [
       th(
         scope=@html.Scope::Row,
-        class="w-12 border-b border-rule px-3 py-2 text-xs font-normal text-muted",
+        class="w-8 border-b border-rule px-1 py-2 text-xs font-normal text-muted sm:w-12 sm:px-3",
         "\{period}",
       ),
     ]
     for day in days {
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
-          td(class="h-16 border-b border-rule p-1.5 align-top", [
+          td(class="h-20 border-b border-rule p-1 align-top sm:h-16 sm:p-1.5", [
             button(
               id="open-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-              class="flex h-full w-full items-start justify-start rounded-md bg-primary-soft px-2 py-1.5 text-left hover:bg-primary-soft/80",
+              class="flex h-full w-full items-start justify-start rounded-md bg-primary-soft px-1 py-1 text-left hover:bg-primary-soft/80 sm:px-2 sm:py-1.5",
               on_click=emit(
                 @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
               ),
               span(
-                class="block break-words text-sm font-medium text-ink",
+                class="block break-words text-xs font-medium text-ink sm:text-sm",
                 block.course_name,
               ),
             ),
           ])
         None =>
-          td(class="h-16 border-b border-rule p-0 align-middle", [
+          td(class="h-20 border-b border-rule p-0 align-middle sm:h-16", [
             button(
               id=slot_id(day, period),
               title="\{day_label(day)}\{period}限に科目を追加",
-              class="h-full w-full bg-transparent p-0 hover:bg-primary-soft/40",
-              on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
-              span(
-                class="sr-only",
+              attrs=@html.Attrs::build().aria_label(
                 "\{day_label(day)}\{period}限に科目を追加",
               ),
+              class="h-full w-full bg-transparent p-0 hover:bg-primary-soft/40",
+              on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
+              ([] : Array[Html]),
             ),
           ])
       }
@@ -283,19 +291,17 @@ fn timetable_grid(
   }
   let hidden = state.hidden_scheduled_block_count(state.selected_term)
   let children : Array[Html] = [
-    div(class="mt-4 overflow-hidden rounded-lg border border-rule bg-paper", [
-      div(
-        id="timetable-scroll",
-        class="overflow-x-auto overflow-y-hidden lg:overflow-visible",
-        [
-          table(
-            id="timetable",
-            class="w-full min-w-[44rem] table-fixed border-separate border-spacing-x-2 border-spacing-y-0 text-sm",
-            [thead(header), tbody(rows)],
-          ),
-        ],
-      ),
-    ]),
+    div(
+      id="timetable-scroll",
+      class="mt-4 overflow-visible rounded-lg border border-rule bg-paper",
+      [
+        table(
+          id="timetable",
+          class="w-full table-fixed border-separate border-spacing-x-1 border-spacing-y-0 text-sm sm:border-spacing-x-2",
+          [thead(header), tbody(rows)],
+        ),
+      ],
+    ),
   ]
   if hidden > 0 {
     children.push(
@@ -343,7 +349,7 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
       h2(class="text-sm font-semibold", "集中講義"),
       button(
         id="open-intensive-picker",
-        class="min-h-8 rounded-md px-2 text-xs text-primary hover:bg-primary-soft",
+        class="min-h-8 rounded-md px-2 text-xs text-primary-text hover:bg-primary-soft",
         on_click=emit(@app.PlannerMsg::OpenIntensivePicker),
         "追加",
       ),
@@ -385,7 +391,7 @@ fn picker_panel(
         let action = if entry.enrolled {
           button(
             id="remove-picker-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm text-muted hover:bg-canvas hover:text-danger",
+            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm text-muted hover:bg-canvas hover:text-danger-text",
             on_click=emit(
               @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
             ),
@@ -394,7 +400,7 @@ fn picker_panel(
         } else {
           button(
             id="add-offering-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm font-medium text-primary hover:bg-primary-soft",
+            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm font-medium text-primary-text hover:bg-primary-soft",
             on_click=emit(
               @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
             ),
@@ -447,12 +453,12 @@ fn picker_panel(
                 [
                   h2(
                     id="picker-title",
-                    class="text-[17px] font-semibold",
+                    class="text-[1.0625rem] font-semibold",
                     picker_label(target),
                   ),
                   button(
                     id="close-picker",
-                    class="min-h-11 rounded-md px-2 text-sm text-primary hover:bg-primary-soft",
+                    class="min-h-11 rounded-md px-2 text-sm text-ink hover:bg-primary-soft",
                     attrs=@html.Attrs::build().data_set("dialog-close", "true"),
                     on_click=emit(@app.PlannerMsg::ClosePicker),
                     "完了",
@@ -522,12 +528,12 @@ fn course_detail(
                         [
                           h2(
                             id="course-detail-title",
-                            class="text-[17px] font-semibold",
+                            class="text-[1.0625rem] font-semibold",
                             course.name,
                           ),
                           button(
                             id="close-detail",
-                            class="min-h-11 rounded-md px-2 text-sm text-primary hover:bg-primary-soft",
+                            class="min-h-11 rounded-md px-2 text-sm text-ink hover:bg-primary-soft",
                             attrs=@html.Attrs::build().data_set(
                               "dialog-close", "true",
                             ),
@@ -546,7 +552,7 @@ fn course_detail(
                         [
                           button(
                             id="remove-detail",
-                            class="min-h-11 rounded-md px-3 text-sm text-danger hover:bg-danger/10",
+                            class="min-h-11 rounded-md px-3 text-sm text-danger-text hover:bg-danger/10",
                             on_click=emit(
                               @app.PlannerMsg::RemoveEnrollment(offering_id~),
                             ),
@@ -581,7 +587,7 @@ fn planner_view(
     header(
       class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-rule bg-paper px-4",
       [
-        h2(class="text-[17px] font-semibold", state.selected_term.label()),
+        h2(class="text-[1.0625rem] font-semibold", state.selected_term.label()),
         div(class="flex items-center gap-2", [
           range_controls(state, emit),
           button(
@@ -606,7 +612,7 @@ fn planner_view(
       content.push(
         p(
           id="planner-error",
-          class="mx-4 mb-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger",
+          class="mx-4 mb-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
           error.message,
         ),
       )

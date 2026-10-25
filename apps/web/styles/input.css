@@ -6,10 +6,11 @@
   --color-ink: #1d1d1f;
   --color-primary: #007aff;
   --color-primary-soft: #e8f1ff;
-  --color-accent: #ff9500;
+  --color-primary-text: #0062cc;
   --color-rule: #d2d2d7;
   --color-muted: #6e6e73;
   --color-danger: #ff3b30;
+  --color-danger-text: #d70015;
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans",
     "Yu Gothic", "Noto Sans JP", sans-serif;
@@ -54,10 +55,11 @@
       --color-ink: #f5f5f7;
       --color-primary: #0a84ff;
       --color-primary-soft: #0a2540;
-      --color-accent: #ff9f0a;
+      --color-primary-text: #409cff;
       --color-rule: #3a3a3c;
       --color-muted: #aeaeb2;
       --color-danger: #ff453a;
+      --color-danger-text: #ff6961;
     }
   }
 

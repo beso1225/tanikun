@@ -90,6 +90,21 @@ test(
 
     assert.equal(await page.getByText("5日", { exact: true }).count(), 1);
     assert.equal(await page.getByText("6限", { exact: true }).count(), 1);
+    assert.equal(
+      await page.getByRole("button", { name: "表示する曜日を減らす" }).count(),
+      1,
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(
+      (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
+    );
+    assert.equal(await page.locator("#timetable thead th").count(), 6);
+    const lastDayHeader = await page
+      .locator("#timetable thead th")
+      .last()
+      .evaluate((element) => element.getBoundingClientRect().right);
+    assert.ok(lastDayHeader <= 390);
+    await page.setViewportSize({ width: 1280, height: 720 });
     assert.equal(await page.locator("#timetable thead th").count(), 6);
     const headers = await page.locator("#timetable thead th").allTextContents();
     assert.deepEqual(headers, ["時限", "月", "火", "水", "木", "金"]);
@@ -245,7 +260,7 @@ test(
         color: getComputedStyle(element).color,
         height: element.getBoundingClientRect().height,
       }));
-    assert.equal(addStyle.color, "rgb(0, 122, 255)");
+    assert.equal(addStyle.color, "rgb(0, 98, 204)");
     assert.ok(addStyle.height >= 40);
     await page.locator("#add-offering-phy102-s2").click();
     await page.locator("#picker").waitFor({ state: "detached" });
