@@ -55,7 +55,7 @@ nix flake check path:.
 
 `just test` runs the MoonBit tests for domain, requirements, API, and Web, plus
 the JavaScript export test. `nix flake check path:.` runs the sandboxed pure,
-Web, and release checks. Linux CI runs that check on every pull request.
+API, Web, and release checks. Linux CI runs that check on every pull request.
 
 ## Mutation evidence
 
@@ -87,4 +87,6 @@ deferred.
 - `nix flake check path:.` passes on Linux CI.
 - The golden fixture records the expected values.
 - The mutation baseline is documented.
-- Phase 1B closes after this evidence merges and Linux CI passes.
+
+Closing #19 and the Phase 1B milestone is the remaining step after this PR
+merges.
