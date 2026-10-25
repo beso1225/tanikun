@@ -15,7 +15,7 @@ not mix it with a feature or a behavior change.
 | MoonBit   | `nix/moonbit.nix` version, distribution hashes, core hash                                     |
 | Node.js   | `.node-version`, `.github/workflows/ci.yml` setup and cache key                               |
 | pnpm      | `package.json` `packageManager`, CI corepack step and cache key, `nix/packages.nix` `pnpm_12` |
-| Warren    | `nix/packages.nix` version, `justfile` `setup-web`                                            |
+| Warren    | `nix/packages.nix` version, `nix/mooncakes-lock.json` entry, `justfile` `setup-web`           |
 | mooncakes | `nix/mooncakes-lock.json`, `nix/mooncakes.nix`                                                |
 | turtles   | `justfile` `turtles_version`                                                                  |
 | nixpkgs   | `flake.lock`                                                                                  |
@@ -67,7 +67,8 @@ Do not install Node.js or pnpm globally to make a local command work.
 
 1. Update `nix/mooncakes-lock.json`.
 2. Keep the archive checksums.
-3. Update the Warren version in `nix/packages.nix` and `justfile` together.
+3. Update the Warren version in `nix/packages.nix`, `nix/mooncakes-lock.json`, and `justfile`
+   together.
 4. Build the closure:
 
 ```sh

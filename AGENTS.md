@@ -23,7 +23,7 @@ APIs, JavaScript FFI, persistence, or network code.
   child order, sort output by ID, and never depend on input array order.
 - Use `tanikun-moonbit-change` for behavior changes in the pure packages.
 - Use `tanikun-mutation-refresh` after changes that mutation testing scans.
-- Use `tanikun-docs-update` for README, docs, ADR, and AGENTS changes.
+- Use `tanikun-docs-update` for README, docs, ADR, AGENTS, and wording changes.
 - Use `tanikun-pr-review` for PR review and merge work.
 - Use `tanikun-nix-ci` when a CI check fails.
 - Use `tanikun-toolchain-update` for version or dependency pin changes.
