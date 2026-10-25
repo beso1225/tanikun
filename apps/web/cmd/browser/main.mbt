@@ -233,7 +233,7 @@ fn timetable_grid(
     header.push(
       th(
         scope=@html.Scope::Col,
-        class="border-b border-rule bg-canvas px-3 py-2 text-left text-xs font-medium text-muted",
+        class="border-b border-rule bg-canvas px-3 py-2 text-center text-xs font-medium text-muted",
         day_label(day),
       ),
     )
