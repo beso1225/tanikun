@@ -42,7 +42,8 @@
     background: var(--color-primary-soft);
   }
 
-  body:has(#picker) {
+  body:has(#picker),
+  body:has(#course-detail-dialog) {
     overflow: hidden;
   }
 

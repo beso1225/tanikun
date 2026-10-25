@@ -630,3 +630,27 @@ test "adding from the intensive picker keeps it open" {
   }
   assert_true(state.picker_entries()[0].enrolled)
 }
+
+///|
+test "removing an opened offering closes its detail" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectOffering(
+      offering_id=planner_offering_id("offering-1"),
+    ),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::RemoveEnrollment(
+      offering_id=planner_offering_id("offering-1"),
+    ),
+  )
+  match state.selected_offering {
+    None => ()
+    Some(_) => fail("detail should close after removing the offering")
+  }
+}

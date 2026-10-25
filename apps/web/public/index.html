@@ -11,22 +11,26 @@
     <div id="app"></div>
     <script>
       (() => {
-        const picker = () => document.querySelector("#picker");
+        const dialog = () =>
+          document.querySelector("#picker") ??
+          document.querySelector("#course-detail-dialog");
         let returnFocus = null;
         document.addEventListener(
           "click",
           (event) => {
-            if (!picker() && event.target.closest("button")) {
+            if (!dialog() && event.target.closest("button")) {
               returnFocus = event.target.closest("button");
             }
           },
           true,
         );
         new MutationObserver(() => {
-          const panel = picker();
+          const panel = dialog();
           if (panel && !panel.contains(document.activeElement)) {
             (
-              panel.querySelector("input") ?? panel.querySelector("button")
+              panel.querySelector("input") ??
+              panel.querySelector("[data-dialog-close]") ??
+              panel.querySelector("button")
             )?.focus();
           }
           if (panel || !returnFocus) return;
@@ -39,17 +43,17 @@
         });
         const focusable = () =>
           Array.from(
-            picker()?.querySelectorAll(
+            dialog()?.querySelectorAll(
               'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
             ) ?? [],
           );
         document.addEventListener(
           "keydown",
           (event) => {
-            if (!picker()) return;
+            if (!dialog()) return;
             if (event.key === "Escape") {
               event.preventDefault();
-              document.querySelector("#close-picker")?.click();
+              dialog().querySelector("[data-dialog-close]")?.click();
               return;
             }
             if (event.key !== "Tab") return;

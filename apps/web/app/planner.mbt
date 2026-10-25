@@ -323,6 +323,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({
         ..state,
         selected_term: term,
+        selected_offering: None,
         error: None,
         picker: None,
         catalogue_query: "",
@@ -396,7 +397,7 @@ fn with_error(state : PlannerState, error : UiError) -> PlannerState {
 }
 
 ///|
-fn find_offering(
+pub fn find_offering(
   offerings : Array[@tanikun-domain.CourseOffering],
   id : @tanikun-domain.OfferingId,
 ) -> @tanikun-domain.CourseOffering? {
@@ -545,7 +546,7 @@ fn remove_enrollment(
       ),
     )
   }
-  bump({ ..state, enrollments, error: None, })
+  bump({ ..state, enrollments, selected_offering: None, error: None, })
 }
 
 ///|
@@ -577,7 +578,7 @@ pub struct OffGridEntry {
 }
 
 ///|
-fn find_course(
+pub fn find_course(
   catalogue : Array[@tanikun-domain.Course],
   id : @tanikun-domain.CourseId,
 ) -> @tanikun-domain.Course? {

@@ -155,6 +155,10 @@ test(
     await page.locator("#catalogue-search").fill("Physics");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
+    assert.equal(
+      await page.locator("#slot-1-2").getByText("+", { exact: true }).count(),
+      0,
+    );
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
     await page.waitForFunction(
@@ -238,9 +242,20 @@ test(
       .getByText("Physics II", { exact: true })
       .waitFor();
     await page
-      .locator('#timetable button[id^="remove-phy102-s2"]')
-      .first()
+      .locator("#timetable")
+      .getByText("Physics II", { exact: true })
       .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.equal(
+      await page.locator("#course-detail-dialog").getAttribute("role"),
+      "dialog",
+    );
+    assert.equal(
+      await page.locator("#course-detail-dialog").getAttribute("aria-modal"),
+      "true",
+    );
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -272,7 +287,10 @@ test(
       .waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
-    await page.locator("#remove-phy501-w").click();
+    await page.locator("#off-grid").getByText("Winter Workshop").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
     await page.getByText("集中講義はありません").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy501-w").click();

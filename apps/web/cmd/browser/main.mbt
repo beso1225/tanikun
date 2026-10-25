@@ -251,25 +251,16 @@ fn timetable_grid(
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
           td(class="h-16 border-b border-rule p-1.5 align-top", [
-            div(
-              class="relative h-full rounded-md bg-primary-soft px-2 py-1.5",
-              [
-                button(
-                  id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-                  title="削除",
-                  class="absolute -right-1 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-paper text-sm leading-none text-muted ring-1 ring-rule hover:text-danger",
-                  on_click=emit(
-                    @app.PlannerMsg::RemoveEnrollment(
-                      offering_id=block.offering_id,
-                    ),
-                  ),
-                  [span("×"), span(class="sr-only", "削除")],
-                ),
-                span(
-                  class="block break-words pr-4 text-sm font-medium text-ink",
-                  block.course_name,
-                ),
-              ],
+            button(
+              id="open-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+              class="flex h-full w-full items-start justify-start rounded-md bg-primary-soft px-2 py-1.5 text-left hover:bg-primary-soft/80",
+              on_click=emit(
+                @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
+              ),
+              span(
+                class="block break-words text-sm font-medium text-ink",
+                block.course_name,
+              ),
             ),
           ])
         None =>
@@ -277,15 +268,12 @@ fn timetable_grid(
             button(
               id=slot_id(day, period),
               title="\{day_label(day)}\{period}限に科目を追加",
-              class="flex h-full w-full items-center justify-center bg-transparent p-0 text-sm text-primary opacity-0 hover:bg-primary-soft/50 hover:opacity-100 focus:opacity-100",
+              class="h-full w-full bg-transparent p-0 hover:bg-primary-soft/40",
               on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
-              [
-                span(attrs=@html.Attrs::build().aria_hidden("true"), "+"),
-                span(
-                  class="sr-only",
-                  "\{day_label(day)}\{period}限に科目を追加",
-                ),
-              ],
+              span(
+                class="sr-only",
+                "\{day_label(day)}\{period}限に科目を追加",
+              ),
             ),
           ])
       }
@@ -323,19 +311,14 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   let items : Array[Html] = []
   for entry in entries {
     items.push(
-      div(
-        class="relative min-h-12 w-full rounded-lg bg-primary-soft px-3 py-2",
+      button(
+        id="open-detail-\{entry.offering_id.value}",
+        class="flex min-h-12 w-full items-start justify-start rounded-lg bg-primary-soft px-3 py-2 text-left hover:bg-primary-soft/80",
+        on_click=emit(
+          @app.PlannerMsg::SelectOffering(offering_id=entry.offering_id),
+        ),
         [
-          button(
-            id="remove-\{entry.offering_id.value}",
-            title="削除",
-            class="absolute -right-1 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-paper text-sm leading-none text-muted ring-1 ring-rule hover:text-danger",
-            on_click=emit(
-              @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
-            ),
-            [span("×"), span(class="sr-only", "削除")],
-          ),
-          div(class="min-w-0 pr-6", [
+          div(class="min-w-0", [
             p(class="truncate text-sm font-medium text-ink", entry.course_name),
             p(
               class="mt-0.5 text-xs text-muted",
@@ -466,6 +449,7 @@ fn picker_panel(
                   button(
                     id="close-picker",
                     class="min-h-11 rounded-md px-2 text-sm text-primary hover:bg-primary-soft",
+                    attrs=@html.Attrs::build().data_set("dialog-close", "true"),
                     on_click=emit(@app.PlannerMsg::ClosePicker),
                     "完了",
                   ),
@@ -494,6 +478,85 @@ fn picker_panel(
         ],
       )
     }
+  }
+}
+
+///|
+fn course_detail(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  match state.selected_offering {
+    None => div(([] : Array[Html]))
+    Some(offering_id) =>
+      match @app.find_offering(state.offerings, offering_id) {
+        None => div(([] : Array[Html]))
+        Some(offering) =>
+          match @app.find_course(state.catalogue, offering.course_id) {
+            None => div(([] : Array[Html]))
+            Some(course) => {
+              let detail = "\{credits_label(course.credits)}単位 · \{schedule_label(offering.schedule())} · \{slots_label(offering.slots())}"
+              div(
+                class="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4",
+                [
+                  div(
+                    id="detail-backdrop",
+                    class="absolute inset-0",
+                    on_click=emit(@app.PlannerMsg::ClearOfferingSelection),
+                    ([] : Array[Html]),
+                  ),
+                  section(
+                    id="course-detail-dialog",
+                    class="relative z-10 w-full max-w-sm overflow-hidden rounded-xl bg-paper shadow-2xl",
+                    attrs=@html.Attrs::build()
+                      .role("dialog")
+                      .aria_modal("true")
+                      .aria_labelledby("course-detail-title"),
+                    [
+                      div(
+                        class="flex min-h-12 items-center justify-between border-b border-rule px-4",
+                        [
+                          h2(
+                            id="course-detail-title",
+                            class="text-[17px] font-semibold",
+                            course.name,
+                          ),
+                          button(
+                            id="close-detail",
+                            class="min-h-11 rounded-md px-2 text-sm text-primary hover:bg-primary-soft",
+                            attrs=@html.Attrs::build().data_set(
+                              "dialog-close", "true",
+                            ),
+                            on_click=emit(
+                              @app.PlannerMsg::ClearOfferingSelection,
+                            ),
+                            "完了",
+                          ),
+                        ],
+                      ),
+                      div(class="px-4 py-4", [
+                        p(class="text-sm text-muted", detail),
+                      ]),
+                      div(
+                        class="flex justify-end border-t border-rule px-4 py-2",
+                        [
+                          button(
+                            id="remove-detail",
+                            class="min-h-11 rounded-md px-3 text-sm text-danger hover:bg-danger/10",
+                            on_click=emit(
+                              @app.PlannerMsg::RemoveEnrollment(offering_id~),
+                            ),
+                            "履修から削除",
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              )
+            }
+          }
+      }
   }
 }
 
@@ -557,6 +620,7 @@ fn planner_view(
       content,
     ),
     picker_panel(state, emit),
+    course_detail(state, emit),
   ])
 }
 
