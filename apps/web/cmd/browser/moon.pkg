@@ -1,4 +1,5 @@
 import {
+  "beso1225/tanikun-domain",
   "beso1225/tanikun-web/app",
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/html",
