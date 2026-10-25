@@ -8,8 +8,8 @@
 /// - categorized, uncategorized, and retired courses;
 /// - an override active after a pass, and an override on an in-progress course.
 ///
-/// Explicit corrections are deferred: `correct_enrollment` is not implemented
-/// in Phase 1 yet, so this fixture will be extended when it lands.
+/// The fixture also covers one explicit correction, replacing an in-progress
+/// enrollment with a passed one.
 ///
 /// Expected golden values:
 ///
