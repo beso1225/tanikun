@@ -367,3 +367,75 @@ test "a year-long offering conflicts with S1 and A1 slots" {
     None => fail("expected a year-long conflict in A1")
   }
 }
+
+///|
+fn planner_intensive(
+  id : String,
+  course : @tanikun-domain.Course,
+  semester : @tanikun-domain.Semester,
+) -> @tanikun-domain.CourseOffering raise Error {
+  let year = planner_expect_ok(@tanikun-domain.AcademicYear::new(2026))
+  planner_expect_ok(
+    @tanikun-domain.CourseOffering::new(
+      planner_offering_id(id),
+      course.id,
+      year,
+      @tanikun-domain.OfferingSchedule::Intensive(semester~),
+      @tanikun-domain.OfferingStatus::Offered,
+      [],
+    ),
+  )
+}
+
+///|
+test "visible range starts at five days and six periods and is bounded" {
+  let state = planner_state()
+  assert_eq(state.visible_days, 5)
+  assert_eq(state.visible_periods, 6)
+  let state = @app.update_planner(state, @app.PlannerMsg::DecreaseVisibleDays)
+  assert_eq(state.visible_days, 5)
+  let state = @app.update_planner(state, @app.PlannerMsg::IncreaseVisibleDays)
+  assert_eq(state.visible_days, 6)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::IncreaseVisiblePeriods,
+  )
+  assert_eq(state.visible_periods, 7)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::DecreaseVisiblePeriods,
+  )
+  assert_eq(state.visible_periods, 6)
+}
+
+///|
+test "S and A intensives stay off-grid in their semester terms" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_intensive("intensive-s", course, @tanikun-domain.Semester::S),
+  )
+  state.offerings.push(
+    planner_intensive("intensive-a", course, @tanikun-domain.Semester::A),
+  )
+  state.offerings.push(
+    planner_intensive("intensive-w", course, @tanikun-domain.Semester::W),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("offering-1")),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("intensive-s")),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("intensive-a")),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("intensive-w")),
+  )
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::S1).length(), 1)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::S2).length(), 1)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::A1).length(), 1)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::W).length(), 1)
+  assert_eq(state.scheduled_blocks(@app.PlannerTerm::S1).length(), 1)
+}

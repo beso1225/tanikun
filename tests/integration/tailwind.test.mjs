@@ -22,9 +22,9 @@ test("Tailwind detects MoonBit utilities without scanning unrelated tests", asyn
     { stdio: "pipe" },
   );
   const css = await readFile(output, "utf8");
-  assert.match(css, /\.max-w-2xl\{/);
-  assert.match(css, /\.gap-3\{/);
-  assert.match(css, /\.bg-canvas\{/);
+  assert.match(css, /\.max-w-6xl\{/);
+  assert.match(css, /\.gap-2\{/);
+  assert.match(css, /\.p-6\{/);
   // This candidate exists only outside the Web sources and must not leak in.
   assert.ok(!css.includes(".w-\\[137px\\]"));
 });

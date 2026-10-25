@@ -237,7 +237,20 @@ pub struct PlannerState {
   selected_term : PlannerTerm
   selected_offering : @tanikun-domain.OfferingId?
   error : UiError?
+  visible_days : Int
+  visible_periods : Int
+  revision : Int
 }
+
+///|
+/// Equality drives the Rabbita view refresh. Every state change increments the
+/// revision, so the large nested planner state does not need structural Eq.
+pub impl Eq for PlannerState with fn equal(self, other) {
+  self.revision == other.revision
+}
+
+///|
+pub extend PlannerState with Eq::{not_equal, equal}
 
 ///|
 pub fn PlannerState::new(
@@ -264,6 +277,9 @@ pub fn PlannerState::new(
     selected_term: S1,
     selected_offering: None,
     error: None,
+    visible_days: 5,
+    visible_periods: 6,
+    revision: 0,
   }
 }
 
@@ -276,33 +292,67 @@ pub(all) enum PlannerMsg {
   ClearOfferingSelection
   AddOffering(offering_id~ : @tanikun-domain.OfferingId)
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
+  IncreaseVisibleDays
+  DecreaseVisibleDays
+  IncreaseVisiblePeriods
+  DecreaseVisiblePeriods
   DismissError
 }
 
 ///|
 pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
   match msg {
-    SelectTerm(term~) => { ..state, selected_term: term, error: None, }
+    SelectTerm(term~) => bump({ ..state, selected_term: term, error: None, })
     SelectOffering(offering_id~) =>
       match find_offering(state.offerings, offering_id) {
         Some(_) =>
-          { ..state, selected_offering: Some(offering_id), error: None, }
+          bump({ ..state, selected_offering: Some(offering_id), error: None, })
         None =>
           with_error(
             state,
             TimetableError::UnknownOffering(offering_id~).to_ui(),
           )
       }
-    ClearOfferingSelection => { ..state, selected_offering: None, error: None, }
+    ClearOfferingSelection =>
+      bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
-    DismissError => { ..state, error: None, }
+    IncreaseVisibleDays =>
+      if state.visible_days < 7 {
+        bump({ ..state, visible_days: state.visible_days + 1, })
+      } else {
+        state
+      }
+    DecreaseVisibleDays =>
+      if state.visible_days > 5 {
+        bump({ ..state, visible_days: state.visible_days - 1, })
+      } else {
+        state
+      }
+    IncreaseVisiblePeriods =>
+      if state.visible_periods < 10 {
+        bump({ ..state, visible_periods: state.visible_periods + 1, })
+      } else {
+        state
+      }
+    DecreaseVisiblePeriods =>
+      if state.visible_periods > 6 {
+        bump({ ..state, visible_periods: state.visible_periods - 1, })
+      } else {
+        state
+      }
+    DismissError => bump({ ..state, error: None, })
   }
 }
 
 ///|
+fn bump(state : PlannerState) -> PlannerState {
+  { ..state, revision: state.revision + 1, }
+}
+
+///|
 fn with_error(state : PlannerState, error : UiError) -> PlannerState {
-  { ..state, error: Some(error), }
+  bump({ ..state, error: Some(error), })
 }
 
 ///|
@@ -424,7 +474,7 @@ fn add_offering(
   }
   let enrollments = state.enrollments.copy()
   enrollments.push(@tanikun-domain.Enrollment::planned(id))
-  { ..state, enrollments, selected_offering: None, error: None, }
+  bump({ ..state, enrollments, selected_offering: None, error: None, })
 }
 
 ///|
@@ -451,5 +501,145 @@ fn remove_enrollment(
       ),
     )
   }
-  { ..state, enrollments, error: None, }
+  bump({ ..state, enrollments, error: None, })
+}
+
+///|
+/// One scheduled course block in the selected term.
+pub struct ScheduledBlock {
+  offering_id : @tanikun-domain.OfferingId
+  course_name : String
+  day : @tanikun-domain.DayOfWeek
+  period : @tanikun-domain.Period
+}
+
+///|
+/// One intensive offering in the selected term's off-grid list.
+pub struct OffGridEntry {
+  offering_id : @tanikun-domain.OfferingId
+  course_name : String
+  credits : @tanikun-domain.Credits
+}
+
+///|
+fn find_course(
+  catalogue : Array[@tanikun-domain.Course],
+  id : @tanikun-domain.CourseId,
+) -> @tanikun-domain.Course? {
+  for course in catalogue {
+    if course.id == id {
+      return Some(course)
+    }
+  }
+  None
+}
+
+///|
+pub fn PlannerState::scheduled_blocks(
+  self : PlannerState,
+  term : PlannerTerm,
+) -> Array[ScheduledBlock] {
+  let blocks : Array[ScheduledBlock] = []
+  for enrollment in self.enrollments {
+    match find_offering(self.offerings, enrollment.offering_id) {
+      Some(offering) =>
+        if offering_occupies_term(offering, term) {
+          match find_course(self.catalogue, offering.course_id) {
+            Some(course) =>
+              for slot in offering.slots() {
+                blocks.push({
+                  offering_id: offering.id,
+                  course_name: course.name,
+                  day: slot.day,
+                  period: slot.period,
+                })
+              }
+            None => ()
+          }
+        }
+      None => ()
+    }
+  }
+  blocks
+}
+
+///|
+pub fn PlannerState::off_grid_entries(
+  self : PlannerState,
+  term : PlannerTerm,
+) -> Array[OffGridEntry] {
+  let entries : Array[OffGridEntry] = []
+  for enrollment in self.enrollments {
+    match find_offering(self.offerings, enrollment.offering_id) {
+      Some(offering) =>
+        if offering_occupies_term(offering, term) {
+          match offering.schedule() {
+            @tanikun-domain.OfferingSchedule::Intensive(_) =>
+              match find_course(self.catalogue, offering.course_id) {
+                Some(course) =>
+                  entries.push({
+                    offering_id: offering.id,
+                    course_name: course.name,
+                    credits: course.credits,
+                  })
+                None => ()
+              }
+            _ => ()
+          }
+        }
+      None => ()
+    }
+  }
+  entries
+}
+
+///|
+pub fn PlannerState::visible_day_values(
+  self : PlannerState,
+) -> Array[@tanikun-domain.DayOfWeek] {
+  let days = [
+    @tanikun-domain.DayOfWeek::Monday,
+    @tanikun-domain.DayOfWeek::Tuesday,
+    @tanikun-domain.DayOfWeek::Wednesday,
+    @tanikun-domain.DayOfWeek::Thursday,
+    @tanikun-domain.DayOfWeek::Friday,
+    @tanikun-domain.DayOfWeek::Saturday,
+    @tanikun-domain.DayOfWeek::Sunday,
+  ]
+  let visible : Array[@tanikun-domain.DayOfWeek] = []
+  for index in 0..<self.visible_days {
+    visible.push(days[index])
+  }
+  visible
+}
+
+///|
+pub fn PlannerState::visible_period_values(self : PlannerState) -> Array[Int] {
+  let periods : Array[Int] = []
+  for period in 1..<=self.visible_periods {
+    periods.push(period)
+  }
+  periods
+}
+
+///|
+pub fn PlannerState::is_visible_slot(
+  self : PlannerState,
+  day : @tanikun-domain.DayOfWeek,
+  period : @tanikun-domain.Period,
+) -> Bool {
+  day_rank(day) < self.visible_days && period.value <= self.visible_periods
+}
+
+///|
+fn day_rank(day : @tanikun-domain.DayOfWeek) -> Int {
+  match day {
+    @tanikun-domain.DayOfWeek::Monday => 0
+    @tanikun-domain.DayOfWeek::Tuesday => 1
+    @tanikun-domain.DayOfWeek::Wednesday => 2
+    @tanikun-domain.DayOfWeek::Thursday => 3
+    @tanikun-domain.DayOfWeek::Friday => 4
+    @tanikun-domain.DayOfWeek::Saturday => 5
+    @tanikun-domain.DayOfWeek::Sunday => 6
+  }
 }

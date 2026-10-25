@@ -60,7 +60,7 @@ function startStaticServer(root) {
 }
 
 test(
-  "built page renders the counter and Tailwind styles",
+  "built page renders the five-term planner and resizes",
   { timeout: 60_000 },
   async (t) => {
     const { server, origin } = await startStaticServer(dist);
@@ -81,28 +81,44 @@ test(
     await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
     assert.equal(await page.title(), "応物単位くん");
 
-    assert.equal(await page.getByRole("button").count(), 2);
-    await page.getByText("カウント: 0", { exact: true }).waitFor();
+    assert.equal(await page.locator("nav button").count(), 5);
+    assert.equal(await page.locator("#term-S1").count(), 1);
+    assert.equal(await page.locator("#term-S2").count(), 1);
+    assert.equal(await page.locator("#term-A1").count(), 1);
+    assert.equal(await page.locator("#term-A2").count(), 1);
+    assert.equal(await page.locator("#term-W").count(), 1);
 
-    const controls = page.locator("div.mt-6");
-    assert.deepEqual(
-      await controls.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { display: style.display, gap: style.gap };
-      }),
-      { display: "flex", gap: "12px" },
-    );
+    assert.equal(await page.getByText("5日", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("6限", { exact: true }).count(), 1);
+    assert.equal(await page.locator("#timetable thead th").count(), 6);
+    const headers = await page.locator("#timetable thead th").allTextContents();
+    assert.deepEqual(headers, ["時限", "月", "火", "水", "木", "金"]);
+    await page.getByText("Physics I", { exact: true }).waitFor();
+    await page.getByText("Physics Lab", { exact: true }).waitFor();
+    await page.locator("#off-grid").getByText("Seminar S").waitFor();
+
+    await page.locator("#add-day").click();
+    await page.getByText("6日", { exact: true }).waitFor();
+    assert.equal(await page.locator("#timetable thead th").count(), 7);
     assert.equal(
-      await page
-        .locator("body")
-        .evaluate((element) => getComputedStyle(element).backgroundColor),
-      "rgb(246, 248, 244)",
+      await page.locator("#timetable thead th").last().textContent(),
+      "土",
     );
 
-    await page.getByRole("button", { name: "増やす" }).click();
-    await page.getByText("カウント: 1", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "リセット" }).click();
-    await page.getByText("カウント: 0", { exact: true }).waitFor();
+    await page.locator("#add-period").click();
+    await page.getByText("7限", { exact: true }).waitFor();
+    assert.equal(await page.locator("#timetable tbody tr").count(), 7);
+
+    await page.locator("#term-A1").click();
+    await page.locator("#off-grid").getByText("Seminar A").waitFor();
+    await page.getByText("Physics Lab", { exact: true }).waitFor();
+
+    await page.locator("#term-W").click();
+    await page
+      .getByText("Wは集中講義のみを扱います", { exact: true })
+      .waitFor();
+    assert.equal(await page.locator("#timetable").count(), 0);
+    await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
 
     assert.deepEqual(errors, []);
   },
