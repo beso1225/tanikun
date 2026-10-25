@@ -3,10 +3,10 @@
 Tanikun is a local-first web app for planning university credits and graduation
 requirements. It is built with MoonBit.
 
-Phase 1 implements the pure domain model, credit summaries, and requirement
-evaluation. Phase 1 closeout is tracked in
-[issue #19](https://github.com/beso1225/tanikun/issues/19). Later phases will add
-the UI, persistence, and sync.
+Phase 1 is complete. It implements the pure domain model, credit summaries, and
+requirement evaluation. The results are in
+[docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md). Later phases will add the UI,
+persistence, and sync.
 
 **日本語版:** [README.ja.md](README.ja.md)
 
@@ -14,8 +14,8 @@ the UI, persistence, and sync.
 
 - Phase 0: build, Worker, and browser-test foundation. The evidence is in
   [docs/PHASE_0.md](docs/PHASE_0.md), which is a historical record.
-- Phase 1: pure domain and requirement evaluation. The contract and current
-  behavior are in [docs/PHASE_1.md](docs/PHASE_1.md).
+- Phase 1: complete. The contract is in [docs/PHASE_1.md](docs/PHASE_1.md),
+  and the evidence is in [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md).
 - Later phases: UI, persistence, and sync. Not started.
 
 ## Stack
@@ -74,7 +74,8 @@ See [docs/MUTATION.md](docs/MUTATION.md) for the baseline and accepted mutants.
 ## Docs
 
 - [Documentation index](docs/README.md)
-- [Phase 1 contract and implementation](docs/PHASE_1.md)
+- [Phase 1 contract](docs/PHASE_1.md)
+- [Phase 1 results](docs/PHASE_1_RESULTS.md)
 - [Mutation testing](docs/MUTATION.md)
 - [Glossary](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)
