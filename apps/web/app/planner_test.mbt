@@ -594,3 +594,39 @@ test "opening a new picker resets the search query" {
   )
   assert_eq(state.catalogue_query, "")
 }
+
+///|
+test "adding from the all-courses picker keeps it open" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenCataloguePicker,
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  match state.picker {
+    Some(@app.PickerTarget::All) => ()
+    _ => fail("all-courses picker should stay open")
+  }
+  assert_true(state.picker_entries()[0].enrolled)
+}
+
+///|
+test "adding from the intensive picker keeps it open" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_intensive("intensive-s", course, @tanikun-domain.Semester::S),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("intensive-s")),
+  )
+  match state.picker {
+    Some(@app.PickerTarget::Intensive) => ()
+    _ => fail("intensive picker should stay open")
+  }
+  assert_true(state.picker_entries()[0].enrolled)
+}

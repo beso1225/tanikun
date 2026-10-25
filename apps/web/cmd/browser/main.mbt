@@ -347,17 +347,27 @@ fn picker_panel(
       let items : Array[Html] = []
       for entry in entries {
         let detail = "\{credits_label(entry.credits)}単位 / \{schedule_label(entry.schedule)} / \{slots_label(entry.slots)}"
+        let name_line : Array[Html] = [
+          p(class="min-w-0 text-sm font-medium", entry.course_name),
+        ]
+        if entry.enrolled {
+          name_line.push(
+            span(class="shrink-0 text-[11px] text-muted", "登録済み"),
+          )
+        }
         let action = if entry.enrolled {
           button(
-            id="enrolled-\{entry.offering_id.value}",
-            disabled=true,
-            class="min-h-11 shrink-0 border border-rule bg-canvas px-4 py-2 text-sm text-muted",
-            "登録済み",
+            id="remove-picker-\{entry.offering_id.value}",
+            class="min-h-11 min-w-20 shrink-0 border border-danger bg-canvas px-4 py-2 text-sm text-danger hover:bg-danger hover:text-white",
+            on_click=emit(
+              @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
+            ),
+            "削除",
           )
         } else {
           button(
             id="add-offering-\{entry.offering_id.value}",
-            class="min-h-11 shrink-0 border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-ink",
+            class="min-h-11 min-w-20 shrink-0 border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-ink",
             on_click=emit(
               @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
             ),
@@ -366,8 +376,11 @@ fn picker_panel(
         }
         items.push(
           div(class="flex items-start justify-between gap-4 py-3", [
-            div(class="min-w-0", [
-              p(class="text-sm font-medium", entry.course_name),
+            div(class="min-w-0 flex-1", [
+              div(
+                class="flex w-full items-baseline justify-between gap-2",
+                name_line,
+              ),
               p(class="mt-0.5 text-xs text-muted", detail),
             ]),
             action,

@@ -114,6 +114,9 @@ test(
     await page.locator("#off-grid").getByText("Seminar S").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy302-s").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#remove-picker-phy302-s").waitFor();
+    await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
 
@@ -134,6 +137,14 @@ test(
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
     await page.locator("#picker").getByText("Physics II").waitFor();
+    const enrolledBadgeXs = await page
+      .locator("#picker")
+      .getByText("登録済み")
+      .evaluateAll((badges) =>
+        badges.map((badge) => Math.round(badge.getBoundingClientRect().x)),
+      );
+    assert.ok(enrolledBadgeXs.length >= 2);
+    assert.equal(new Set(enrolledBadgeXs).size, 1);
     await page.locator("#catalogue-search").fill("Physics");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
@@ -151,6 +162,14 @@ test(
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#slot-1-2").click();
     await page.locator("#add-offering-phy102-s2").waitFor();
+    const addStyle = await page
+      .locator("#add-offering-phy102-s2")
+      .evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        height: element.getBoundingClientRect().height,
+      }));
+    assert.notEqual(addStyle.background, "rgba(0, 0, 0, 0)");
+    assert.ok(addStyle.height >= 40);
     await page.locator("#add-offering-phy102-s2").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page
@@ -161,16 +180,14 @@ test(
       .locator('#timetable button[id^="remove-phy102-s2"]')
       .first()
       .click();
-    await page.locator("#slot-1-2").click();
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#add-offering-phy102-s2").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#remove-picker-phy102-s2").waitFor();
+    await page.locator("#remove-picker-phy102-s2").click();
     await page.locator("#add-offering-phy102-s2").waitFor();
-    const addStyle = await page
-      .locator("#add-offering-phy102-s2")
-      .evaluate((element) => ({
-        background: getComputedStyle(element).backgroundColor,
-        height: element.getBoundingClientRect().height,
-      }));
-    assert.notEqual(addStyle.background, "rgba(0, 0, 0, 0)");
-    assert.ok(addStyle.height >= 40);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
@@ -198,8 +215,13 @@ test(
     await page.getByText("集中講義はありません").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy501-w").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#remove-picker-phy501-w").waitFor();
+    await page.locator("#remove-picker-phy501-w").click();
+    await page.locator("#add-offering-phy501-w").waitFor();
+    await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
-    await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
+    await page.getByText("集中講義はありません").waitFor();
 
     assert.deepEqual(errors, []);
   },
