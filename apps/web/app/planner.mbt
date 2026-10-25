@@ -238,6 +238,7 @@ pub struct PlannerState {
   selected_offering : @tanikun-domain.OfferingId?
   error : UiError?
   catalogue_query : String
+  picker : PickerTarget?
   visible_days : Int
   visible_periods : Int
   revision : Int
@@ -279,10 +280,18 @@ pub fn PlannerState::new(
     selected_offering: None,
     error: None,
     catalogue_query: "",
+    picker: None,
     visible_days: 5,
     visible_periods: 6,
     revision: 0,
   }
+}
+
+///|
+/// The slot or off-grid list that opened the catalogue picker.
+pub(all) enum PickerTarget {
+  Slot(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
+  Intensive
 }
 
 ///|
@@ -294,6 +303,9 @@ pub(all) enum PlannerMsg {
   ClearOfferingSelection
   AddOffering(offering_id~ : @tanikun-domain.OfferingId)
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
+  OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
+  OpenIntensivePicker
+  ClosePicker
   UpdateCatalogueQuery(query~ : String)
   IncreaseVisibleDays
   DecreaseVisibleDays
@@ -305,7 +317,8 @@ pub(all) enum PlannerMsg {
 ///|
 pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
   match msg {
-    SelectTerm(term~) => bump({ ..state, selected_term: term, error: None, })
+    SelectTerm(term~) =>
+      bump({ ..state, selected_term: term, error: None, picker: None, })
     SelectOffering(offering_id~) =>
       match find_offering(state.offerings, offering_id) {
         Some(_) =>
@@ -320,6 +333,11 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
+    OpenSlotPicker(day~, period~) =>
+      bump({ ..state, picker: Some(PickerTarget::Slot(day~, period~)), })
+    OpenIntensivePicker =>
+      bump({ ..state, picker: Some(PickerTarget::Intensive), })
+    ClosePicker => bump({ ..state, picker: None, })
     UpdateCatalogueQuery(query~) => bump({ ..state, catalogue_query: query, })
     IncreaseVisibleDays =>
       if state.visible_days < 7 {
@@ -573,6 +591,37 @@ pub fn PlannerState::catalogue_entries(
           }
         None => ()
       }
+    }
+  }
+  entries
+}
+
+///|
+pub fn PlannerState::picker_entries(
+  self : PlannerState,
+) -> Array[CatalogueEntry] {
+  let entries : Array[CatalogueEntry] = []
+  let base = self.catalogue_entries(self.selected_term)
+  for entry in base {
+    let matches = match self.picker {
+      Some(PickerTarget::Slot(day~, period~)) => {
+        let mut found = false
+        for slot in entry.slots {
+          if slot.day == day && slot.period.value() == period {
+            found = true
+          }
+        }
+        found
+      }
+      Some(PickerTarget::Intensive) =>
+        match entry.schedule {
+          @tanikun-domain.OfferingSchedule::Intensive(_) => true
+          _ => false
+        }
+      None => false
+    }
+    if matches {
+      entries.push(entry)
     }
   }
   entries

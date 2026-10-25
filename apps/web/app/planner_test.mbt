@@ -487,3 +487,62 @@ test "catalogue filters by term, query, and enrollment" {
   )
   assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 0)
 }
+
+///|
+test "picker lists only offerings for the clicked slot" {
+  let state = planner_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=1,
+    ),
+  )
+  assert_eq(state.picker_entries().length(), 1)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Tuesday,
+      period=2,
+    ),
+  )
+  assert_eq(state.picker_entries().length(), 0)
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_offering("offering-s2", course, @tanikun-domain.Term::S2, [
+      planner_slot(@tanikun-domain.DayOfWeek::Tuesday, 2),
+    ]),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Tuesday,
+      period=2,
+    ),
+  )
+  assert_eq(state.picker_entries().length(), 1)
+}
+
+///|
+test "intensive picker follows the selected semester" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_intensive("intensive-s", course, @tanikun-domain.Semester::S),
+  )
+  state.offerings.push(
+    planner_intensive("intensive-w", course, @tanikun-domain.Semester::W),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  assert_eq(state.picker_entries().length(), 1)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::W),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  assert_eq(state.picker_entries().length(), 1)
+}

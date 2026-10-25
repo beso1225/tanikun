@@ -34,6 +34,24 @@ fn day_label(day : @tanikun-domain.DayOfWeek) -> String {
 }
 
 ///|
+fn day_index(day : @tanikun-domain.DayOfWeek) -> Int {
+  match day {
+    @tanikun-domain.DayOfWeek::Monday => 0
+    @tanikun-domain.DayOfWeek::Tuesday => 1
+    @tanikun-domain.DayOfWeek::Wednesday => 2
+    @tanikun-domain.DayOfWeek::Thursday => 3
+    @tanikun-domain.DayOfWeek::Friday => 4
+    @tanikun-domain.DayOfWeek::Saturday => 5
+    @tanikun-domain.DayOfWeek::Sunday => 6
+  }
+}
+
+///|
+fn slot_id(day : @tanikun-domain.DayOfWeek, period : Int) -> String {
+  "slot-\{day_index(day)}-\{period}"
+}
+
+///|
 /// Formats a whole-unit label. `Credits` stores half-units, so odd values end
 /// in `.5`.
 fn credits_label(credits : @tanikun-domain.Credits) -> String {
@@ -188,7 +206,15 @@ fn timetable_grid(
               "削除",
             ),
           ])
-        None => td(class="h-16 border border-action p-2", ([] : Array[Html]))
+        None =>
+          td(class="h-16 border border-action p-1", [
+            button(
+              id=slot_id(day, period),
+              class="h-full w-full rounded-md border border-dashed border-action bg-white text-lg text-action",
+              on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
+              "+",
+            ),
+          ])
       }
       cells.push(cell)
     }
@@ -217,9 +243,6 @@ fn timetable_grid(
 ///|
 fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   let entries = state.off_grid_entries(state.selected_term)
-  if entries.is_empty() {
-    return p(class="mt-4 text-sm", "集中講義はありません")
-  }
   let items : Array[Html] = []
   for entry in entries {
     items.push(
@@ -236,61 +259,104 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
       ]),
     )
   }
+  if entries.is_empty() {
+    items.push(p(class="mt-1 text-sm", "集中講義はありません"))
+  }
   section(id="off-grid", class="mt-4", [
-    h2(class="text-lg font-bold", "集中講義"),
+    div(class="flex items-center gap-3", [
+      h2(class="text-lg font-bold", "集中講義"),
+      button(
+        id="open-intensive-picker",
+        class="rounded-md border border-action bg-white px-2 py-1 text-xs",
+        on_click=emit(@app.PlannerMsg::OpenIntensivePicker),
+        "集中講義を追加",
+      ),
+    ]),
     div(items),
   ])
 }
 
 ///|
-fn catalogue_panel(
+fn picker_label(target : @app.PickerTarget) -> String {
+  match target {
+    @app.PickerTarget::Slot(day~, period~) =>
+      "\{day_label(day)}\{period}に追加"
+    @app.PickerTarget::Intensive => "集中講義を追加"
+  }
+}
+
+///|
+fn picker_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
-  let entries = state.catalogue_entries(state.selected_term)
-  let items : Array[Html] = []
-  for entry in entries {
-    let detail = "\{credits_label(entry.credits)}単位 / \{schedule_label(entry.schedule)} / \{slots_label(entry.slots)}"
-    let action = if entry.enrolled {
-      button(
-        id="enrolled-\{entry.offering_id.value}",
-        disabled=true,
-        class="mt-2 rounded-md border border-action bg-white px-2 py-1 text-xs",
-        "登録済み",
+  match state.picker {
+    None =>
+      p(
+        class="mt-4 text-sm",
+        "空きセルをクリックすると科目を追加できます",
       )
-    } else {
-      button(
-        id="add-offering-\{entry.offering_id.value}",
-        class="mt-2 rounded-md border border-action bg-white px-2 py-1 text-xs",
-        on_click=emit(
-          @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
+    Some(target) => {
+      let entries = state.picker_entries()
+      let items : Array[Html] = []
+      for entry in entries {
+        let detail = "\{credits_label(entry.credits)}単位 / \{schedule_label(entry.schedule)} / \{slots_label(entry.slots)}"
+        let action = if entry.enrolled {
+          button(
+            id="enrolled-\{entry.offering_id.value}",
+            disabled=true,
+            class="mt-2 rounded-md border border-action bg-white px-2 py-1 text-xs",
+            "登録済み",
+          )
+        } else {
+          button(
+            id="add-offering-\{entry.offering_id.value}",
+            class="mt-2 rounded-md border border-action bg-white px-2 py-1 text-xs",
+            on_click=emit(
+              @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
+            ),
+            "追加",
+          )
+        }
+        items.push(
+          div(class="border-b border-action p-2", [
+            p(class="font-medium", entry.course_name),
+            p(class="text-xs", detail),
+            action,
+          ]),
+        )
+      }
+      if items.is_empty() {
+        items.push(
+          p(class="p-2 text-sm", "該当する科目がありません"),
+        )
+      }
+      section(id="picker", class="mt-4 border border-action bg-white p-4", [
+        div(class="flex items-center justify-between", [
+          h2(class="text-lg font-bold", picker_label(target)),
+          button(
+            id="close-picker",
+            class="rounded-md border border-action bg-white px-2 py-1 text-xs",
+            on_click=emit(@app.PlannerMsg::ClosePicker),
+            "閉じる",
+          ),
+        ]),
+        input(
+          id="catalogue-search",
+          class="mt-3 w-full rounded-md border border-action bg-white p-2 text-sm",
+          placeholder="科目名で検索",
+          value=state.catalogue_query,
+          on_input=fn(query) {
+            emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
+          },
         ),
-        "追加",
-      )
+        div(items),
+      ])
     }
-    items.push(
-      div(class="border-b border-action p-2", [
-        p(class="font-medium", entry.course_name),
-        p(class="text-xs", detail),
-        action,
-      ]),
-    )
   }
-  if items.is_empty() {
-    items.push(p(class="p-2 text-sm", "該当する科目がありません"))
-  }
-  section(id="catalogue", class="w-80", [
-    h2(class="text-lg font-bold", "科目を追加"),
-    input(
-      id="catalogue-search",
-      class="mt-2 w-full rounded-md border border-action bg-white p-2 text-sm",
-      placeholder="科目名で検索",
-      value=state.catalogue_query,
-      on_input=fn(query) { emit(@app.PlannerMsg::UpdateCatalogueQuery(query~)) },
-    ),
-    div(items),
-  ])
 }
+
+///|
 
 ///|
 fn planner_view(
@@ -307,10 +373,9 @@ fn planner_view(
     p(class="mt-2 text-sm", "Phase 2 timetable planner"),
     term_tabs(state, emit),
     range_controls(state, emit),
-    div(class="mt-4 flex flex-wrap items-start gap-6", [
-      div(class="min-w-0 flex-1", [grid, off_grid(state, emit)]),
-      catalogue_panel(state, emit),
-    ]),
+    grid,
+    off_grid(state, emit),
+    picker_panel(state, emit),
   ]
   match state.error {
     Some(error) =>
