@@ -546,3 +546,24 @@ test "intensive picker follows the selected semester" {
   let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
   assert_eq(state.picker_entries().length(), 1)
 }
+
+///|
+test "adding from a picker closes it" {
+  let state = planner_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=1,
+    ),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  match state.picker {
+    None => ()
+    Some(_) => fail("picker should close after adding an offering")
+  }
+  assert_eq(state.enrollments.length(), 1)
+}

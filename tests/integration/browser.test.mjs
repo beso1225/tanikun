@@ -129,6 +129,10 @@ test(
     assert.equal(await page.locator("#picker").count(), 0);
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
+    assert.equal(await page.locator("#picker-backdrop").count(), 1);
+    const pickerText = await page.locator("#picker").innerText();
+    assert.ok(pickerText.includes("S2"));
+    assert.ok(!pickerText.includes("通常"));
     await page.locator("#catalogue-search").fill("missing");
     await page.getByText("該当する科目がありません").waitFor();
     await page.locator("#catalogue-search").fill("");
@@ -137,17 +141,19 @@ test(
     await page.locator("#slot-1-2").click();
     await page.locator("#add-offering-phy102-s2").waitFor();
     await page.locator("#add-offering-phy102-s2").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     await page
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
       .waitFor();
-    await page.locator("#enrolled-phy102-s2").waitFor();
     await page
       .locator('#timetable button[id^="remove-phy102-s2"]')
       .first()
       .click();
     await page.locator("#slot-1-2").click();
     await page.locator("#add-offering-phy102-s2").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
       await page
         .locator("#timetable")
@@ -173,6 +179,7 @@ test(
     await page.getByText("集中講義はありません").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy501-w").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
 
     assert.deepEqual(errors, []);

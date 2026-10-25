@@ -496,7 +496,13 @@ fn add_offering(
   }
   let enrollments = state.enrollments.copy()
   enrollments.push(@tanikun-domain.Enrollment::planned(id))
-  bump({ ..state, enrollments, selected_offering: None, error: None, })
+  bump({
+    ..state,
+    enrollments,
+    selected_offering: None,
+    picker: None,
+    error: None,
+  })
 }
 
 ///|

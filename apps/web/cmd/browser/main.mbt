@@ -86,7 +86,7 @@ fn semester_label(semester : @tanikun-domain.Semester) -> String {
 fn schedule_label(schedule : @tanikun-domain.OfferingSchedule) -> String {
   match schedule {
     @tanikun-domain.OfferingSchedule::Regular(terms~) =>
-      "通常 " + terms.map(term_label).join(", ")
+      terms.map(term_label).join(", ")
     @tanikun-domain.OfferingSchedule::YearLong => "通年"
     @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
       "集中 " + semester_label(semester)
@@ -331,27 +331,37 @@ fn picker_panel(
           p(class="p-2 text-sm", "該当する科目がありません"),
         )
       }
-      section(id="picker", class="mt-4 border border-action bg-white p-4", [
-        div(class="flex items-center justify-between", [
-          h2(class="text-lg font-bold", picker_label(target)),
-          button(
-            id="close-picker",
-            class="rounded-md border border-action bg-white px-2 py-1 text-xs",
-            on_click=emit(@app.PlannerMsg::ClosePicker),
-            "閉じる",
+      div(
+        id="picker-backdrop",
+        class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4",
+        [
+          section(
+            id="picker",
+            class="mt-[10vh] max-h-[70vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-4",
+            [
+              div(class="flex items-center justify-between", [
+                h2(class="text-lg font-bold", picker_label(target)),
+                button(
+                  id="close-picker",
+                  class="rounded-md border border-action bg-white px-2 py-1 text-xs",
+                  on_click=emit(@app.PlannerMsg::ClosePicker),
+                  "閉じる",
+                ),
+              ]),
+              input(
+                id="catalogue-search",
+                class="mt-3 w-full rounded-md border border-action bg-white p-2 text-sm",
+                placeholder="科目名で検索",
+                value=state.catalogue_query,
+                on_input=fn(query) {
+                  emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
+                },
+              ),
+              div(items),
+            ],
           ),
-        ]),
-        input(
-          id="catalogue-search",
-          class="mt-3 w-full rounded-md border border-action bg-white p-2 text-sm",
-          placeholder="科目名で検索",
-          value=state.catalogue_query,
-          on_input=fn(query) {
-            emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
-          },
-        ),
-        div(items),
-      ])
+        ],
+      )
     }
   }
 }
