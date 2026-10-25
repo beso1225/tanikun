@@ -196,15 +196,24 @@ fn timetable_grid(
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
           td(class="h-16 border border-action bg-white p-2 align-top", [
-            span(class="text-sm font-medium", block.course_name),
-            button(
-              id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-              class="mt-1 rounded-md border border-action bg-white px-2 py-1 text-xs",
-              on_click=emit(
-                @app.PlannerMsg::RemoveEnrollment(offering_id=block.offering_id),
+            div(class="flex h-full flex-col justify-between", [
+              span(
+                class="block break-words text-sm font-medium",
+                block.course_name,
               ),
-              "削除",
-            ),
+              div(class="flex justify-end", [
+                button(
+                  id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+                  class="rounded-md border border-action bg-white px-2 py-1 text-xs",
+                  on_click=emit(
+                    @app.PlannerMsg::RemoveEnrollment(
+                      offering_id=block.offering_id,
+                    ),
+                  ),
+                  "削除",
+                ),
+              ]),
+            ]),
           ])
         None =>
           td(class="h-16 border border-action p-1", [
@@ -246,11 +255,14 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   let items : Array[Html] = []
   for entry in entries {
     items.push(
-      div(class="mt-1 flex items-center gap-2", [
-        span("\{entry.course_name} (\{credits_label(entry.credits)}単位)"),
+      div(class="mt-1 flex w-full items-center justify-between gap-2", [
+        span(
+          class="min-w-0 break-words",
+          "\{entry.course_name} (\{credits_label(entry.credits)}単位)",
+        ),
         button(
           id="remove-\{entry.offering_id.value}",
-          class="rounded-md border border-action bg-white px-2 py-1 text-xs",
+          class="shrink-0 rounded-md border border-action bg-white px-2 py-1 text-xs",
           on_click=emit(
             @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
           ),

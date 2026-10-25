@@ -112,6 +112,10 @@ test(
       .getByText("Physics Lab", { exact: true })
       .waitFor();
     await page.locator("#off-grid").getByText("Seminar S").waitFor();
+    await page.locator("#open-intensive-picker").click();
+    await page.locator("#add-offering-phy302-s").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#off-grid").getByText("Seminar S2").waitFor();
 
     await page.locator("#add-day").click();
     await page.getByText("6日", { exact: true }).waitFor();

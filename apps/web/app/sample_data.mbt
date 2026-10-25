@@ -64,6 +64,7 @@ pub fn sample_state() -> PlannerState {
   let phy102 = sample_course("PHY102", "Physics II", 4)
   let phy201 = sample_course("PHY201", "Physics Lab", 2)
   let phy301 = sample_course("PHY301", "Seminar S", 2)
+  let phy302 = sample_course("PHY302", "Seminar S2", 2)
   let phy401 = sample_course("PHY401", "Seminar A", 2)
   let phy501 = sample_course("PHY501", "Winter Workshop", 2)
   let offerings = [
@@ -88,6 +89,14 @@ pub fn sample_state() -> PlannerState {
     sample_offering(
       "phy301-s",
       phy301,
+      @tanikun-domain.OfferingSchedule::Intensive(
+        semester=@tanikun-domain.Semester::S,
+      ),
+      [],
+    ),
+    sample_offering(
+      "phy302-s",
+      phy302,
       @tanikun-domain.OfferingSchedule::Intensive(
         semester=@tanikun-domain.Semester::S,
       ),
@@ -144,7 +153,7 @@ pub fn sample_state() -> PlannerState {
     @tanikun-requirements.RequirementSets::new([requirement_set]),
   )
   PlannerState::new(
-    [phy101, phy102, phy201, phy301, phy401, phy501],
+    [phy101, phy102, phy201, phy301, phy302, phy401, phy501],
     offerings,
     enrollments,
     @tanikun-domain.Overrides::empty(),
