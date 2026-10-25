@@ -494,10 +494,7 @@ fn add_offering(
       )
   }
   if has_enrollment(state.enrollments, id) {
-    return with_error(
-      state,
-      TimetableError::DuplicateEnrollment(offering_id=id).to_ui(),
-    )
+    return state
   }
   if !offering_occupies_term(offering, state.selected_term) {
     return with_error(
@@ -537,14 +534,7 @@ fn remove_enrollment(
     }
   }
   if !found {
-    return with_error(
-      state,
-      UiError::new(
-        UiErrorTarget::Offering(offering_id=id),
-        UiErrorKind::UnknownEnrollment,
-        "履修が見つかりません",
-      ),
-    )
+    return bump({ ..state, selected_offering: None, error: None, })
   }
   bump({ ..state, enrollments, selected_offering: None, error: None, })
 }

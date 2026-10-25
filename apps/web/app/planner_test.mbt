@@ -174,7 +174,7 @@ test "planned enrollment can be added and removed" {
 }
 
 ///|
-test "duplicate placement leaves the state unchanged and reports an error" {
+test "duplicate placement is idempotent" {
   let id = planner_offering_id("offering-1")
   let state = @app.update_planner(
     planner_state(),
@@ -186,9 +186,8 @@ test "duplicate placement leaves the state unchanged and reports an error" {
   )
   assert_eq(state.enrollments.length(), 1)
   match state.error {
-    Some(error) =>
-      assert_true(error.kind == @app.UiErrorKind::DuplicateEnrollment)
-    None => fail("expected a duplicate error")
+    None => ()
+    Some(_) => fail("duplicate placement should not report an error")
   }
 }
 
@@ -206,7 +205,7 @@ test "adding an unknown offering reports an error" {
 }
 
 ///|
-test "removing an absent enrollment reports an error" {
+test "removing an absent enrollment is a no-op" {
   let state = @app.update_planner(
     planner_state(),
     @app.PlannerMsg::RemoveEnrollment(
@@ -214,9 +213,8 @@ test "removing an absent enrollment reports an error" {
     ),
   )
   match state.error {
-    Some(error) =>
-      assert_true(error.kind == @app.UiErrorKind::UnknownEnrollment)
-    None => fail("expected an unknown-enrollment error")
+    None => ()
+    Some(_) => fail("removing an absent enrollment should not report an error")
   }
 }
 

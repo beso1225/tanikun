@@ -149,7 +149,7 @@ test(
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy302-s").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#remove-picker-phy302-s").waitFor();
+    assert.equal(await page.locator("#remove-picker-phy302-s").count(), 0);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
@@ -286,11 +286,15 @@ test(
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#add-offering-phy102-s2").click();
-    await page.locator("#picker").waitFor();
-    await page.locator("#remove-picker-phy102-s2").waitFor();
-    await page.locator("#remove-picker-phy102-s2").click();
-    await page.locator("#add-offering-phy102-s2").waitFor();
+    const addButton = page.locator("#add-offering-phy102-s2");
+    const addBox = await addButton.boundingBox();
+    assert.ok(addBox);
+    await page.mouse.dblclick(
+      addBox.x + addBox.width / 2,
+      addBox.y + addBox.height / 2,
+    );
+    await addButton.waitFor({ state: "detached" });
+    assert.equal(await addButton.count(), 0);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
@@ -298,7 +302,7 @@ test(
         .locator("#timetable")
         .getByText("Physics II", { exact: true })
         .count(),
-      0,
+      1,
     );
 
     await page.locator("#term-A1").click();
@@ -322,12 +326,10 @@ test(
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy501-w").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#remove-picker-phy501-w").waitFor();
-    await page.locator("#remove-picker-phy501-w").click();
-    await page.locator("#add-offering-phy501-w").waitFor();
+    assert.equal(await page.locator("#remove-picker-phy501-w").count(), 0);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
-    await page.getByText("集中講義はありません").waitFor();
+    await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
 
     assert.deepEqual(errors, []);
   },

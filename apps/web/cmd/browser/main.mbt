@@ -389,14 +389,7 @@ fn picker_panel(
           )
         }
         let action = if entry.enrolled {
-          button(
-            id="remove-picker-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm text-muted hover:bg-canvas hover:text-danger-text",
-            on_click=emit(
-              @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
-            ),
-            "削除",
-          )
+          span(class="min-w-20 shrink-0", "")
         } else {
           button(
             id="add-offering-\{entry.offering_id.value}",
