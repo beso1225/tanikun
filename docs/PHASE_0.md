@@ -1,38 +1,42 @@
-# Phase 0: development foundation
+# Phase 0: development foundation (historical)
 
-This plan implements [the initial design](INITIAL_DESIGN.md) and uses
+> Historical record. Phase 0 is complete. The commands and version observations
+> below reflect the dates in each section. Use the [README](../README.md) and
+> [Phase 1](PHASE_1.md) for current setup and behavior.
+
+This plan implemented [the initial design](INITIAL_DESIGN.md) and used
 [the technical review](TECH_REVIEW.md) as a list of hypotheses to verify.
-Each step should leave a small, runnable result. Phase 0 is not complete until
-the web build and minimal tests also pass on Linux in CI.
+Each step left a small, runnable result. Phase 0 was complete when the web
+build and minimal tests passed on Linux in CI.
 
 ## Steps and acceptance criteria
 
-1. **MoonBit workspace and JavaScript export — complete on local macOS.**
+1. **MoonBit workspace and JavaScript export (complete on local macOS).**
    Add only `apps/api`, using DSL manifests and an explicit JS target.
    Run a MoonBit test and import its release output from JavaScript.
    Keep the health body as a small bridge fixture for the Workers spike.
-2. **Pin the development environment with Nix and direnv — complete on local macOS.**
+2. **Pin the development environment with Nix and direnv (complete on local macOS).**
    Pin nixpkgs and official MoonBit distributions with hashes; establish the
    macOS/Linux platform matrix. Provide Node.js, a pinned pnpm, and just.
    Verify `nix develop` and document any initial network requirements.
-3. **S1: MoonBit JavaScript on Workers — complete on local macOS.**
+3. **S1: MoonBit JavaScript on Workers (complete on local macOS).**
    Pin Wrangler and the pnpm lockfile. Wrap the generated ESM in a thin
    `export default { fetch }` entry and exercise it with the local Workers
    runtime. Node.js import success alone does not satisfy this step.
-4. **S2: minimal Rabbita and Warren application — complete on local macOS.**
+4. **S2: minimal Rabbita and Warren application (complete on local macOS).**
    Add `apps/web` and its `cmd/browser` entry. Verify development and release
    builds and record the generated artifact paths.
-5. **S3: Tailwind v4 and MoonBit sources — complete on local macOS.**
+5. **S3: Tailwind v4 and MoonBit sources (complete on local macOS).**
    Check whether a class used only in `.mbt` appears in generated CSS.
    Use an explicit `@source` only if needed.
-6. **S4: offline Nix builds and Linux CI — complete on macOS and Linux CI.**
+6. **S4: offline Nix builds and Linux CI (complete on macOS and Linux CI).**
    Pin MoonBit and pnpm dependencies for sandboxed builds. Implement
    `nix build .#web`, then `.#api` and `.#release` when
    their artifact boundaries are established. Run deterministic checks with
    `nix flake check` and add a Linux GitHub Actions workflow.
-7. **Minimum browser test — complete on macOS and Linux CI.**
+7. **Minimum browser test (complete on macOS and Linux CI).**
    Add Playwright to verify the built page, including the Tailwind fixture.
-8. **Remaining review spikes — complete on local macOS.**
+8. **Remaining review spikes (complete on local macOS).**
    S5 verifies Automerge core/IndexedDB through FFI; S6 verifies the Workers
    Vitest plugin with local D1. Add these dependencies when each spike starts.
 
