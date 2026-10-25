@@ -252,22 +252,22 @@ fn timetable_grid(
         Some(block) =>
           td(class="h-16 border-b border-rule p-1.5 align-top", [
             div(
-              class="flex h-full items-start justify-between gap-1 rounded-md bg-primary-soft px-2 py-1.5",
+              class="relative h-full rounded-md bg-primary-soft px-2 py-1.5",
               [
-                span(
-                  class="min-w-0 break-words text-sm font-medium text-ink",
-                  block.course_name,
-                ),
                 button(
                   id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
                   title="削除",
-                  class="-mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+                  class="absolute right-1 top-2 flex h-6 w-6 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
                   on_click=emit(
                     @app.PlannerMsg::RemoveEnrollment(
                       offering_id=block.offering_id,
                     ),
                   ),
                   [span("×"), span(class="sr-only", "削除")],
+                ),
+                span(
+                  class="block break-words pr-6 pt-3 text-sm font-medium text-ink",
+                  block.course_name,
                 ),
               ],
             ),
@@ -324,24 +324,24 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   for entry in entries {
     items.push(
       div(
-        class="flex min-h-12 w-full items-start justify-between gap-2 rounded-lg bg-primary-soft px-3 py-2",
+        class="relative min-h-12 w-full rounded-lg bg-primary-soft px-3 py-2",
         [
-          div(class="min-w-0", [
+          button(
+            id="remove-\{entry.offering_id.value}",
+            title="削除",
+            class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
+            on_click=emit(
+              @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
+            ),
+            [span("×"), span(class="sr-only", "削除")],
+          ),
+          div(class="min-w-0 pr-7 pt-2", [
             p(class="truncate text-sm font-medium text-ink", entry.course_name),
             p(
               class="mt-0.5 text-xs text-muted",
               "\{credits_label(entry.credits)}単位",
             ),
           ]),
-          button(
-            id="remove-\{entry.offering_id.value}",
-            title="削除",
-            class="-mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
-            on_click=emit(
-              @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
-            ),
-            [span("×"), span(class="sr-only", "削除")],
-          ),
         ],
       ),
     )
