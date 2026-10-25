@@ -108,7 +108,7 @@ test(
       await page
         .locator("#slot-1-1")
         .evaluate((element) => getComputedStyle(element).outlineColor),
-      "rgb(37, 75, 138)",
+      "rgb(0, 122, 255)",
     );
     await page
       .locator("#timetable")
@@ -226,10 +226,10 @@ test(
     const addStyle = await page
       .locator("#add-offering-phy102-s2")
       .evaluate((element) => ({
-        background: getComputedStyle(element).backgroundColor,
+        color: getComputedStyle(element).color,
         height: element.getBoundingClientRect().height,
       }));
-    assert.notEqual(addStyle.background, "rgba(0, 0, 0, 0)");
+    assert.equal(addStyle.color, "rgb(0, 122, 255)");
     assert.ok(addStyle.height >= 40);
     await page.locator("#add-offering-phy102-s2").click();
     await page.locator("#picker").waitFor({ state: "detached" });

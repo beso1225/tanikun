@@ -3,9 +3,10 @@ using @rabbita {type Emit, type Html, type Val}
 
 ///|
 using @html {
+  a,
+  aside,
   button,
   div,
-  a,
   h1,
   h2,
   header,
@@ -110,15 +111,14 @@ fn slots_label(slots : Array[@tanikun-domain.Slot]) -> String {
 }
 
 ///|
-fn product_mark() -> Html {
+fn app_mark() -> Html {
   div(
     attrs=@html.Attrs::build().aria_hidden("true"),
-    class="grid h-7 w-7 grid-cols-2 gap-[2px]",
+    class="flex h-7 w-7 flex-col justify-center gap-[3px] rounded-[7px] bg-primary px-[5px]",
     [
-      div(class="bg-primary", ([] : Array[Html])),
-      div(class="bg-primary-soft", ([] : Array[Html])),
-      div(class="bg-primary-soft", ([] : Array[Html])),
-      div(class="bg-accent", ([] : Array[Html])),
+      div(class="h-[2px] w-full rounded-full bg-white/90", ([] : Array[Html])),
+      div(class="h-[2px] w-3/4 rounded-full bg-white/70", ([] : Array[Html])),
+      div(class="h-[2px] w-1/2 rounded-full bg-white/50", ([] : Array[Html])),
     ],
   )
 }
@@ -138,14 +138,17 @@ fn find_block(
 }
 
 ///|
-fn term_tabs(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
+fn term_section(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
   let tabs : Array[Html] = []
   for term in @app.PlannerTerm::values() {
     let selected = state.selected_term == term
     let class_name = if selected {
-      "flex w-full items-center justify-center border-b border-l-4 border-l-accent border-rule bg-primary-soft px-3 py-3 text-center text-ink md:justify-start"
+      "flex min-h-9 w-full items-center justify-center rounded-md bg-primary px-3 text-center text-sm font-medium text-white md:justify-start"
     } else {
-      "flex w-full items-center justify-center border-b border-l-4 border-l-transparent border-rule bg-paper px-3 py-3 text-center text-muted hover:bg-canvas md:justify-start"
+      "flex min-h-9 w-full items-center justify-center rounded-md px-3 text-center text-sm text-ink hover:bg-rule/40 md:justify-start"
     }
     tabs.push(
       button(
@@ -156,9 +159,15 @@ fn term_tabs(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
       ),
     )
   }
-  nav(
-    class="grid grid-cols-5 gap-0 self-start border border-rule md:flex md:flex-col",
-    tabs,
+  aside(
+    class="flex w-full shrink-0 flex-col gap-3 border-b border-rule bg-canvas p-3 md:w-56 md:border-b-0 md:border-r",
+    [
+      div(class="flex items-center gap-2 px-2 pt-1", [
+        app_mark(),
+        h1(class="text-sm font-semibold", "応物単位くん"),
+      ]),
+      nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
+    ],
   )
 }
 
@@ -167,20 +176,20 @@ fn range_controls(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
-  div(class="flex flex-wrap items-center gap-1 text-xs text-muted", [
+  div(class="flex items-center gap-1 rounded-md bg-canvas p-0.5 text-xs", [
     button(
       id="remove-day",
       title="表示する曜日を減らす",
-      class="border border-rule bg-paper px-2 py-1 text-ink disabled:opacity-30",
+      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
       disabled=state.visible_days <= 5,
       on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
       "-",
     ),
-    span(class="px-1 text-ink", "\{state.visible_days}日"),
+    span(class="min-w-6 text-center text-ink", "\{state.visible_days}日"),
     button(
       id="add-day",
       title="表示する曜日を増やす",
-      class="border border-rule bg-paper px-2 py-1 text-ink disabled:opacity-30",
+      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
       disabled=state.visible_days >= 7,
       on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
       "+",
@@ -189,16 +198,16 @@ fn range_controls(
     button(
       id="remove-period",
       title="表示する時限を減らす",
-      class="border border-rule bg-paper px-2 py-1 text-ink disabled:opacity-30",
+      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
       disabled=state.visible_periods <= 6,
       on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
       "-",
     ),
-    span(class="px-1 text-ink", "\{state.visible_periods}限"),
+    span(class="min-w-6 text-center text-ink", "\{state.visible_periods}限"),
     button(
       id="add-period",
       title="表示する時限を増やす",
-      class="border border-rule bg-paper px-2 py-1 text-ink disabled:opacity-30",
+      class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
       disabled=state.visible_periods >= 10,
       on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
       "+",
@@ -216,7 +225,7 @@ fn timetable_grid(
   let header : Array[Html] = [
     th(
       scope=@html.Scope::Col,
-      class="w-14 border-b border-rule bg-canvas p-2 text-left text-xs font-normal text-muted",
+      class="w-12 border-b border-rule bg-canvas px-3 py-2 text-left text-xs font-medium text-muted",
       "時限",
     ),
   ]
@@ -224,7 +233,7 @@ fn timetable_grid(
     header.push(
       th(
         scope=@html.Scope::Col,
-        class="border-b border-rule bg-canvas p-2 text-left text-xs font-normal text-muted",
+        class="border-b border-rule bg-canvas px-3 py-2 text-left text-xs font-medium text-muted",
         day_label(day),
       ),
     )
@@ -234,17 +243,17 @@ fn timetable_grid(
     let cells : Array[Html] = [
       th(
         scope=@html.Scope::Row,
-        class="w-14 border-b border-rule p-2 text-xs font-normal text-muted",
+        class="w-12 border-b border-rule px-3 py-2 text-xs font-normal text-muted",
         "\{period}",
       ),
     ]
     for day in days {
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
-          td(
-            class="h-16 border-b border-rule bg-primary-soft/60 p-2 align-top",
-            [
-              div(class="flex h-full flex-col justify-between", [
+          td(class="h-16 border-b border-rule p-1.5 align-top", [
+            div(
+              class="flex h-full flex-col justify-between rounded-md bg-primary-soft px-2 py-1.5",
+              [
                 span(
                   class="block break-words text-sm font-medium text-ink",
                   block.course_name,
@@ -252,24 +261,25 @@ fn timetable_grid(
                 div(class="flex justify-end", [
                   button(
                     id="remove-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-                    class="border-0 bg-transparent p-1 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-primary",
+                    title="削除",
+                    class="flex h-7 w-7 items-center justify-center rounded text-base leading-none text-muted hover:bg-paper hover:text-danger",
                     on_click=emit(
                       @app.PlannerMsg::RemoveEnrollment(
                         offering_id=block.offering_id,
                       ),
                     ),
-                    "削除",
+                    [span("×"), span(class="sr-only", "削除")],
                   ),
                 ]),
-              ]),
-            ],
-          )
+              ],
+            ),
+          ])
         None =>
-          td(class="h-16 border-b border-rule p-1 align-middle", [
+          td(class="h-16 border-b border-rule p-0 align-middle", [
             button(
               id=slot_id(day, period),
               title="\{day_label(day)}\{period}限に科目を追加",
-              class="h-full w-full border border-dashed border-rule bg-transparent p-0 text-sm text-muted opacity-40 hover:border-primary hover:bg-primary-soft hover:text-primary hover:opacity-100 focus:opacity-100",
+              class="flex h-full w-full items-center justify-center bg-transparent p-0 text-sm text-primary opacity-0 hover:bg-primary-soft/50 hover:opacity-100 focus:opacity-100",
               on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
               [
                 span(attrs=@html.Attrs::build().aria_hidden("true"), "+"),
@@ -287,19 +297,21 @@ fn timetable_grid(
   }
   let hidden = state.hidden_scheduled_block_count(state.selected_term)
   let children : Array[Html] = [
-    div(class="mt-4 overflow-x-auto", [
-      table(
-        id="timetable",
-        class="w-full min-w-[44rem] table-fixed border-collapse text-sm",
-        [thead(header), tbody(rows)],
-      ),
+    div(class="mt-4 overflow-hidden rounded-lg border border-rule bg-paper", [
+      div(class="overflow-x-auto", [
+        table(
+          id="timetable",
+          class="w-full min-w-[44rem] table-fixed border-collapse text-sm",
+          [thead(header), tbody(rows)],
+        ),
+      ]),
     ]),
   ]
   if hidden > 0 {
     children.push(
       p(
         id="hidden-blocks",
-        class="mt-2 border-l-2 border-danger pl-3 text-xs text-danger",
+        class="mt-2 text-xs text-muted",
         "表示範囲外に\{hidden}件の履修があります",
       ),
     )
@@ -313,41 +325,45 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   let items : Array[Html] = []
   for entry in entries {
     items.push(
-      div(class="flex w-full items-center justify-between gap-3 py-2", [
-        div(class="min-w-0", [
-          p(class="text-sm font-medium", entry.course_name),
-          p(
-            class="mt-0.5 text-xs text-muted",
-            "\{credits_label(entry.credits)}単位",
+      div(
+        class="flex min-h-11 w-full items-center justify-between gap-3 border-b border-rule px-3 last:border-b-0",
+        [
+          div(class="min-w-0 py-2", [
+            p(class="truncate text-sm", entry.course_name),
+            p(
+              class="mt-0.5 text-xs text-muted",
+              "\{credits_label(entry.credits)}単位",
+            ),
+          ]),
+          button(
+            id="remove-\{entry.offering_id.value}",
+            title="削除",
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded text-base text-muted hover:bg-canvas hover:text-danger",
+            on_click=emit(
+              @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
+            ),
+            [span("×"), span(class="sr-only", "削除")],
           ),
-        ]),
-        button(
-          id="remove-\{entry.offering_id.value}",
-          class="shrink-0 border-0 bg-transparent p-1 text-xs text-muted underline decoration-rule underline-offset-2 hover:text-danger",
-          on_click=emit(
-            @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
-          ),
-          "削除",
-        ),
-      ]),
+        ],
+      ),
     )
   }
   if entries.is_empty() {
     items.push(
-      p(class="py-3 text-sm text-muted", "集中講義はありません"),
+      p(class="px-3 py-4 text-sm text-muted", "集中講義はありません"),
     )
   }
-  section(id="off-grid", class="mt-6 border-t border-rule pt-4", [
-    div(class="flex items-center justify-between gap-3", [
-      h2(class="font-semibold", "集中講義"),
+  section(id="off-grid", class="mt-5", [
+    div(class="mb-2 flex items-center justify-between", [
+      h2(class="text-sm font-semibold", "集中講義"),
       button(
         id="open-intensive-picker",
-        class="border border-primary bg-primary px-3 py-1.5 text-xs text-white hover:bg-ink",
+        class="min-h-8 rounded-md px-2 text-xs text-primary hover:bg-primary-soft",
         on_click=emit(@app.PlannerMsg::OpenIntensivePicker),
-        "集中講義を追加",
+        "追加",
       ),
     ]),
-    div(class="mt-2 divide-y divide-rule", items),
+    div(class="overflow-hidden rounded-lg border border-rule bg-paper", items),
   ])
 }
 
@@ -357,7 +373,7 @@ fn picker_label(target : @app.PickerTarget) -> String {
     @app.PickerTarget::Slot(day~, period~) =>
       "\{day_label(day)}\{period}限に追加"
     @app.PickerTarget::Intensive => "集中講義を追加"
-    @app.PickerTarget::All => "科目一覧から追加"
+    @app.PickerTarget::All => "科目を追加"
   }
 }
 
@@ -372,19 +388,19 @@ fn picker_panel(
       let entries = state.picker_entries()
       let items : Array[Html] = []
       for entry in entries {
-        let detail = "\{credits_label(entry.credits)}単位 / \{schedule_label(entry.schedule)} / \{slots_label(entry.slots)}"
+        let detail = "\{credits_label(entry.credits)}単位 · \{schedule_label(entry.schedule)} · \{slots_label(entry.slots)}"
         let name_line : Array[Html] = [
           p(class="min-w-0 text-sm font-medium", entry.course_name),
         ]
         if entry.enrolled {
           name_line.push(
-            span(class="shrink-0 text-[11px] text-muted", "登録済み"),
+            span(class="shrink-0 text-xs text-muted", "登録済み"),
           )
         }
         let action = if entry.enrolled {
           button(
             id="remove-picker-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 border border-rule bg-canvas px-4 py-2 text-sm text-ink hover:border-danger hover:bg-danger hover:text-white",
+            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm text-muted hover:bg-canvas hover:text-danger",
             on_click=emit(
               @app.PlannerMsg::RemoveEnrollment(offering_id=entry.offering_id),
             ),
@@ -393,7 +409,7 @@ fn picker_panel(
         } else {
           button(
             id="add-offering-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-ink",
+            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm font-medium text-primary hover:bg-primary-soft",
             on_click=emit(
               @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
             ),
@@ -401,67 +417,63 @@ fn picker_panel(
           )
         }
         items.push(
-          div(class="flex items-start justify-between gap-4 py-3", [
-            div(class="min-w-0 flex-1", [
-              div(
-                class="flex w-full items-baseline justify-between gap-2",
-                name_line,
-              ),
-              p(class="mt-0.5 text-xs text-muted", detail),
-            ]),
-            action,
-          ]),
+          div(
+            class="flex min-h-14 items-center justify-between gap-3 border-b border-rule px-4 last:border-b-0",
+            [
+              div(class="min-w-0 flex-1 py-2", [
+                div(
+                  class="flex w-full items-baseline justify-between gap-2",
+                  name_line,
+                ),
+                p(class="mt-0.5 truncate text-xs text-muted", detail),
+              ]),
+              action,
+            ],
+          ),
         )
       }
       if items.is_empty() {
         items.push(
           p(
-            class="py-4 text-sm text-muted",
+            class="px-4 py-8 text-center text-sm text-muted",
             "該当する科目がありません",
           ),
         )
       }
-      div(class="fixed inset-0 z-50 flex items-start justify-center p-4", [
-        div(
-          id="picker-backdrop",
-          class="absolute inset-0 bg-ink/40",
-          on_click=emit(@app.PlannerMsg::ClosePicker),
-          ([] : Array[Html]),
-        ),
-        div(
-          class="relative z-10 mt-[8vh] w-full max-w-xl",
-          on_keydown=fn(event) {
-            if event.key() == "Escape" {
-              emit(@app.PlannerMsg::ClosePicker)
-            } else {
-              @rabbita.none
-            }
-          },
-          [
-            section(
-              id="picker",
-              class="w-full border border-ink border-t-4 border-t-primary bg-paper p-5 shadow-2xl",
-              attrs=@html.Attrs::build()
-                .role("dialog")
-                .aria_modal("true")
-                .aria_labelledby("picker-title"),
-              [
-                div(
-                  class="flex items-start justify-between gap-4 border-b border-rule pb-3",
-                  [
-                    h2(
-                      id="picker-title",
-                      class="font-semibold text-lg",
-                      picker_label(target),
-                    ),
-                    button(
-                      id="close-picker",
-                      class="min-h-11 border-0 bg-transparent px-2 text-xs text-muted hover:text-danger",
-                      on_click=emit(@app.PlannerMsg::ClosePicker),
-                      "閉じる",
-                    ),
-                  ],
-                ),
+      div(
+        class="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4",
+        [
+          div(
+            id="picker-backdrop",
+            class="absolute inset-0",
+            on_click=emit(@app.PlannerMsg::ClosePicker),
+            ([] : Array[Html]),
+          ),
+          section(
+            id="picker",
+            class="relative z-10 w-full max-w-md overflow-hidden rounded-xl bg-paper shadow-2xl",
+            attrs=@html.Attrs::build()
+              .role("dialog")
+              .aria_modal("true")
+              .aria_labelledby("picker-title"),
+            [
+              div(
+                class="flex min-h-12 items-center justify-between border-b border-rule px-4",
+                [
+                  h2(
+                    id="picker-title",
+                    class="text-[17px] font-semibold",
+                    picker_label(target),
+                  ),
+                  button(
+                    id="close-picker",
+                    class="min-h-11 rounded-md px-2 text-sm text-primary hover:bg-primary-soft",
+                    on_click=emit(@app.PlannerMsg::ClosePicker),
+                    "完了",
+                  ),
+                ],
+              ),
+              div(class="border-b border-rule px-4 py-3", [
                 label(
                   for_="catalogue-search",
                   class="sr-only",
@@ -469,7 +481,7 @@ fn picker_panel(
                 ),
                 input(
                   id="catalogue-search",
-                  class="mt-3 w-full border-b border-rule bg-transparent px-0 py-2 text-sm outline-none focus:border-primary",
+                  class="w-full rounded-lg bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:ring-3 focus:ring-primary/30",
                   placeholder="科目名で検索",
                   value=state.catalogue_query,
                   autofocus=true,
@@ -477,12 +489,12 @@ fn picker_panel(
                     emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
                   },
                 ),
-                div(class="mt-1 divide-y divide-rule", items),
-              ],
-            ),
-          ],
-        ),
-      ])
+              ]),
+              div(class="max-h-[60vh] overflow-y-auto", items),
+            ],
+          ),
+        ],
+      )
     }
   }
 }
@@ -494,67 +506,60 @@ fn planner_view(
 ) -> Html {
   let grid = if state.selected_term == @app.PlannerTerm::W {
     p(
-      class="mt-4 border-l-2 border-rule pl-3 text-sm text-muted",
+      class="mt-4 text-sm text-muted",
       "Wでは時間割のグリッドを使いません",
     )
   } else {
     timetable_grid(state, emit)
   }
-  let children : Array[Html] = [
-    a(
-      href="#main-content",
-      class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:border focus:border-primary focus:bg-paper focus:px-3 focus:py-2",
-      "時間割へスキップ",
+  let content : Array[Html] = [
+    header(
+      class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-rule bg-paper px-4",
+      [
+        h2(class="text-[17px] font-semibold", state.selected_term.label()),
+        div(class="flex items-center gap-2", [
+          range_controls(state, emit),
+          button(
+            id="open-catalogue-picker",
+            class="flex min-h-8 items-center gap-1 rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
+            on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
+            [span("+"), span("科目")],
+          ),
+        ]),
+      ],
     ),
-    header(class="border-b border-ink pb-3", [
-      div(class="flex items-center justify-between gap-4", [
-        div(class="flex items-center gap-3", [
-          product_mark(),
-          h1(class="text-2xl font-bold tracking-tight", "応物単位くん"),
-        ]),
-        p(
-          class="text-right text-xs leading-5 text-muted",
-          "\{state.profile.advancement_year.year()}年度 応用物理",
-        ),
-      ]),
+    div(class="flex min-h-0 flex-1 flex-col md:flex-row", [
+      term_section(state, emit),
+      main_(
+        id="main-content",
+        class="min-w-0 flex-1 overflow-auto p-4 md:p-5",
+        [grid, off_grid(state, emit)],
+      ),
     ]),
-    div(class="mt-6 grid gap-6 md:grid-cols-[6rem_minmax(0,1fr)]", [
-      term_tabs(state, emit),
-      div(class="min-w-0", [
-        div(class="flex flex-wrap items-end justify-between gap-3", [
-          h2(class="text-2xl font-semibold", state.selected_term.label()),
-          div(class="flex flex-wrap items-center gap-2", [
-            button(
-              id="open-catalogue-picker",
-              class="border border-primary bg-primary px-3 py-2 text-xs text-white hover:bg-ink",
-              on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
-              "科目一覧から追加",
-            ),
-            range_controls(state, emit),
-          ]),
-        ]),
-        grid,
-        off_grid(state, emit),
-      ]),
-    ]),
-    picker_panel(state, emit),
   ]
   match state.error {
     Some(error) =>
-      children.push(
+      content.push(
         p(
           id="planner-error",
-          class="mt-4 border-l-2 border-danger bg-paper px-3 py-2 text-sm text-danger",
+          class="mx-4 mb-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger",
           error.message,
         ),
       )
     None => ()
   }
-  main_(
-    id="main-content",
-    class="mx-auto max-w-6xl px-4 py-6 md:px-6",
-    children,
-  )
+  div(class="min-h-screen bg-canvas p-0 md:p-6", [
+    a(
+      href="#main-content",
+      class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-paper focus:px-3 focus:py-2",
+      "時間割へスキップ",
+    ),
+    div(
+      class="mx-auto flex min-h-screen max-w-6xl flex-col overflow-hidden bg-paper md:min-h-[calc(100vh-3rem)] md:rounded-xl md:border md:border-rule md:shadow-[0_16px_48px_rgba(0,0,0,0.10)]",
+      content,
+    ),
+    picker_panel(state, emit),
+  ])
 }
 
 ///|
