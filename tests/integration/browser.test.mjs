@@ -109,6 +109,12 @@ test(
         .evaluate((element) => getComputedStyle(element).overflowY),
       "visible",
     );
+    assert.equal(
+      await page
+        .locator("#timetable-scroll")
+        .evaluate((element) => getComputedStyle(element).overflowY),
+      "visible",
+    );
     await page.locator("#slot-1-1").focus();
     assert.equal(
       await page

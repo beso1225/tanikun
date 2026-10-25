@@ -284,13 +284,17 @@ fn timetable_grid(
   let hidden = state.hidden_scheduled_block_count(state.selected_term)
   let children : Array[Html] = [
     div(class="mt-4 overflow-hidden rounded-lg border border-rule bg-paper", [
-      div(class="overflow-x-auto", [
-        table(
-          id="timetable",
-          class="w-full min-w-[44rem] table-fixed border-separate border-spacing-x-2 border-spacing-y-0 text-sm",
-          [thead(header), tbody(rows)],
-        ),
-      ]),
+      div(
+        id="timetable-scroll",
+        class="overflow-x-auto overflow-y-hidden lg:overflow-visible",
+        [
+          table(
+            id="timetable",
+            class="w-full min-w-[44rem] table-fixed border-separate border-spacing-x-2 border-spacing-y-0 text-sm",
+            [thead(header), tbody(rows)],
+          ),
+        ],
+      ),
     ]),
   ]
   if hidden > 0 {
