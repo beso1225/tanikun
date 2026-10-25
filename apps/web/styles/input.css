@@ -1,21 +1,21 @@
 @import "tailwindcss" source("..");
 
 @theme {
-  --color-canvas: #f1f3ee;
-  --color-paper: #fbfcf8;
-  --color-ink: #182822;
-  --color-pine: #2f5546;
-  --color-pine-soft: #e2ece4;
-  --color-vermilion: #ad3f2f;
-  --color-rule: #c9d3c8;
-  --color-muted: #66756b;
+  --color-canvas: #eef1f4;
+  --color-paper: #ffffff;
+  --color-ink: #172033;
+  --color-primary: #254b8a;
+  --color-primary-soft: #dbe6f5;
+  --color-accent: #c8901f;
+  --color-rule: #cbd4df;
+  --color-muted: #667183;
+  --color-danger: #b33a3a;
   --font-sans:
-    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
-  --font-display: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+    "Avenir Next", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
 
   /* Keep the old token names working while views migrate. */
-  --color-action: #2f5546;
-  --color-focus: #ad3f2f;
+  --color-action: #254b8a;
+  --color-focus: #254b8a;
 }
 
 @layer base {
@@ -28,11 +28,11 @@
   }
 
   button:focus-visible {
-    @apply outline-3 outline-offset-2 outline-vermilion;
+    @apply outline-3 outline-offset-2 outline-primary;
   }
 
   ::selection {
-    background: var(--color-pine-soft);
+    background: var(--color-primary-soft);
   }
 
   @media (prefers-reduced-motion: reduce) {

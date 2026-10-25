@@ -24,7 +24,7 @@ test("Tailwind detects MoonBit utilities without scanning unrelated tests", asyn
   const css = await readFile(output, "utf8");
   assert.match(css, /\.max-w-6xl\{/);
   assert.match(css, /\.gap-2\{/);
-  assert.match(css, /\.font-display\{/);
+  assert.match(css, /\.bg-primary\{/);
   // This candidate exists only outside the Web sources and must not leak in.
   assert.ok(!css.includes(".w-\\[137px\\]"));
 });

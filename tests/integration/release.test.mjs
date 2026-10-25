@@ -15,7 +15,7 @@ test("release contains linked HTML, JavaScript, and MoonBit-derived CSS", async 
   assert.ok(js.length > 0);
   const css = await readFile(join(release, "web/styles.css"), "utf8");
   assert.match(css, /\.gap-2\{/);
-  assert.match(css, /\.font-display\{/);
+  assert.match(css, /\.bg-primary\{/);
 });
 
 test("packaged Worker imports and handles requests without build-tree files", async () => {
