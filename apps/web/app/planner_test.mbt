@@ -459,3 +459,174 @@ test "visible slot boundaries and hidden block count" {
   )
   assert_eq(state.hidden_scheduled_block_count(@app.PlannerTerm::S1), 1)
 }
+
+///|
+test "catalogue filters by term, query, and enrollment" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_offering("offering-s2", course, @tanikun-domain.Term::S2, [
+      planner_slot(@tanikun-domain.DayOfWeek::Tuesday, 2),
+    ]),
+  )
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("offering-1")),
+  )
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 1)
+  assert_true(state.catalogue_entries(@app.PlannerTerm::S1)[0].enrolled)
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S2).length(), 1)
+  assert_true(!state.catalogue_entries(@app.PlannerTerm::S2)[0].enrolled)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCatalogueQuery(query="Physics"),
+  )
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 1)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCatalogueQuery(query="missing"),
+  )
+  assert_eq(state.catalogue_entries(@app.PlannerTerm::S1).length(), 0)
+}
+
+///|
+test "picker lists only offerings for the clicked slot" {
+  let state = planner_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=1,
+    ),
+  )
+  assert_eq(state.picker_entries().length(), 1)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Tuesday,
+      period=2,
+    ),
+  )
+  assert_eq(state.picker_entries().length(), 0)
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_offering("offering-s2", course, @tanikun-domain.Term::S2, [
+      planner_slot(@tanikun-domain.DayOfWeek::Tuesday, 2),
+    ]),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Tuesday,
+      period=2,
+    ),
+  )
+  assert_eq(state.picker_entries().length(), 1)
+}
+
+///|
+test "intensive picker follows the selected semester" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_intensive("intensive-s", course, @tanikun-domain.Semester::S),
+  )
+  state.offerings.push(
+    planner_intensive("intensive-w", course, @tanikun-domain.Semester::W),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  assert_eq(state.picker_entries().length(), 1)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::W),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  assert_eq(state.picker_entries().length(), 1)
+}
+
+///|
+test "adding from a picker closes it" {
+  let state = planner_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=1,
+    ),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  match state.picker {
+    None => ()
+    Some(_) => fail("picker should close after adding an offering")
+  }
+  assert_eq(state.enrollments.length(), 1)
+}
+
+///|
+test "the all-courses picker lists the selected term" {
+  let state = planner_state()
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenCataloguePicker)
+  assert_eq(state.picker_entries().length(), 1)
+}
+
+///|
+test "opening a new picker resets the search query" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenCataloguePicker,
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCatalogueQuery(query="Physics"),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=1,
+    ),
+  )
+  assert_eq(state.catalogue_query, "")
+}
+
+///|
+test "adding from the all-courses picker keeps it open" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenCataloguePicker,
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  match state.picker {
+    Some(@app.PickerTarget::All) => ()
+    _ => fail("all-courses picker should stay open")
+  }
+  assert_true(state.picker_entries()[0].enrolled)
+}
+
+///|
+test "adding from the intensive picker keeps it open" {
+  let state = planner_state()
+  let course = state.catalogue[0]
+  state.offerings.push(
+    planner_intensive("intensive-s", course, @tanikun-domain.Semester::S),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("intensive-s")),
+  )
+  match state.picker {
+    Some(@app.PickerTarget::Intensive) => ()
+    _ => fail("intensive picker should stay open")
+  }
+  assert_true(state.picker_entries()[0].enrolled)
+}

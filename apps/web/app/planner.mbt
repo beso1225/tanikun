@@ -237,6 +237,8 @@ pub struct PlannerState {
   selected_term : PlannerTerm
   selected_offering : @tanikun-domain.OfferingId?
   error : UiError?
+  catalogue_query : String
+  picker : PickerTarget?
   visible_days : Int
   visible_periods : Int
   revision : Int
@@ -277,10 +279,20 @@ pub fn PlannerState::new(
     selected_term: S1,
     selected_offering: None,
     error: None,
+    catalogue_query: "",
+    picker: None,
     visible_days: 5,
     visible_periods: 6,
     revision: 0,
   }
+}
+
+///|
+/// The slot or off-grid list that opened the catalogue picker.
+pub(all) enum PickerTarget {
+  Slot(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
+  Intensive
+  All
 }
 
 ///|
@@ -292,6 +304,11 @@ pub(all) enum PlannerMsg {
   ClearOfferingSelection
   AddOffering(offering_id~ : @tanikun-domain.OfferingId)
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
+  OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
+  OpenIntensivePicker
+  OpenCataloguePicker
+  ClosePicker
+  UpdateCatalogueQuery(query~ : String)
   IncreaseVisibleDays
   DecreaseVisibleDays
   IncreaseVisiblePeriods
@@ -302,7 +319,14 @@ pub(all) enum PlannerMsg {
 ///|
 pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
   match msg {
-    SelectTerm(term~) => bump({ ..state, selected_term: term, error: None, })
+    SelectTerm(term~) =>
+      bump({
+        ..state,
+        selected_term: term,
+        error: None,
+        picker: None,
+        catalogue_query: "",
+      })
     SelectOffering(offering_id~) =>
       match find_offering(state.offerings, offering_id) {
         Some(_) =>
@@ -317,6 +341,22 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
+    OpenSlotPicker(day~, period~) =>
+      bump({
+        ..state,
+        picker: Some(PickerTarget::Slot(day~, period~)),
+        catalogue_query: "",
+      })
+    OpenIntensivePicker =>
+      bump({
+        ..state,
+        picker: Some(PickerTarget::Intensive),
+        catalogue_query: "",
+      })
+    OpenCataloguePicker =>
+      bump({ ..state, picker: Some(PickerTarget::All), catalogue_query: "", })
+    ClosePicker => bump({ ..state, picker: None, catalogue_query: "", })
+    UpdateCatalogueQuery(query~) => bump({ ..state, catalogue_query: query, })
     IncreaseVisibleDays =>
       if state.visible_days < 7 {
         bump({ ..state, visible_days: state.visible_days + 1, })
@@ -474,7 +514,11 @@ fn add_offering(
   }
   let enrollments = state.enrollments.copy()
   enrollments.push(@tanikun-domain.Enrollment::planned(id))
-  bump({ ..state, enrollments, selected_offering: None, error: None, })
+  let picker = match state.picker {
+    Some(PickerTarget::Slot(..)) => None
+    _ => state.picker
+  }
+  bump({ ..state, enrollments, selected_offering: None, picker, error: None, })
 }
 
 ///|
@@ -514,6 +558,17 @@ pub struct ScheduledBlock {
 }
 
 ///|
+/// One offering shown in the catalogue for the selected term.
+pub struct CatalogueEntry {
+  offering_id : @tanikun-domain.OfferingId
+  course_name : String
+  credits : @tanikun-domain.Credits
+  schedule : @tanikun-domain.OfferingSchedule
+  slots : Array[@tanikun-domain.Slot]
+  enrolled : Bool
+}
+
+///|
 /// One intensive offering in the selected term's off-grid list.
 pub struct OffGridEntry {
   offering_id : @tanikun-domain.OfferingId
@@ -532,6 +587,67 @@ fn find_course(
     }
   }
   None
+}
+
+///|
+pub fn PlannerState::catalogue_entries(
+  self : PlannerState,
+  term : PlannerTerm,
+) -> Array[CatalogueEntry] {
+  let entries : Array[CatalogueEntry] = []
+  for offering in self.offerings {
+    if offering_occupies_term(offering, term) &&
+      offering.status == @tanikun-domain.OfferingStatus::Offered {
+      match find_course(self.catalogue, offering.course_id) {
+        Some(course) =>
+          if self.catalogue_query.is_empty() ||
+            course.name.contains(self.catalogue_query) {
+            entries.push({
+              offering_id: offering.id,
+              course_name: course.name,
+              credits: course.credits,
+              schedule: offering.schedule(),
+              slots: offering.slots(),
+              enrolled: has_enrollment(self.enrollments, offering.id),
+            })
+          }
+        None => ()
+      }
+    }
+  }
+  entries
+}
+
+///|
+pub fn PlannerState::picker_entries(
+  self : PlannerState,
+) -> Array[CatalogueEntry] {
+  let entries : Array[CatalogueEntry] = []
+  let base = self.catalogue_entries(self.selected_term)
+  for entry in base {
+    let matches = match self.picker {
+      Some(PickerTarget::Slot(day~, period~)) => {
+        let mut found = false
+        for slot in entry.slots {
+          if slot.day == day && slot.period.value() == period {
+            found = true
+          }
+        }
+        found
+      }
+      Some(PickerTarget::Intensive) =>
+        match entry.schedule {
+          @tanikun-domain.OfferingSchedule::Intensive(_) => true
+          _ => false
+        }
+      Some(PickerTarget::All) => true
+      None => false
+    }
+    if matches {
+      entries.push(entry)
+    }
+  }
+  entries
 }
 
 ///|

@@ -103,9 +103,29 @@ test(
       );
     assert.equal(dayCellWidths.length, 5);
     assert.equal(new Set(dayCellWidths).size, 1);
-    await page.getByText("Physics I", { exact: true }).waitFor();
-    await page.getByText("Physics Lab", { exact: true }).waitFor();
+    await page.locator("#slot-1-1").focus();
+    assert.equal(
+      await page
+        .locator("#slot-1-1")
+        .evaluate((element) => getComputedStyle(element).outlineColor),
+      "rgb(37, 75, 138)",
+    );
+    await page
+      .locator("#timetable")
+      .getByText("Physics I", { exact: true })
+      .waitFor();
+    await page
+      .locator("#timetable")
+      .getByText("Physics Lab", { exact: true })
+      .waitFor();
     await page.locator("#off-grid").getByText("Seminar S").waitFor();
+    await page.locator("#open-intensive-picker").click();
+    await page.locator("#add-offering-phy302-s").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#remove-picker-phy302-s").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#off-grid").getByText("Seminar S2").waitFor();
 
     await page.locator("#add-day").click();
     await page.getByText("6日", { exact: true }).waitFor();
@@ -119,9 +139,132 @@ test(
     await page.getByText("7限", { exact: true }).waitFor();
     assert.equal(await page.locator("#timetable tbody tr").count(), 7);
 
+    await page.locator("#term-S2").click();
+    assert.equal(await page.locator("#picker").count(), 0);
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#picker").getByText("Physics II").waitFor();
+    const enrolledBadgeXs = await page
+      .locator("#picker")
+      .getByText("登録済み")
+      .evaluateAll((badges) =>
+        badges.map((badge) => Math.round(badge.getBoundingClientRect().x)),
+      );
+    assert.ok(enrolledBadgeXs.length >= 2);
+    assert.equal(new Set(enrolledBadgeXs).size, 1);
+    await page.locator("#catalogue-search").fill("Physics");
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#slot-1-2").click();
+    await page.locator("#picker").waitFor();
+    await page.waitForFunction(
+      () => document.activeElement?.id === "catalogue-search",
+    );
+    assert.equal(await page.locator("#picker-backdrop").count(), 1);
+    assert.equal(await page.locator("#picker").getAttribute("role"), "dialog");
+    assert.equal(
+      await page.locator("#picker").getAttribute("aria-modal"),
+      "true",
+    );
+    assert.equal(
+      await page.locator("#picker").getAttribute("aria-labelledby"),
+      "picker-title",
+    );
+    assert.equal(
+      await page.getByRole("textbox", { name: "科目名で検索" }).count(),
+      1,
+    );
+    assert.equal(
+      await page.getByRole("button", { name: /火2限に科目を追加/ }).count(),
+      1,
+    );
+    assert.equal(
+      await page.locator('#timetable thead th[scope="col"]').count(),
+      7,
+    );
+    assert.ok(
+      (await page.locator('#timetable tbody th[scope="row"]').count()) >= 6,
+    );
+    assert.equal(await page.locator("main#main-content").count(), 1);
+    assert.equal(
+      await page
+        .locator("body")
+        .evaluate((body) => getComputedStyle(body).overflow),
+      "hidden",
+    );
+    assert.equal(await page.locator("#catalogue-search").inputValue(), "");
+    await page.locator("#add-offering-phy102-s2").focus();
+    await page.keyboard.press("Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "close-picker",
+    );
+
+    await page.keyboard.press("Escape");
+    await page.locator("#picker").waitFor({ state: "detached" });
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "slot-1-2",
+    );
+    await page.locator("#slot-1-2").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#picker-backdrop").click({ position: { x: 5, y: 5 } });
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#slot-1-2").click();
+    await page.locator("#picker").waitFor();
+
+    const pickerText = await page.locator("#picker").innerText();
+    assert.ok(pickerText.includes("S2"));
+    assert.ok(!pickerText.includes("通常"));
+    await page.locator("#catalogue-search").fill("missing");
+    await page.getByText("該当する科目がありません").waitFor();
+    await page.locator("#catalogue-search").fill("");
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#slot-1-2").click();
+    await page.locator("#add-offering-phy102-s2").waitFor();
+    const addStyle = await page
+      .locator("#add-offering-phy102-s2")
+      .evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        height: element.getBoundingClientRect().height,
+      }));
+    assert.notEqual(addStyle.background, "rgba(0, 0, 0, 0)");
+    assert.ok(addStyle.height >= 40);
+    await page.locator("#add-offering-phy102-s2").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Physics II", { exact: true })
+      .waitFor();
+    await page
+      .locator('#timetable button[id^="remove-phy102-s2"]')
+      .first()
+      .click();
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#add-offering-phy102-s2").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#remove-picker-phy102-s2").waitFor();
+    await page.locator("#remove-picker-phy102-s2").click();
+    await page.locator("#add-offering-phy102-s2").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics II", { exact: true })
+        .count(),
+      0,
+    );
+
     await page.locator("#term-A1").click();
     await page.locator("#off-grid").getByText("Seminar A").waitFor();
-    await page.getByText("Physics Lab", { exact: true }).waitFor();
+    await page
+      .locator("#timetable")
+      .getByText("Physics Lab", { exact: true })
+      .waitFor();
 
     await page.locator("#term-W").click();
     await page
@@ -129,6 +272,17 @@ test(
       .waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
+    await page.locator("#remove-phy501-w").click();
+    await page.getByText("集中講義はありません").waitFor();
+    await page.locator("#open-intensive-picker").click();
+    await page.locator("#add-offering-phy501-w").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#remove-picker-phy501-w").waitFor();
+    await page.locator("#remove-picker-phy501-w").click();
+    await page.locator("#add-offering-phy501-w").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.getByText("集中講義はありません").waitFor();
 
     assert.deepEqual(errors, []);
   },

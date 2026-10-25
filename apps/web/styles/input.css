@@ -1,22 +1,53 @@
 @import "tailwindcss" source("..");
 
 @theme {
-  --color-canvas: #f6f8f4;
-  --color-ink: #24352c;
-  --color-action: #526b5b;
-  --color-focus: #366947;
+  --color-canvas: #eef1f4;
+  --color-paper: #ffffff;
+  --color-ink: #172033;
+  --color-primary: #254b8a;
+  --color-primary-soft: #dbe6f5;
+  --color-accent: #c8901f;
+  --color-rule: #cbd4df;
+  --color-muted: #5a6478;
+  --color-danger: #b33a3a;
+  --font-sans:
+    "Avenir Next", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+
+  /* Keep the old token names working while views migrate. */
+  --color-action: #254b8a;
+  --color-focus: #254b8a;
 }
 
 @layer base {
   body {
-    @apply m-0 bg-canvas font-sans text-ink;
+    @apply m-0 bg-canvas font-sans text-ink antialiased;
   }
 
   button {
-    @apply cursor-pointer rounded-md border border-action bg-white px-4 py-2.5 text-ink;
+    @apply cursor-pointer;
+    transition-property: background-color, border-color, color;
+    transition-duration: 150ms;
   }
 
   button:focus-visible {
-    @apply outline-3 outline-offset-3 outline-focus;
+    @apply outline-3 outline-offset-2 outline-primary;
+  }
+
+  ::selection {
+    background: var(--color-primary-soft);
+  }
+
+  body:has(#picker) {
+    overflow: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

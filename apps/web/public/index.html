@@ -9,5 +9,65 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      (() => {
+        const picker = () => document.querySelector("#picker");
+        let returnFocus = null;
+        document.addEventListener(
+          "click",
+          (event) => {
+            if (!picker() && event.target.closest("button")) {
+              returnFocus = event.target.closest("button");
+            }
+          },
+          true,
+        );
+        new MutationObserver(() => {
+          const panel = picker();
+          if (panel && !panel.contains(document.activeElement)) {
+            (
+              panel.querySelector("input") ?? panel.querySelector("button")
+            )?.focus();
+          }
+          if (panel || !returnFocus) return;
+          const target = returnFocus;
+          returnFocus = null;
+          if (target.isConnected) target.focus();
+        }).observe(document.querySelector("#app"), {
+          childList: true,
+          subtree: true,
+        });
+        const focusable = () =>
+          Array.from(
+            picker()?.querySelectorAll(
+              'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ) ?? [],
+          );
+        document.addEventListener(
+          "keydown",
+          (event) => {
+            if (!picker()) return;
+            if (event.key === "Escape") {
+              event.preventDefault();
+              document.querySelector("#close-picker")?.click();
+              return;
+            }
+            if (event.key !== "Tab") return;
+            const items = focusable();
+            if (items.length === 0) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first.focus();
+            }
+          },
+          true,
+        );
+      })();
+    </script>
   </body>
 </html>
