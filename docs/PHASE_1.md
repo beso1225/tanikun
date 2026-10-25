@@ -14,7 +14,7 @@ This document records the Phase 1 contract. It is consistent with
 Phase 1 is deliberately pure MoonBit. UI, Workers, D1, Automerge, IndexedDB,
 persistence, JSON contracts, and HTTP APIs are out of scope.
 
-## Goal and Done criteria
+## Goal and completion checklist
 
 Phase 1 must deterministically derive, from fictional in-memory input:
 
@@ -23,11 +23,16 @@ Phase 1 must deterministically derive, from fictional in-memory input:
 - satisfied, partially satisfied, or unsatisfied requirement trees for each
   projection mode.
 
-Phase 1 Done requires all of the following:
+The following checklist defines Phase 1 completion. Issue #19 records the
+evidence and closes the milestone. Until #19 closes, treat the checklist as
+pending.
 
 - the golden fixture in `packages/requirements/phase1_fixture_test.mbt`
   demonstrates credits and requirement results for all three modes;
-- `just test`, `just lint`, and `nix flake check path:.` pass on Linux CI;
+- `nix flake check path:.` passes on Linux CI. This check runs the domain,
+  requirements, API, and Web tests, including the export and Tailwind tests.
+  Run `just test` locally for the same MoonBit test set;
+- `just lint` passes;
 - the mutation baseline is recorded in [MUTATION.md](MUTATION.md);
 - issue #19 records the evidence and closes the milestone.
 
@@ -485,7 +490,7 @@ just mutate
 ```
 
 See [MUTATION.md](MUTATION.md) for the baseline, accepted mutants, and the
-ratchet policy.
+threshold policy.
 
 ## Out of scope and deferred decisions
 
