@@ -62,6 +62,7 @@ pub fn sample_state() -> PlannerState {
   let year = sample_year()
   let phy101 = sample_course("PHY101", "Physics I", 4)
   let phy102 = sample_course("PHY102", "Physics II", 4)
+  let phy103 = sample_course("PHY103", "Calculus", 4)
   let phy201 = sample_course("PHY201", "Physics Lab", 2)
   let phy301 = sample_course("PHY301", "Seminar S", 2)
   let phy302 = sample_course("PHY302", "Seminar S2", 2)
@@ -79,6 +80,18 @@ pub fn sample_state() -> PlannerState {
       phy102,
       @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::S2]),
       [sample_slot(@tanikun-domain.DayOfWeek::Tuesday, 2)],
+    ),
+    sample_offering(
+      "phy103-s1",
+      phy103,
+      @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::S1]),
+      [sample_slot(@tanikun-domain.DayOfWeek::Monday, 2)],
+    ),
+    sample_offering(
+      "phy103-s2",
+      phy103,
+      @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::S2]),
+      [sample_slot(@tanikun-domain.DayOfWeek::Tuesday, 3)],
     ),
     sample_offering(
       "phy201-year",
@@ -120,6 +133,10 @@ pub fn sample_state() -> PlannerState {
     ),
   ]
   let enrollments = [
+    @tanikun-domain.Enrollment::failed(
+      sample_ok(@tanikun-domain.OfferingId::new("phy103-s1")),
+      @tanikun-domain.FailingGrade::Fail,
+    ),
     @tanikun-domain.Enrollment::planned(
       sample_ok(@tanikun-domain.OfferingId::new("phy101-s1")),
     ),
@@ -153,7 +170,7 @@ pub fn sample_state() -> PlannerState {
     @tanikun-requirements.RequirementSets::new([requirement_set]),
   )
   PlannerState::new(
-    [phy101, phy102, phy201, phy301, phy302, phy401, phy501],
+    [phy101, phy102, phy103, phy201, phy301, phy302, phy401, phy501],
     offerings,
     enrollments,
     @tanikun-domain.Overrides::empty(),
