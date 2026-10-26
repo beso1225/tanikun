@@ -111,6 +111,40 @@ fn slots_label(slots : Array[@tanikun-domain.Slot]) -> String {
 }
 
 ///|
+fn enrollment_status_label(status : @tanikun-domain.EnrollmentStatus) -> String {
+  match status {
+    @tanikun-domain.EnrollmentStatus::Planned => "予定"
+    @tanikun-domain.EnrollmentStatus::InProgress => "履修中"
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::Passed(..)
+    ) => "合格"
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::Failed(..)
+    ) => "不合格"
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::NotTaken
+    ) => "未履修"
+  }
+}
+
+///|
+fn enrollment_status_class(status : @tanikun-domain.EnrollmentStatus) -> String {
+  match status {
+    @tanikun-domain.EnrollmentStatus::Planned => "text-muted"
+    @tanikun-domain.EnrollmentStatus::InProgress => "text-primary-text"
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::Passed(..)
+    ) => "text-success-text"
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::Failed(..)
+    ) => "text-danger-text"
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::NotTaken
+    ) => "text-muted"
+  }
+}
+
+///|
 fn app_mark() -> Html {
   div(
     attrs=@html.Attrs::build().aria_hidden("true"),
@@ -258,19 +292,28 @@ fn timetable_grid(
     for day in days {
       let cell = match find_block(blocks, day, period) {
         Some(block) =>
-          td(class="h-20 border-b border-rule p-1 align-top sm:h-16 sm:p-1.5", [
-            button(
-              id="open-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-              class="flex h-full w-full items-start justify-start rounded-md bg-primary-soft px-1 py-1 text-left hover:bg-primary-soft/80 sm:px-2 sm:py-1.5",
-              on_click=emit(
-                @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
+          td(
+            class="h-20 border-b border-rule p-0.5 align-top sm:h-16 sm:p-1.5",
+            [
+              button(
+                id="open-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+                class="flex h-full w-full items-start justify-start rounded-md bg-primary-soft px-0.5 py-1 text-left hover:bg-primary-soft/80 sm:px-2 sm:py-1.5",
+                on_click=emit(
+                  @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
+                ),
+                div(class="flex h-full w-full flex-col justify-between", [
+                  span(
+                    class="block break-words text-[0.6875rem] font-medium leading-tight tracking-tight text-ink sm:text-sm",
+                    block.course_name,
+                  ),
+                  span(
+                    class="text-[0.6875rem] font-medium \{enrollment_status_class(block.status)}",
+                    enrollment_status_label(block.status),
+                  ),
+                ]),
               ),
-              span(
-                class="block break-words text-xs font-medium text-ink sm:text-sm",
-                block.course_name,
-              ),
-            ),
-          ])
+            ],
+          )
         None =>
           td(class="h-20 border-b border-rule p-0 align-middle sm:h-16", [
             button(
@@ -330,10 +373,13 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
         [
           div(class="min-w-0", [
             p(class="truncate text-sm font-medium text-ink", entry.course_name),
-            p(
-              class="mt-0.5 text-xs text-muted",
-              "\{credits_label(entry.credits)}単位",
-            ),
+            div(class="mt-0.5 flex items-center gap-2 text-xs text-muted", [
+              span("\{credits_label(entry.credits)}単位"),
+              span(
+                class="\{enrollment_status_class(entry.status)}",
+                enrollment_status_label(entry.status),
+              ),
+            ]),
           ]),
         ],
       ),

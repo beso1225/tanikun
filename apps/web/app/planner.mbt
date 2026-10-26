@@ -691,6 +691,7 @@ pub struct ScheduledBlock {
   course_name : String
   day : @tanikun-domain.DayOfWeek
   period : @tanikun-domain.Period
+  status : @tanikun-domain.EnrollmentStatus
 }
 
 ///|
@@ -710,6 +711,7 @@ pub struct OffGridEntry {
   offering_id : @tanikun-domain.OfferingId
   course_name : String
   credits : @tanikun-domain.Credits
+  status : @tanikun-domain.EnrollmentStatus
 }
 
 ///|
@@ -804,6 +806,7 @@ pub fn PlannerState::scheduled_blocks(
                   course_name: course.name,
                   day: slot.day,
                   period: slot.period,
+                  status: enrollment.status,
                 })
               }
             None => ()
@@ -833,6 +836,7 @@ pub fn PlannerState::off_grid_entries(
                     offering_id: offering.id,
                     course_name: course.name,
                     credits: course.credits,
+                    status: enrollment.status,
                   })
                 None => ()
               }
