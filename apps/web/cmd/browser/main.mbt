@@ -369,6 +369,58 @@ fn picker_label(target : @app.PickerTarget) -> String {
 }
 
 ///|
+/// One modal shell for every dialog in the planner. It owns the backdrop,
+/// dialog semantics, the header, and the shared close affordance.
+fn modal_shell(
+  id~ : String,
+  title_id~ : String,
+  close_id~ : String,
+  title~ : String,
+  width_class~ : String,
+  close~ : @rabbita.Cmd,
+  children~ : Array[Html],
+) -> Html {
+  let content : Array[Html] = [
+    div(
+      class="flex min-h-12 items-center justify-between border-b border-rule px-4",
+      [
+        h2(id=title_id, class="text-[1.0625rem] font-semibold", title),
+        button(
+          id=close_id,
+          class="min-h-11 rounded-md px-2 text-sm text-ink hover:bg-primary-soft",
+          attrs=@html.Attrs::build().data_set("dialog-close", "true"),
+          on_click=close,
+          "完了",
+        ),
+      ],
+    ),
+  ]
+  for child in children {
+    content.push(child)
+  }
+  div(
+    class="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4",
+    [
+      div(
+        id="\{id}-backdrop",
+        class="absolute inset-0",
+        on_click=close,
+        ([] : Array[Html]),
+      ),
+      section(
+        id~,
+        class="relative z-10 w-full \{width_class} overflow-hidden rounded-xl bg-paper shadow-2xl",
+        attrs=@html.Attrs::build()
+          .role("dialog")
+          .aria_modal("true")
+          .aria_labelledby(title_id),
+        content,
+      ),
+    ],
+  )
+}
+
+///|
 fn picker_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -424,61 +476,30 @@ fn picker_panel(
           ),
         )
       }
-      div(
-        class="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4",
-        [
-          div(
-            id="picker-backdrop",
-            class="absolute inset-0",
-            on_click=emit(@app.PlannerMsg::ClosePicker),
-            ([] : Array[Html]),
+      let body : Array[Html] = [
+        div(class="border-b border-rule px-4 py-3", [
+          label(for_="catalogue-search", class="sr-only", "科目名で検索"),
+          input(
+            id="catalogue-search",
+            class="w-full rounded-lg bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:ring-3 focus:ring-primary/30",
+            placeholder="科目名で検索",
+            value=state.catalogue_query,
+            autofocus=true,
+            on_input=fn(query) {
+              emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
+            },
           ),
-          section(
-            id="picker",
-            class="relative z-10 w-full max-w-md overflow-hidden rounded-xl bg-paper shadow-2xl",
-            attrs=@html.Attrs::build()
-              .role("dialog")
-              .aria_modal("true")
-              .aria_labelledby("picker-title"),
-            [
-              div(
-                class="flex min-h-12 items-center justify-between border-b border-rule px-4",
-                [
-                  h2(
-                    id="picker-title",
-                    class="text-[1.0625rem] font-semibold",
-                    picker_label(target),
-                  ),
-                  button(
-                    id="close-picker",
-                    class="min-h-11 rounded-md px-2 text-sm text-ink hover:bg-primary-soft",
-                    attrs=@html.Attrs::build().data_set("dialog-close", "true"),
-                    on_click=emit(@app.PlannerMsg::ClosePicker),
-                    "完了",
-                  ),
-                ],
-              ),
-              div(class="border-b border-rule px-4 py-3", [
-                label(
-                  for_="catalogue-search",
-                  class="sr-only",
-                  "科目名で検索",
-                ),
-                input(
-                  id="catalogue-search",
-                  class="w-full rounded-lg bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:ring-3 focus:ring-primary/30",
-                  placeholder="科目名で検索",
-                  value=state.catalogue_query,
-                  autofocus=true,
-                  on_input=fn(query) {
-                    emit(@app.PlannerMsg::UpdateCatalogueQuery(query~))
-                  },
-                ),
-              ]),
-              div(class="max-h-[60vh] overflow-y-auto", items),
-            ],
-          ),
-        ],
+        ]),
+        div(class="max-h-[60vh] overflow-y-auto", items),
+      ]
+      modal_shell(
+        id="picker",
+        title_id="picker-title",
+        close_id="close-picker",
+        title=picker_label(target),
+        width_class="max-w-md",
+        close=emit(@app.PlannerMsg::ClosePicker),
+        children=body,
       )
     }
   }
@@ -499,63 +520,27 @@ fn course_detail(
             None => div(([] : Array[Html]))
             Some(course) => {
               let detail = "\{credits_label(course.credits)}単位 · \{schedule_label(offering.schedule())} · \{slots_label(offering.slots())}"
-              div(
-                class="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4",
-                [
-                  div(
-                    id="detail-backdrop",
-                    class="absolute inset-0",
-                    on_click=emit(@app.PlannerMsg::ClearOfferingSelection),
-                    ([] : Array[Html]),
+              let body : Array[Html] = [
+                div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
+                div(class="flex justify-end border-t border-rule px-4 py-2", [
+                  button(
+                    id="remove-detail",
+                    class="min-h-11 rounded-md px-3 text-sm text-danger-text hover:bg-danger/10",
+                    on_click=emit(
+                      @app.PlannerMsg::RemoveEnrollment(offering_id~),
+                    ),
+                    "履修から削除",
                   ),
-                  section(
-                    id="course-detail-dialog",
-                    class="relative z-10 w-full max-w-sm overflow-hidden rounded-xl bg-paper shadow-2xl",
-                    attrs=@html.Attrs::build()
-                      .role("dialog")
-                      .aria_modal("true")
-                      .aria_labelledby("course-detail-title"),
-                    [
-                      div(
-                        class="flex min-h-12 items-center justify-between border-b border-rule px-4",
-                        [
-                          h2(
-                            id="course-detail-title",
-                            class="text-[1.0625rem] font-semibold",
-                            course.name,
-                          ),
-                          button(
-                            id="close-detail",
-                            class="min-h-11 rounded-md px-2 text-sm text-ink hover:bg-primary-soft",
-                            attrs=@html.Attrs::build().data_set(
-                              "dialog-close", "true",
-                            ),
-                            on_click=emit(
-                              @app.PlannerMsg::ClearOfferingSelection,
-                            ),
-                            "完了",
-                          ),
-                        ],
-                      ),
-                      div(class="px-4 py-4", [
-                        p(class="text-sm text-muted", detail),
-                      ]),
-                      div(
-                        class="flex justify-end border-t border-rule px-4 py-2",
-                        [
-                          button(
-                            id="remove-detail",
-                            class="min-h-11 rounded-md px-3 text-sm text-danger-text hover:bg-danger/10",
-                            on_click=emit(
-                              @app.PlannerMsg::RemoveEnrollment(offering_id~),
-                            ),
-                            "履修から削除",
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
+                ]),
+              ]
+              modal_shell(
+                id="course-detail-dialog",
+                title_id="course-detail-title",
+                close_id="close-detail",
+                title=course.name,
+                width_class="max-w-sm",
+                close=emit(@app.PlannerMsg::ClearOfferingSelection),
+                children=body,
               )
             }
           }
