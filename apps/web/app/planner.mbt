@@ -57,7 +57,6 @@ pub(all) enum UiErrorTarget {
 ///|
 pub(all) enum UiErrorKind {
   DomainValidation
-  DuplicateEnrollment
   SlotConflict
   NotOfferedInTerm
   UnknownOffering
@@ -180,7 +179,6 @@ pub fn UiError::from_domain(
 
 ///|
 pub(all) enum TimetableError {
-  DuplicateEnrollment(offering_id~ : @tanikun-domain.OfferingId)
   SlotConflict(
     offering_id~ : @tanikun-domain.OfferingId,
     slot~ : @tanikun-domain.Slot
@@ -192,12 +190,6 @@ pub(all) enum TimetableError {
 ///|
 pub fn TimetableError::to_ui(self : TimetableError) -> UiError {
   match self {
-    DuplicateEnrollment(offering_id~) =>
-      UiError::new(
-        UiErrorTarget::Offering(offering_id~),
-        UiErrorKind::DuplicateEnrollment,
-        "同じ開講がすでに登録されています",
-      )
     SlotConflict(offering_id~, ..) =>
       UiError::new(
         UiErrorTarget::Offering(offering_id~),
@@ -493,6 +485,8 @@ fn add_offering(
         TimetableError::UnknownOffering(offering_id=id).to_ui(),
       )
   }
+  // A repeated UI action on an already-enrolled offering is a deliberate
+  // no-op, not a duplicate-enrollment error.
   if has_enrollment(state.enrollments, id) {
     return state
   }

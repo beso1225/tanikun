@@ -388,31 +388,31 @@ fn picker_panel(
             span(class="shrink-0 text-xs text-muted", "登録済み"),
           )
         }
-        let action = if entry.enrolled {
-          span(class="min-w-20 shrink-0", "")
-        } else {
-          button(
-            id="add-offering-\{entry.offering_id.value}",
-            class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm font-medium text-primary-text hover:bg-primary-soft",
-            on_click=emit(
-              @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
+        let row_children : Array[Html] = [
+          div(class="min-w-0 flex-1 py-2", [
+            div(
+              class="flex w-full items-baseline justify-between gap-2",
+              name_line,
             ),
-            "追加",
+            p(class="mt-0.5 truncate text-xs text-muted", detail),
+          ]),
+        ]
+        if !entry.enrolled {
+          row_children.push(
+            button(
+              id="add-offering-\{entry.offering_id.value}",
+              class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm font-medium text-primary-text hover:bg-primary-soft",
+              on_click=emit(
+                @app.PlannerMsg::AddOffering(offering_id=entry.offering_id),
+              ),
+              "追加",
+            ),
           )
         }
         items.push(
           div(
             class="flex min-h-14 items-center justify-between gap-3 border-b border-rule px-4 last:border-b-0",
-            [
-              div(class="min-w-0 flex-1 py-2", [
-                div(
-                  class="flex w-full items-baseline justify-between gap-2",
-                  name_line,
-                ),
-                p(class="mt-0.5 truncate text-xs text-muted", detail),
-              ]),
-              action,
-            ],
+            row_children,
           ),
         )
       }
