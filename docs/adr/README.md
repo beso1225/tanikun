@@ -8,6 +8,7 @@
 | [0004](0004-category-defined-by-requirement-set.md)    | The requirement set defines categories                                   | accepted |
 | [0005](0005-requirement-rules-and-credit-semantics.md) | Requirements form a tree and leaves count credits                        | accepted |
 | [0006](0006-phase-2-planner-state-and-ui-errors.md)    | Phase 2 keeps planner state in the web app and errors at the UI boundary | accepted |
+| [0007](0007-custom-course-id-namespace.md)             | Custom courses use the user ID namespace                                 | accepted |
 
 The ADR bodies are unchanged. See the [documentation index](../README.md) for the
 current contract.
