@@ -1030,6 +1030,7 @@ test "a custom course can be edited without changing its identity" {
   let state = create_named_custom_course(planner_state(), "Before")
   let course_id = state.catalogue[1].id
   let offering_id = state.offerings[1].id
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenCataloguePicker)
   let state = @app.update_planner(
     state,
     @app.PlannerMsg::OpenEditCustomCourse(offering_id~),
@@ -1042,9 +1043,9 @@ test "a custom course can be edited without changing its identity" {
   assert_true(state.offerings[1].id == offering_id)
   assert_eq(state.catalogue[1].name, "After")
   assert_eq(state.next_custom_course_number, 2)
-  match state.selected_offering {
-    Some(value) => assert_true(value == offering_id)
-    None => fail("edited offering should stay selected")
+  match state.picker {
+    Some(@app.PickerTarget::All) => ()
+    _ => fail("edited offering should return to the catalogue picker")
   }
 }
 
@@ -1166,34 +1167,6 @@ test "creating from the intensive picker returns to the intensive picker" {
   match state.picker {
     Some(@app.PickerTarget::Intensive) => ()
     _ => fail("custom creation should return to the intensive picker")
-  }
-}
-
-///|
-test "removing a custom enrollment asks whether to delete the course" {
-  let state = create_named_custom_course(planner_state(), "Prompted")
-  let course_id = state.catalogue[1].id
-  let offering_id = state.offerings[1].id
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::AddOffering(offering_id~),
-  )
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::SelectOffering(offering_id~),
-  )
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::RemoveEnrollment(offering_id~),
-  )
-  match state.pending_custom_delete {
-    Some(value) => assert_true(value == course_id)
-    None => fail("expected a custom delete prompt")
-  }
-  let state = @app.update_planner(state, @app.PlannerMsg::CancelCustomDelete)
-  match state.pending_custom_delete {
-    None => ()
-    Some(_) => fail("cancel should clear the custom delete prompt")
   }
 }
 

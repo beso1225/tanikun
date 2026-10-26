@@ -270,7 +270,6 @@ pub struct PlannerState {
   picker : PickerTarget?
   custom_form : CustomCourseDraft?
   custom_course_ids : Array[@tanikun-domain.CourseId]
-  pending_custom_delete : @tanikun-domain.CourseId?
   next_custom_course_number : Int
   visible_days : Int
   visible_periods : Int
@@ -316,7 +315,6 @@ pub fn PlannerState::new(
     picker: None,
     custom_form: None,
     custom_course_ids: [],
-    pending_custom_delete: None,
     next_custom_course_number: 1,
     visible_days: 5,
     visible_periods: 6,
@@ -422,8 +420,6 @@ pub(all) enum PlannerMsg {
   ToggleCustomTerm(term~ : PlannerTerm)
   OpenEditCustomCourse(offering_id~ : @tanikun-domain.OfferingId)
   DeleteCustomCourse(course_id~ : @tanikun-domain.CourseId)
-  ConfirmCustomDelete(course_id~ : @tanikun-domain.CourseId)
-  CancelCustomDelete
   SubmitCustomCourse
   OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
   OpenIntensivePicker
@@ -445,7 +441,6 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         ..state,
         selected_term: term,
         selected_offering: None,
-        pending_custom_delete: None,
         error: None,
         picker: None,
         catalogue_query: "",
@@ -453,12 +448,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     SelectOffering(offering_id~) =>
       match find_offering(state.offerings, offering_id) {
         Some(_) =>
-          bump({
-            ..state,
-            selected_offering: Some(offering_id),
-            pending_custom_delete: None,
-            error: None,
-          })
+          bump({ ..state, selected_offering: Some(offering_id), error: None, })
         None =>
           with_error(
             state,
@@ -466,12 +456,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
           )
       }
     ClearOfferingSelection =>
-      bump({
-        ..state,
-        selected_offering: None,
-        pending_custom_delete: None,
-        error: None,
-      })
+      bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
     UpdateEnrollmentStatus(offering_id~, target~) =>
@@ -482,7 +467,6 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         custom_form: Some(new_custom_course_draft(state)),
         picker: None,
         selected_offering: None,
-        pending_custom_delete: None,
         error: None,
       })
     CloseCustomCourseForm => {
@@ -498,9 +482,6 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     OpenEditCustomCourse(offering_id~) =>
       open_edit_custom_course(state, offering_id)
     DeleteCustomCourse(course_id~) => delete_custom_course(state, course_id)
-    ConfirmCustomDelete(course_id~) => delete_custom_course(state, course_id)
-    CancelCustomDelete =>
-      bump({ ..state, pending_custom_delete: None, error: None, })
     SubmitCustomCourse => submit_custom_course(state)
     OpenSlotPicker(day~, period~) =>
       bump({
@@ -820,6 +801,7 @@ fn update_custom_course_field(
       bump({
         ..state,
         custom_form: Some({ ..next, error_field: None, error_message: "", }),
+        error: None,
       })
     }
   }
@@ -1173,24 +1155,15 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     catalogue,
     offerings,
     selected_term,
-    selected_offering: if editing {
-      Some(offering_id)
-    } else {
-      None
-    },
+    selected_offering: None,
     custom_form: None,
     custom_course_ids,
-    pending_custom_delete: None,
     next_custom_course_number: if editing {
       state.next_custom_course_number
     } else {
       state.next_custom_course_number + 1
     },
-    picker: if editing {
-      None
-    } else {
-      form.return_picker
-    },
+    picker: form.return_picker,
     catalogue_query: "",
     error: None,
   })
@@ -1211,6 +1184,7 @@ fn toggle_custom_term(state : PlannerState, term : PlannerTerm) -> PlannerState 
       bump({
         ..state,
         custom_form: Some({ ..next, error_field: None, error_message: "", }),
+        error: None,
       })
     }
   }
@@ -1314,7 +1288,7 @@ fn open_edit_custom_course(
     period,
     editing_course_id: Some(course.id),
     editing_offering_id: Some(offering.id),
-    return_picker: None,
+    return_picker: state.picker,
     error_field: None,
     error_message: "",
   }
@@ -1322,7 +1296,6 @@ fn open_edit_custom_course(
     ..state,
     custom_form: Some(form),
     selected_offering: None,
-    pending_custom_delete: None,
     picker: None,
     error: None,
   })
@@ -1376,6 +1349,10 @@ fn delete_custom_course(
       custom_course_ids.push(id)
     }
   }
+  let picker = match state.custom_form {
+    Some(form) => form.return_picker
+    None => None
+  }
   bump({
     ..state,
     catalogue,
@@ -1383,7 +1360,7 @@ fn delete_custom_course(
     custom_course_ids,
     selected_offering: None,
     custom_form: None,
-    pending_custom_delete: None,
+    picker,
     error: None,
   })
 }
@@ -1457,14 +1434,7 @@ fn add_offering(
     Some(PickerTarget::Slot(..)) => None
     _ => state.picker
   }
-  bump({
-    ..state,
-    enrollments,
-    selected_offering: None,
-    pending_custom_delete: None,
-    picker,
-    error: None,
-  })
+  bump({ ..state, enrollments, selected_offering: None, picker, error: None, })
 }
 
 ///|
@@ -1481,61 +1451,10 @@ fn remove_enrollment(
       enrollments.push(enrollment)
     }
   }
-  let selected_offering = match state.selected_offering {
-    Some(selected_id) =>
-      match find_offering(state.offerings, selected_id) {
-        Some(offering) =>
-          if state.is_custom_course(offering.course_id) {
-            Some(selected_id)
-          } else {
-            None
-          }
-        None => None
-      }
-    None => None
-  }
-  let pending_custom_delete = match selected_offering {
-    Some(selected_id) =>
-      match find_offering(state.offerings, selected_id) {
-        Some(offering) =>
-          if state.is_custom_course(offering.course_id) {
-            let mut remaining = false
-            for enrollment in enrollments {
-              match find_offering(state.offerings, enrollment.offering_id) {
-                Some(other) =>
-                  if other.course_id == offering.course_id {
-                    remaining = true
-                  }
-                None => ()
-              }
-            }
-            if remaining {
-              None
-            } else {
-              Some(offering.course_id)
-            }
-          } else {
-            None
-          }
-        None => None
-      }
-    None => None
-  }
   if !found {
-    return bump({
-      ..state,
-      selected_offering,
-      pending_custom_delete: None,
-      error: None,
-    })
+    return bump({ ..state, selected_offering: None, error: None, })
   }
-  bump({
-    ..state,
-    enrollments,
-    selected_offering,
-    pending_custom_delete,
-    error: None,
-  })
+  bump({ ..state, enrollments, selected_offering: None, error: None, })
 }
 
 ///|
@@ -1552,11 +1471,13 @@ pub struct ScheduledBlock {
 /// One offering shown in the catalogue for the selected term.
 pub struct CatalogueEntry {
   offering_id : @tanikun-domain.OfferingId
+  course_id : @tanikun-domain.CourseId
   course_name : String
   credits : @tanikun-domain.Credits
   schedule : @tanikun-domain.OfferingSchedule
   slots : Array[@tanikun-domain.Slot]
   enrolled : Bool
+  custom : Bool
 }
 
 ///|
@@ -1596,11 +1517,13 @@ pub fn PlannerState::catalogue_entries(
             course.name.contains(self.catalogue_query) {
             entries.push({
               offering_id: offering.id,
+              course_id: course.id,
               course_name: course.name,
               credits: course.credits,
               schedule: offering.schedule(),
               slots: offering.slots(),
               enrolled: has_enrollment(self.enrollments, offering.id),
+              custom: self.is_custom_course(course.id),
             })
           }
         None => ()
