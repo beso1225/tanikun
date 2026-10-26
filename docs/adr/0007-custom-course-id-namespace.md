@@ -22,6 +22,10 @@ not part of the shared master and will eventually move to persistence.
 - The next number lives in `PlannerState.next_custom_course_number`.
 - Custom courses and offerings are appended to the in-memory catalogue and
   offering arrays.
+- Editing a custom course or offering preserves both IDs.
+- Deleting a custom course is allowed only when none of its offerings are
+  enrolled. Deleting the course removes its offerings as well.
+- A regular custom offering may list one or both terms in the same semester.
 - The namespace and counter are session-local. Phase 3 persistence must replace
   the counter with a collision-safe allocator before documents merge.
 
@@ -31,7 +35,10 @@ not part of the shared master and will eventually move to persistence.
 - A failed validation consumes no ID.
 - The ID namespace is visible and testable without exposing generated IDs in the
   UI.
-- Editing a custom course or offering remains a later issue.
+- Edits cannot change course identity, so enrollments and pass snapshots remain
+  attached to the same course.
+- Enrolled custom courses cannot be deleted, which avoids silent loss of
+  enrollment history.
 
 ## Alternatives considered
 
