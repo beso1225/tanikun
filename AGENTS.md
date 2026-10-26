@@ -74,6 +74,7 @@ Load `tanikun-mutation-refresh` before updating the baseline.
 - [docs/PHASE_1.md](docs/PHASE_1.md) is the current contract.
 - [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) records the Phase 1
   evidence.
+- [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) is the planner UI baseline.
 - [docs/MUTATION.md](docs/MUTATION.md) records mutation evidence.
 - [GLOSSARY.md](GLOSSARY.md) defines domain terms.
 - `docs/INITIAL_DESIGN.md`, `docs/TECH_REVIEW.md`, and `docs/PHASE_0.md` are
