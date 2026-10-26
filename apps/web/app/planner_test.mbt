@@ -874,3 +874,115 @@ test "a failed course can be retaken through another offering" {
   )
   assert_eq(state.enrollments.length(), 2)
 }
+
+///|
+fn open_custom_form(state : @app.PlannerState) -> @app.PlannerState {
+  @app.update_planner(state, @app.PlannerMsg::OpenCustomCourseForm)
+}
+
+///|
+fn update_custom(
+  state : @app.PlannerState,
+  field : @app.CustomCourseField,
+  value : String,
+) -> @app.PlannerState {
+  @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateCustomCourseField(field~, value~),
+  )
+}
+
+///|
+test "a valid custom course and offering are added to the planner" {
+  let state = open_custom_form(planner_state())
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Name,
+    "Linear Algebra",
+  )
+  let state = update_custom(state, @app.CustomCourseField::Credits, "5")
+  let state = update_custom(state, @app.CustomCourseField::Term, "S2")
+  let state = update_custom(state, @app.CustomCourseField::Day, "2")
+  let state = update_custom(state, @app.CustomCourseField::Period, "5")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_eq(state.catalogue.length(), 2)
+  assert_eq(state.offerings.length(), 2)
+  assert_eq(state.catalogue[1].name, "Linear Algebra")
+  assert_eq(state.catalogue[1].credits.half_units(), 5)
+  assert_eq(state.offerings[1].id.value, "user-offering-1")
+  assert_true(state.selected_term == @app.PlannerTerm::S2)
+  match state.picker {
+    Some(@app.PickerTarget::All) => ()
+    _ => fail("custom course submit should open the catalogue")
+  }
+  match state.custom_form {
+    None => ()
+    Some(_) => fail("custom course form should close after submit")
+  }
+}
+
+///|
+test "an invalid custom course name stays in the form with a field error" {
+  let state = @app.update_planner(
+    open_custom_form(planner_state()),
+    @app.PlannerMsg::SubmitCustomCourse,
+  )
+  assert_eq(state.catalogue.length(), 1)
+  match state.custom_form {
+    Some(form) =>
+      match form.error_field {
+        Some(@app.CustomCourseField::Name) => ()
+        _ => fail("expected a name field error")
+      }
+    None => fail("invalid custom course should keep the form open")
+  }
+}
+
+///|
+test "invalid custom credits and slots report field errors" {
+  let state = open_custom_form(planner_state())
+  let state = update_custom(state, @app.CustomCourseField::Name, "Bad")
+  let state = update_custom(state, @app.CustomCourseField::Credits, "0")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  match state.custom_form {
+    Some(form) =>
+      match form.error_field {
+        Some(@app.CustomCourseField::Credits) => ()
+        _ => fail("expected a credits field error")
+      }
+    None => fail("invalid credits should keep the form open")
+  }
+  let state = update_custom(state, @app.CustomCourseField::Credits, "4")
+  let state = update_custom(state, @app.CustomCourseField::Day, "9")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  match state.custom_form {
+    Some(form) =>
+      match form.error_field {
+        Some(@app.CustomCourseField::Day) => ()
+        _ => fail("expected a day field error")
+      }
+    None => fail("invalid slot should keep the form open")
+  }
+  assert_eq(state.catalogue.length(), 1)
+}
+
+///|
+test "an intensive custom offering has no slots" {
+  let state = open_custom_form(planner_state())
+  let state = update_custom(state, @app.CustomCourseField::Name, "Intensive")
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Schedule,
+    "intensive",
+  )
+  let state = update_custom(state, @app.CustomCourseField::Term, "S")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_eq(state.catalogue.length(), 2)
+  match state.offerings[1].schedule() {
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      assert_true(semester == @tanikun-domain.Semester::S)
+    _ => fail("expected an intensive offering")
+  }
+  assert_true(state.offerings[1].slots().is_empty())
+  assert_true(state.selected_term == @app.PlannerTerm::S1)
+}
