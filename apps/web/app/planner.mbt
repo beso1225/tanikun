@@ -243,6 +243,7 @@ pub struct CustomCourseDraft {
   period : String
   editing_course_id : @tanikun-domain.CourseId?
   editing_offering_id : @tanikun-domain.OfferingId?
+  return_picker : PickerTarget?
   error_field : CustomCourseField?
   error_message : String
 }
@@ -269,6 +270,7 @@ pub struct PlannerState {
   picker : PickerTarget?
   custom_form : CustomCourseDraft?
   custom_course_ids : Array[@tanikun-domain.CourseId]
+  pending_custom_delete : @tanikun-domain.CourseId?
   next_custom_course_number : Int
   visible_days : Int
   visible_periods : Int
@@ -314,6 +316,7 @@ pub fn PlannerState::new(
     picker: None,
     custom_form: None,
     custom_course_ids: [],
+    pending_custom_delete: None,
     next_custom_course_number: 1,
     visible_days: 5,
     visible_periods: 6,
@@ -419,6 +422,8 @@ pub(all) enum PlannerMsg {
   ToggleCustomTerm(term~ : PlannerTerm)
   OpenEditCustomCourse(offering_id~ : @tanikun-domain.OfferingId)
   DeleteCustomCourse(course_id~ : @tanikun-domain.CourseId)
+  ConfirmCustomDelete(course_id~ : @tanikun-domain.CourseId)
+  CancelCustomDelete
   SubmitCustomCourse
   OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
   OpenIntensivePicker
@@ -440,6 +445,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         ..state,
         selected_term: term,
         selected_offering: None,
+        pending_custom_delete: None,
         error: None,
         picker: None,
         catalogue_query: "",
@@ -447,7 +453,12 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     SelectOffering(offering_id~) =>
       match find_offering(state.offerings, offering_id) {
         Some(_) =>
-          bump({ ..state, selected_offering: Some(offering_id), error: None, })
+          bump({
+            ..state,
+            selected_offering: Some(offering_id),
+            pending_custom_delete: None,
+            error: None,
+          })
         None =>
           with_error(
             state,
@@ -455,7 +466,12 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
           )
       }
     ClearOfferingSelection =>
-      bump({ ..state, selected_offering: None, error: None, })
+      bump({
+        ..state,
+        selected_offering: None,
+        pending_custom_delete: None,
+        error: None,
+      })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
     UpdateEnrollmentStatus(offering_id~, target~) =>
@@ -466,15 +482,25 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         custom_form: Some(new_custom_course_draft(state)),
         picker: None,
         selected_offering: None,
+        pending_custom_delete: None,
         error: None,
       })
-    CloseCustomCourseForm => bump({ ..state, custom_form: None, error: None, })
+    CloseCustomCourseForm => {
+      let picker = match state.custom_form {
+        Some(form) => form.return_picker
+        None => None
+      }
+      bump({ ..state, custom_form: None, picker, error: None, })
+    }
     UpdateCustomCourseField(field~, value~) =>
       update_custom_course_field(state, field, value)
     ToggleCustomTerm(term~) => toggle_custom_term(state, term)
     OpenEditCustomCourse(offering_id~) =>
       open_edit_custom_course(state, offering_id)
     DeleteCustomCourse(course_id~) => delete_custom_course(state, course_id)
+    ConfirmCustomDelete(course_id~) => delete_custom_course(state, course_id)
+    CancelCustomDelete =>
+      bump({ ..state, pending_custom_delete: None, error: None, })
     SubmitCustomCourse => submit_custom_course(state)
     OpenSlotPicker(day~, period~) =>
       bump({
@@ -729,6 +755,7 @@ fn new_custom_course_draft(state : PlannerState) -> CustomCourseDraft {
     period: "4",
     editing_course_id: None,
     editing_offering_id: None,
+    return_picker: state.picker,
     error_field: None,
     error_message: "",
   }
@@ -1088,6 +1115,18 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
         "開講情報が正しくありません",
       )
   }
+  if editing && has_enrollment(state.enrollments, offering_id) {
+    match find_slot_conflict_excluding(state, offering, offering_id) {
+      Some(_) =>
+        return custom_course_error(
+          state,
+          form,
+          Schedule,
+          "他の履修と曜限が重複しています",
+        )
+      None => ()
+    }
+  }
   let selected_term = match offering.schedule() {
     @tanikun-domain.OfferingSchedule::Regular(terms~) =>
       planner_term_for_regular(terms[0])
@@ -1141,6 +1180,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     },
     custom_form: None,
     custom_course_ids,
+    pending_custom_delete: None,
     next_custom_course_number: if editing {
       state.next_custom_course_number
     } else {
@@ -1149,7 +1189,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     picker: if editing {
       None
     } else {
-      Some(PickerTarget::All)
+      form.return_picker
     },
     catalogue_query: "",
     error: None,
@@ -1274,6 +1314,7 @@ fn open_edit_custom_course(
     period,
     editing_course_id: Some(course.id),
     editing_offering_id: Some(offering.id),
+    return_picker: None,
     error_field: None,
     error_message: "",
   }
@@ -1281,6 +1322,7 @@ fn open_edit_custom_course(
     ..state,
     custom_form: Some(form),
     selected_offering: None,
+    pending_custom_delete: None,
     picker: None,
     error: None,
   })
@@ -1341,8 +1383,40 @@ fn delete_custom_course(
     custom_course_ids,
     selected_offering: None,
     custom_form: None,
+    pending_custom_delete: None,
     error: None,
   })
+}
+
+///|
+fn find_slot_conflict_excluding(
+  state : PlannerState,
+  offering : @tanikun-domain.CourseOffering,
+  excluded_offering : @tanikun-domain.OfferingId,
+) -> @tanikun-domain.Slot? {
+  let slots = offering.slots()
+  for planner_term in PlannerTerm::values() {
+    if offering_occupies_term(offering, planner_term) {
+      for enrollment in state.enrollments {
+        if enrollment.offering_id != excluded_offering {
+          match find_offering(state.offerings, enrollment.offering_id) {
+            Some(other) =>
+              if offering_occupies_term(other, planner_term) {
+                for slot in slots {
+                  for other_slot in other.slots() {
+                    if slot == other_slot {
+                      return Some(slot)
+                    }
+                  }
+                }
+              }
+            None => ()
+          }
+        }
+      }
+    }
+  }
+  None
 }
 
 ///|
@@ -1383,7 +1457,14 @@ fn add_offering(
     Some(PickerTarget::Slot(..)) => None
     _ => state.picker
   }
-  bump({ ..state, enrollments, selected_offering: None, picker, error: None, })
+  bump({
+    ..state,
+    enrollments,
+    selected_offering: None,
+    pending_custom_delete: None,
+    picker,
+    error: None,
+  })
 }
 
 ///|
@@ -1413,10 +1494,48 @@ fn remove_enrollment(
       }
     None => None
   }
-  if !found {
-    return bump({ ..state, selected_offering, error: None, })
+  let pending_custom_delete = match selected_offering {
+    Some(selected_id) =>
+      match find_offering(state.offerings, selected_id) {
+        Some(offering) =>
+          if state.is_custom_course(offering.course_id) {
+            let mut remaining = false
+            for enrollment in enrollments {
+              match find_offering(state.offerings, enrollment.offering_id) {
+                Some(other) =>
+                  if other.course_id == offering.course_id {
+                    remaining = true
+                  }
+                None => ()
+              }
+            }
+            if remaining {
+              None
+            } else {
+              Some(offering.course_id)
+            }
+          } else {
+            None
+          }
+        None => None
+      }
+    None => None
   }
-  bump({ ..state, enrollments, selected_offering, error: None, })
+  if !found {
+    return bump({
+      ..state,
+      selected_offering,
+      pending_custom_delete: None,
+      error: None,
+    })
+  }
+  bump({
+    ..state,
+    enrollments,
+    selected_offering,
+    pending_custom_delete,
+    error: None,
+  })
 }
 
 ///|

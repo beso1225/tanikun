@@ -894,7 +894,11 @@ fn update_custom(
 
 ///|
 test "a valid custom course and offering are added to the planner" {
-  let state = open_custom_form(planner_state())
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenCataloguePicker,
+  )
+  let state = open_custom_form(state)
   let state = update_custom(
     state,
     @app.CustomCourseField::Name,
@@ -1123,4 +1127,104 @@ test "regular custom terms must stay in one semester" {
       }
     None => fail("mixed custom terms should keep the form open")
   }
+}
+
+///|
+test "creating from a slot picker returns to that slot picker" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Monday,
+      period=3,
+    ),
+  )
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, "Slot custom")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  match state.picker {
+    Some(@app.PickerTarget::Slot(day~, period~)) => {
+      assert_true(day == @tanikun-domain.DayOfWeek::Monday)
+      assert_eq(period, 3)
+    }
+    _ => fail("custom creation should return to the slot picker")
+  }
+}
+
+///|
+test "creating from the intensive picker returns to the intensive picker" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenIntensivePicker,
+  )
+  let state = open_custom_form(state)
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Name,
+    "Intensive custom",
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  match state.picker {
+    Some(@app.PickerTarget::Intensive) => ()
+    _ => fail("custom creation should return to the intensive picker")
+  }
+}
+
+///|
+test "removing a custom enrollment asks whether to delete the course" {
+  let state = create_named_custom_course(planner_state(), "Prompted")
+  let course_id = state.catalogue[1].id
+  let offering_id = state.offerings[1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectOffering(offering_id~),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::RemoveEnrollment(offering_id~),
+  )
+  match state.pending_custom_delete {
+    Some(value) => assert_true(value == course_id)
+    None => fail("expected a custom delete prompt")
+  }
+  let state = @app.update_planner(state, @app.PlannerMsg::CancelCustomDelete)
+  match state.pending_custom_delete {
+    None => ()
+    Some(_) => fail("cancel should clear the custom delete prompt")
+  }
+}
+
+///|
+test "editing an enrolled custom offering rejects a slot conflict" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  let state = create_named_custom_course(state, "Custom")
+  let offering_id = state.offerings[1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenEditCustomCourse(offering_id~),
+  )
+  let state = update_custom(state, @app.CustomCourseField::Day, "0")
+  let state = update_custom(state, @app.CustomCourseField::Period, "1")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  match state.custom_form {
+    Some(form) =>
+      match form.error_field {
+        Some(@app.CustomCourseField::Schedule) => ()
+        _ => fail("expected a schedule field error")
+      }
+    None => fail("conflicting custom edit should keep the form open")
+  }
+  assert_true(
+    state.offerings[1].slots()[0].day == @tanikun-domain.DayOfWeek::Tuesday,
+  )
 }
