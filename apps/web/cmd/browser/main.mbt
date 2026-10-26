@@ -554,11 +554,9 @@ fn credit_total_view(state : @app.PlannerState) -> Html {
     Ok(totals) => {
       let confirmed = credits_label(totals.confirmed)
       let projected = credits_label(totals.projected)
-      let label = "合計 確定\{confirmed}単位、見込\{projected}単位"
       div(
         id="credit-total",
         class="flex shrink-0 items-baseline gap-1 whitespace-nowrap text-xs text-muted",
-        attrs=@html.Attrs::build().aria_label(label),
         [
           span(
             class="hidden whitespace-nowrap sm:inline",
@@ -606,7 +604,7 @@ fn planner_view(
           ),
         ]),
         div(
-          class="flex shrink-0 items-center gap-2 border-l border-rule pl-2 sm:pl-3",
+          class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
           [
             credit_total_view(state),
             range_controls(state, emit),

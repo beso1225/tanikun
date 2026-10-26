@@ -285,6 +285,7 @@ pub fn PlannerState::new(
 /// projected value uses the optimistic projection so planned enrollments count.
 pub struct PlannerCreditTotals {
   confirmed : @tanikun-domain.Credits
+  standard : @tanikun-domain.Credits
   projected : @tanikun-domain.Credits
 }
 
@@ -304,6 +305,7 @@ pub fn PlannerState::credit_totals(
     Ok(projection) =>
       Ok({
         confirmed: projection.confirmed.total,
+        standard: projection.standard.total,
         projected: projection.optimistic.total,
       })
     Err(error) => Err(error)

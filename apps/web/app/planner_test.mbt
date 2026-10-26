@@ -664,6 +664,7 @@ test "credit totals derive confirmed and projected values" {
     Err(_) => fail("expected credit totals")
   }
   assert_eq(totals.confirmed.half_units(), 0)
+  assert_eq(totals.standard.half_units(), 0)
   assert_eq(totals.projected.half_units(), 4)
   let state = @app.update_planner(
     state,
@@ -676,6 +677,7 @@ test "credit totals derive confirmed and projected values" {
     Err(_) => fail("expected empty credit totals")
   }
   assert_eq(totals.confirmed.half_units(), 0)
+  assert_eq(totals.standard.half_units(), 0)
   assert_eq(totals.projected.half_units(), 0)
 }
 
@@ -689,4 +691,19 @@ test "invalid planner input reports a credit total error" {
     Err(_) => ()
     Ok(_) => fail("expected an invalid credit total")
   }
+}
+
+///|
+test "credit totals expose the standard projection" {
+  let state = planner_state()
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::in_progress(planner_offering_id("offering-1")),
+  )
+  let totals = match state.credit_totals() {
+    Ok(totals) => totals
+    Err(_) => fail("expected credit totals")
+  }
+  assert_eq(totals.confirmed.half_units(), 0)
+  assert_eq(totals.standard.half_units(), 4)
+  assert_eq(totals.projected.half_units(), 4)
 }
