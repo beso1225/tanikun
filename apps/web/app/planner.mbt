@@ -280,6 +280,39 @@ pub fn PlannerState::new(
 }
 
 ///|
+/// Derived credit totals for the planner header. This is never stored in
+/// `PlannerState`; it rebuilds the pure evaluation input on demand. The
+/// projected value uses the optimistic projection so planned enrollments count.
+pub struct PlannerCreditTotals {
+  confirmed : @tanikun-domain.Credits
+  standard : @tanikun-domain.Credits
+  projected : @tanikun-domain.Credits
+}
+
+///|
+pub fn PlannerState::credit_totals(
+  self : PlannerState,
+) -> Result[PlannerCreditTotals, @tanikun-domain.DomainError] {
+  let input = @tanikun-requirements.EvaluationInput::new(
+    self.profile,
+    self.requirement_set,
+    self.catalogue,
+    self.offerings,
+    self.enrollments,
+    self.overrides,
+  )
+  match @tanikun-requirements.credit_summary(input) {
+    Ok(projection) =>
+      Ok({
+        confirmed: projection.confirmed.total,
+        standard: projection.standard.total,
+        projected: projection.optimistic.total,
+      })
+    Err(error) => Err(error)
+  }
+}
+
+///|
 /// The slot or off-grid list that opened the catalogue picker.
 pub(all) enum PickerTarget {
   Slot(day~ : @tanikun-domain.DayOfWeek, period~ : Int)

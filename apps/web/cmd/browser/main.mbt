@@ -549,6 +549,33 @@ fn course_detail(
 }
 
 ///|
+fn credit_total_view(state : @app.PlannerState) -> Html {
+  match state.credit_totals() {
+    Ok(totals) => {
+      let confirmed = credits_label(totals.confirmed)
+      let projected = credits_label(totals.projected)
+      div(
+        id="credit-total",
+        class="flex shrink-0 items-baseline gap-1 whitespace-nowrap text-xs text-muted",
+        [
+          span(
+            class="hidden whitespace-nowrap sm:inline",
+            "合計 確定 \{confirmed} / 見込 \{projected}単位",
+          ),
+          span(class="whitespace-nowrap sm:hidden", "合計 \{projected}単位"),
+        ],
+      )
+    }
+    Err(_) =>
+      div(
+        id="credit-total",
+        class="text-xs text-danger-text",
+        "合計 単位を計算できません",
+      )
+  }
+}
+
+///|
 fn planner_view(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -565,16 +592,30 @@ fn planner_view(
     header(
       class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-rule bg-paper px-4",
       [
-        h2(class="text-[1.0625rem] font-semibold", state.selected_term.label()),
-        div(class="flex items-center gap-2", [
-          range_controls(state, emit),
-          button(
-            id="open-catalogue-picker",
-            class="flex min-h-8 items-center gap-1 rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
-            on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
-            [span("+"), span("科目")],
+        div(class="flex min-w-0 items-baseline gap-3", [
+          h2(
+            class="w-9 shrink-0 text-[1.0625rem] font-semibold",
+            state.selected_term.label(),
+          ),
+          span(
+            id="term-context",
+            class="hidden text-xs text-muted lg:inline",
+            "\{state.profile.advancement_year.year()}年度 応用物理",
           ),
         ]),
+        div(
+          class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
+          [
+            credit_total_view(state),
+            range_controls(state, emit),
+            button(
+              id="open-catalogue-picker",
+              class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
+              on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
+              [span("+"), span("科目")],
+            ),
+          ],
+        ),
       ],
     ),
     div(class="flex min-h-0 flex-1 flex-col md:flex-row", [
