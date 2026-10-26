@@ -857,6 +857,38 @@ fn course_detail(
                 } else {
                   div(([] : Array[Html]))
                 },
+                match state.pending_custom_delete {
+                  Some(pending_id) =>
+                    if pending_id == course.id {
+                      div(class="border-t border-rule bg-danger/5 px-4 py-3", [
+                        p(
+                          class="text-sm text-ink",
+                          "履修を削除しました。この独自科目も削除しますか？",
+                        ),
+                        div(class="mt-2 flex justify-end gap-1", [
+                          button(
+                            id="keep-custom-course",
+                            class="min-h-9 rounded-md px-2 text-sm text-muted hover:bg-canvas",
+                            on_click=emit(@app.PlannerMsg::CancelCustomDelete),
+                            "残す",
+                          ),
+                          button(
+                            id="confirm-delete-custom-course",
+                            class="min-h-9 rounded-md px-2 text-sm text-danger-text hover:bg-danger/10",
+                            on_click=emit(
+                              @app.PlannerMsg::ConfirmCustomDelete(
+                                course_id=course.id,
+                              ),
+                            ),
+                            "削除する",
+                          ),
+                        ]),
+                      ])
+                    } else {
+                      div(([] : Array[Html]))
+                    }
+                  None => div(([] : Array[Html]))
+                },
                 div(class="flex justify-end border-t border-rule px-4 py-2", [
                   button(
                     id="remove-detail",

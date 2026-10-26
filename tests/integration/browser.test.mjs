@@ -536,7 +536,8 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor();
-    await page.locator("#delete-custom-course").click();
+    await page.locator("#confirm-delete-custom-course").waitFor();
+    await page.locator("#confirm-delete-custom-course").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
     assert.equal(
       await page
@@ -546,6 +547,45 @@ test(
       0,
     );
     await assertCreditTotal(page, "確定 2 / 見込 11単位");
+
+    await page.locator("#slot-0-3").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#custom-name").fill("Slot Custom");
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    assert.equal(
+      await page.locator("#picker-title").innerText(),
+      "月3限に追加",
+    );
+    await page.locator("#add-offering-user-offering-2").click();
+    await page.locator("#add-offering-user-offering-2").waitFor({
+      state: "detached",
+    });
+    await page
+      .locator("#timetable")
+      .getByText("Slot Custom", { exact: true })
+      .waitFor();
+
+    await page.locator("#open-intensive-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#custom-name").fill("Intensive Custom");
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    assert.equal(
+      await page.locator("#picker-title").innerText(),
+      "集中講義を追加",
+    );
+    await page.locator("#add-offering-user-offering-3").click();
+    await page.locator("#add-offering-user-offering-3").waitFor({
+      state: "detached",
+    });
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#off-grid").getByText("Intensive Custom").waitFor();
 
     await page.evaluate(() => {
       const modal = document.createElement("section");
