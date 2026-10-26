@@ -313,6 +313,30 @@ pub fn PlannerState::credit_totals(
 }
 
 ///|
+/// A status the user can apply to an existing enrollment.
+pub(all) enum EnrollmentStatusTarget {
+  Planned
+  InProgress
+  Passed(grade~ : @tanikun-domain.PassingGrade)
+  Failed(grade~ : @tanikun-domain.FailingGrade)
+  NotTaken
+}
+
+///|
+/// Returns the current status for an offering, if it is enrolled.
+pub fn PlannerState::enrollment_status(
+  self : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+) -> @tanikun-domain.EnrollmentStatus? {
+  for enrollment in self.enrollments {
+    if enrollment.offering_id == offering_id {
+      return Some(enrollment.status)
+    }
+  }
+  None
+}
+
+///|
 /// The slot or off-grid list that opened the catalogue picker.
 pub(all) enum PickerTarget {
   Slot(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
@@ -329,6 +353,10 @@ pub(all) enum PlannerMsg {
   ClearOfferingSelection
   AddOffering(offering_id~ : @tanikun-domain.OfferingId)
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
+  UpdateEnrollmentStatus(
+    offering_id~ : @tanikun-domain.OfferingId,
+    target~ : EnrollmentStatusTarget
+  )
   OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
   OpenIntensivePicker
   OpenCataloguePicker
@@ -367,6 +395,8 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
+    UpdateEnrollmentStatus(offering_id~, target~) =>
+      update_enrollment_status(state, offering_id, target)
     OpenSlotPicker(day~, period~) =>
       bump({
         ..state,
@@ -506,6 +536,94 @@ fn find_slot_conflict(
 }
 
 ///|
+fn update_enrollment_status(
+  state : PlannerState,
+  id : @tanikun-domain.OfferingId,
+  target : EnrollmentStatusTarget,
+) -> PlannerState {
+  let current = state.enrollment_status(id)
+  if current is None {
+    return with_error(
+      state,
+      UiError::new(
+        UiErrorTarget::Offering(offering_id=id),
+        UiErrorKind::UnknownEnrollment,
+        "履修が見つかりません",
+      ),
+    )
+  }
+  let offering = match find_offering(state.offerings, id) {
+    Some(offering) => offering
+    None =>
+      return with_error(
+        state,
+        TimetableError::UnknownOffering(offering_id=id).to_ui(),
+      )
+  }
+  let course = match find_course(state.catalogue, offering.course_id) {
+    Some(course) => course
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::Course(course_id=offering.course_id),
+          UiErrorKind::DomainValidation,
+          "科目が見つかりません",
+        ),
+      )
+  }
+  let status = match target {
+    Planned => @tanikun-domain.EnrollmentStatus::Planned
+    InProgress => @tanikun-domain.EnrollmentStatus::InProgress
+    NotTaken =>
+      @tanikun-domain.EnrollmentStatus::Confirmed(
+        @tanikun-domain.ConfirmedGrade::NotTaken,
+      )
+    Failed(grade~) =>
+      @tanikun-domain.EnrollmentStatus::Confirmed(
+        @tanikun-domain.ConfirmedGrade::Failed(grade~),
+      )
+    Passed(grade~) => {
+      let snapshot = match current {
+        Some(
+          @tanikun-domain.EnrollmentStatus::Confirmed(
+            @tanikun-domain.ConfirmedGrade::Passed(snapshot~, ..)
+          )
+        ) => snapshot
+        _ =>
+          match
+            @tanikun-domain.PassedCourseSnapshot::from_course(
+              course,
+              state.overrides,
+            ) {
+            Ok(snapshot) => snapshot
+            Err(error) =>
+              return with_error(
+                state,
+                UiError::from_domain(
+                  error,
+                  UiErrorTarget::Offering(offering_id=id),
+                ),
+              )
+          }
+      }
+      @tanikun-domain.EnrollmentStatus::Confirmed(
+        @tanikun-domain.ConfirmedGrade::Passed(grade~, snapshot~),
+      )
+    }
+  }
+  let enrollments : Array[@tanikun-domain.Enrollment] = []
+  for enrollment in state.enrollments {
+    if enrollment.offering_id == id {
+      enrollments.push(@tanikun-domain.Enrollment::new(id, status))
+    } else {
+      enrollments.push(enrollment)
+    }
+  }
+  bump({ ..state, enrollments, error: None, })
+}
+
+///|
 fn add_offering(
   state : PlannerState,
   id : @tanikun-domain.OfferingId,
@@ -573,6 +691,7 @@ pub struct ScheduledBlock {
   course_name : String
   day : @tanikun-domain.DayOfWeek
   period : @tanikun-domain.Period
+  status : @tanikun-domain.EnrollmentStatus
 }
 
 ///|
@@ -592,6 +711,7 @@ pub struct OffGridEntry {
   offering_id : @tanikun-domain.OfferingId
   course_name : String
   credits : @tanikun-domain.Credits
+  status : @tanikun-domain.EnrollmentStatus
 }
 
 ///|
@@ -686,6 +806,7 @@ pub fn PlannerState::scheduled_blocks(
                   course_name: course.name,
                   day: slot.day,
                   period: slot.period,
+                  status: enrollment.status,
                 })
               }
             None => ()
@@ -715,6 +836,7 @@ pub fn PlannerState::off_grid_entries(
                     offering_id: offering.id,
                     course_name: course.name,
                     credits: course.credits,
+                    status: enrollment.status,
                   })
                 None => ()
               }

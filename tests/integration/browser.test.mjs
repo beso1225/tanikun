@@ -210,6 +210,20 @@ test(
       .locator("#timetable")
       .getByText("Physics Lab", { exact: true })
       .waitFor();
+    assert.match(
+      await page
+        .locator("#timetable button")
+        .filter({ hasText: "Physics I" })
+        .innerText(),
+      /予定/,
+    );
+    assert.match(
+      await page
+        .locator("#timetable button")
+        .filter({ hasText: "Calculus" })
+        .innerText(),
+      /不合格/,
+    );
     await page.locator("#off-grid").getByText("Seminar S").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy302-s").click();
@@ -425,6 +439,45 @@ test(
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
+
+    await page.locator("#term-S1").click();
+    await page
+      .locator("#timetable")
+      .getByText("Physics I", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.equal(
+      await page.locator("#status-planned").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.locator("#status-passed").click();
+    await page.locator("#status-passed[aria-pressed='true']").waitFor();
+    await page.locator("#grade-good").click();
+    await page.locator("#grade-good[aria-pressed='true']").waitFor();
+    await page.locator("#close-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.match(
+      await page
+        .locator("#timetable button")
+        .filter({ hasText: "Physics I" })
+        .innerText(),
+      /合格/,
+    );
+
+    await page.locator("#term-S2").click();
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#add-offering-phy103-s2").click();
+    await page.locator("#add-offering-phy103-s2").waitFor({
+      state: "detached",
+    });
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Calculus", { exact: true })
+      .waitFor();
+    await assertCreditTotal(page, "確定 2 / 見込 11単位");
 
     await page.evaluate(() => {
       const modal = document.createElement("section");

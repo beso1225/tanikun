@@ -11,6 +11,9 @@
   --color-muted: #6e6e73;
   --color-danger: #ff3b30;
   --color-danger-text: #d70015;
+  --color-success-text: #1a7f37;
+  --color-muted-tile: #5a6478;
+  --color-success-text-tile: #166b2f;
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans",
     "Yu Gothic", "Noto Sans JP", sans-serif;
@@ -59,6 +62,9 @@
       --color-muted: #aeaeb2;
       --color-danger: #ff453a;
       --color-danger-text: #ff6961;
+      --color-success-text: #4cc38a;
+      --color-muted-tile: #aeaeb2;
+      --color-success-text-tile: #4cc38a;
     }
   }
 
