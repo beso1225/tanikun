@@ -901,7 +901,14 @@ test "a valid custom course and offering are added to the planner" {
     "Linear Algebra",
   )
   let state = update_custom(state, @app.CustomCourseField::Credits, "5")
-  let state = update_custom(state, @app.CustomCourseField::Term, "S2")
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::ToggleCustomTerm(term=@app.PlannerTerm::S1),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::ToggleCustomTerm(term=@app.PlannerTerm::S2),
+  )
   let state = update_custom(state, @app.CustomCourseField::Day, "2")
   let state = update_custom(state, @app.CustomCourseField::Period, "5")
   let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
@@ -985,4 +992,135 @@ test "an intensive custom offering has no slots" {
   }
   assert_true(state.offerings[1].slots().is_empty())
   assert_true(state.selected_term == @app.PlannerTerm::S1)
+}
+
+///|
+fn create_named_custom_course(
+  state : @app.PlannerState,
+  name : String,
+) -> @app.PlannerState {
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, name)
+  @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+}
+
+///|
+test "a custom regular offering supports multiple terms" {
+  let state = open_custom_form(planner_state())
+  let state = update_custom(state, @app.CustomCourseField::Name, "Spanning")
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::ToggleCustomTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  match state.offerings[1].schedule() {
+    @tanikun-domain.OfferingSchedule::Regular(terms~) =>
+      assert_eq(terms.length(), 2)
+    _ => fail("expected a regular offering")
+  }
+  assert_true(state.selected_term == @app.PlannerTerm::S1)
+}
+
+///|
+test "a custom course can be edited without changing its identity" {
+  let state = create_named_custom_course(planner_state(), "Before")
+  let course_id = state.catalogue[1].id
+  let offering_id = state.offerings[1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenEditCustomCourse(offering_id~),
+  )
+  let state = update_custom(state, @app.CustomCourseField::Name, "After")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_eq(state.catalogue.length(), 2)
+  assert_eq(state.offerings.length(), 2)
+  assert_true(state.catalogue[1].id == course_id)
+  assert_true(state.offerings[1].id == offering_id)
+  assert_eq(state.catalogue[1].name, "After")
+  assert_eq(state.next_custom_course_number, 2)
+  match state.selected_offering {
+    Some(value) => assert_true(value == offering_id)
+    None => fail("edited offering should stay selected")
+  }
+}
+
+///|
+test "an unenrolled custom course can be deleted" {
+  let state = create_named_custom_course(planner_state(), "Delete me")
+  let course_id = state.catalogue[1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::DeleteCustomCourse(course_id~),
+  )
+  assert_eq(state.catalogue.length(), 1)
+  assert_eq(state.offerings.length(), 1)
+  assert_eq(state.custom_course_ids.length(), 0)
+  match state.error {
+    None => ()
+    Some(_) => fail("deleting an unenrolled custom course should succeed")
+  }
+}
+
+///|
+test "an enrolled custom course cannot be deleted" {
+  let state = create_named_custom_course(planner_state(), "Enrolled")
+  let course_id = state.catalogue[1].id
+  let offering_id = state.offerings[1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::DeleteCustomCourse(course_id~),
+  )
+  assert_eq(state.catalogue.length(), 2)
+  match state.error {
+    Some(error) => assert_true(error.kind == @app.UiErrorKind::General)
+    None => fail("enrolled custom course deletion should fail")
+  }
+}
+
+///|
+test "opening the custom form from a slot picker prefills the slot" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::OpenSlotPicker(
+      day=@tanikun-domain.DayOfWeek::Tuesday,
+      period=3,
+    ),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenCustomCourseForm)
+  match state.custom_form {
+    Some(form) => {
+      assert_eq(form.day, "1")
+      assert_eq(form.period, "3")
+      assert_eq(form.schedule, "regular")
+    }
+    None => fail("expected the custom form")
+  }
+}
+
+///|
+test "regular custom terms must stay in one semester" {
+  let state = open_custom_form(planner_state())
+  let state = update_custom(state, @app.CustomCourseField::Name, "Mixed")
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::ToggleCustomTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::ToggleCustomTerm(term=@app.PlannerTerm::A1),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_eq(state.catalogue.length(), 1)
+  match state.custom_form {
+    Some(form) =>
+      match form.error_field {
+        Some(@app.CustomCourseField::Term) => ()
+        _ => fail("expected a term field error")
+      }
+    None => fail("mixed custom terms should keep the form open")
+  }
 }

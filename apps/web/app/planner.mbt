@@ -235,8 +235,14 @@ pub struct CustomCourseDraft {
   academic_year : String
   schedule : String
   term : String
+  s1 : Bool
+  s2 : Bool
+  a1 : Bool
+  a2 : Bool
   day : String
   period : String
+  editing_course_id : @tanikun-domain.CourseId?
+  editing_offering_id : @tanikun-domain.OfferingId?
   error_field : CustomCourseField?
   error_message : String
 }
@@ -262,6 +268,7 @@ pub struct PlannerState {
   catalogue_query : String
   picker : PickerTarget?
   custom_form : CustomCourseDraft?
+  custom_course_ids : Array[@tanikun-domain.CourseId]
   next_custom_course_number : Int
   visible_days : Int
   visible_periods : Int
@@ -306,6 +313,7 @@ pub fn PlannerState::new(
     catalogue_query: "",
     picker: None,
     custom_form: None,
+    custom_course_ids: [],
     next_custom_course_number: 1,
     visible_days: 5,
     visible_periods: 6,
@@ -371,6 +379,20 @@ pub fn PlannerState::enrollment_status(
 }
 
 ///|
+/// Whether this course was created in the user namespace.
+pub fn PlannerState::is_custom_course(
+  self : PlannerState,
+  course_id : @tanikun-domain.CourseId,
+) -> Bool {
+  for id in self.custom_course_ids {
+    if id == course_id {
+      return true
+    }
+  }
+  false
+}
+
+///|
 /// The slot or off-grid list that opened the catalogue picker.
 pub(all) enum PickerTarget {
   Slot(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
@@ -394,6 +416,9 @@ pub(all) enum PlannerMsg {
   OpenCustomCourseForm
   CloseCustomCourseForm
   UpdateCustomCourseField(field~ : CustomCourseField, value~ : String)
+  ToggleCustomTerm(term~ : PlannerTerm)
+  OpenEditCustomCourse(offering_id~ : @tanikun-domain.OfferingId)
+  DeleteCustomCourse(course_id~ : @tanikun-domain.CourseId)
   SubmitCustomCourse
   OpenSlotPicker(day~ : @tanikun-domain.DayOfWeek, period~ : Int)
   OpenIntensivePicker
@@ -438,9 +463,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     OpenCustomCourseForm =>
       bump({
         ..state,
-        custom_form: Some(
-          new_custom_course_draft(state.profile.advancement_year.year()),
-        ),
+        custom_form: Some(new_custom_course_draft(state)),
         picker: None,
         selected_offering: None,
         error: None,
@@ -448,6 +471,10 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     CloseCustomCourseForm => bump({ ..state, custom_form: None, error: None, })
     UpdateCustomCourseField(field~, value~) =>
       update_custom_course_field(state, field, value)
+    ToggleCustomTerm(term~) => toggle_custom_term(state, term)
+    OpenEditCustomCourse(offering_id~) =>
+      open_edit_custom_course(state, offering_id)
+    DeleteCustomCourse(course_id~) => delete_custom_course(state, course_id)
     SubmitCustomCourse => submit_custom_course(state)
     OpenSlotPicker(day~, period~) =>
       bump({
@@ -676,17 +703,63 @@ fn update_enrollment_status(
 }
 
 ///|
-fn new_custom_course_draft(year : Int) -> CustomCourseDraft {
-  {
+fn new_custom_course_draft(state : PlannerState) -> CustomCourseDraft {
+  let year = state.profile.advancement_year.year()
+  let term = match state.selected_term.term() {
+    Some(value) => value
+    None => @tanikun-domain.Term::S1
+  }
+  let term_label = match term {
+    @tanikun-domain.Term::S1 => "S1"
+    @tanikun-domain.Term::S2 => "S2"
+    @tanikun-domain.Term::A1 => "A1"
+    @tanikun-domain.Term::A2 => "A2"
+  }
+  let base : CustomCourseDraft = {
     name: "",
     credits: "4",
     academic_year: "\{year}",
     schedule: "regular",
-    term: "S1",
+    term: term_label,
+    s1: term == @tanikun-domain.Term::S1,
+    s2: term == @tanikun-domain.Term::S2,
+    a1: term == @tanikun-domain.Term::A1,
+    a2: term == @tanikun-domain.Term::A2,
     day: "1",
     period: "4",
+    editing_course_id: None,
+    editing_offering_id: None,
     error_field: None,
     error_message: "",
+  }
+  match state.picker {
+    Some(PickerTarget::Slot(day~, period~)) =>
+      { ..base, day: custom_day_value(day), period: "\{period}", }
+    Some(PickerTarget::Intensive) =>
+      {
+        ..base,
+        schedule: "intensive",
+        term: custom_semester_value(state.selected_term.semester()),
+        s1: false,
+        s2: false,
+        a1: false,
+        a2: false,
+      }
+    Some(PickerTarget::All) =>
+      if state.selected_term == W {
+        {
+          ..base,
+          schedule: "intensive",
+          term: "W",
+          s1: false,
+          s2: false,
+          a1: false,
+          a2: false,
+        }
+      } else {
+        base
+      }
+    None => base
   }
 }
 
@@ -769,17 +842,6 @@ fn custom_day(value : String) -> @tanikun-domain.DayOfWeek? {
 }
 
 ///|
-fn custom_term(value : String) -> @tanikun-domain.Term? {
-  match value {
-    "S1" => Some(@tanikun-domain.Term::S1)
-    "S2" => Some(@tanikun-domain.Term::S2)
-    "A1" => Some(@tanikun-domain.Term::A1)
-    "A2" => Some(@tanikun-domain.Term::A2)
-    _ => None
-  }
-}
-
-///|
 fn custom_semester(value : String) -> @tanikun-domain.Semester? {
   match value {
     "S" => Some(@tanikun-domain.Semester::S)
@@ -856,32 +918,57 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
         "年度が正しくありません",
       )
   }
-  let course_id = match
-    @tanikun-domain.CourseId::new(
-      "user",
-      "course-\{state.next_custom_course_number}",
-    ) {
-    Ok(id) => id
-    Err(_) =>
-      return custom_course_error(
-        state,
-        form,
-        Name,
-        "科目IDを作成できません",
-      )
+  let editing = form.editing_course_id is Some(_)
+  let course_id = match form.editing_course_id {
+    Some(id) => id
+    None =>
+      match
+        @tanikun-domain.CourseId::new(
+          "user",
+          "course-\{state.next_custom_course_number}",
+        ) {
+        Ok(id) => id
+        Err(_) =>
+          return custom_course_error(
+            state,
+            form,
+            Name,
+            "科目IDを作成できません",
+          )
+      }
   }
-  let offering_id = match
-    @tanikun-domain.OfferingId::new(
-      "user-offering-\{state.next_custom_course_number}",
-    ) {
-    Ok(id) => id
-    Err(_) =>
-      return custom_course_error(
-        state,
-        form,
-        Schedule,
-        "開講IDを作成できません",
-      )
+  let offering_id = match form.editing_offering_id {
+    Some(id) => id
+    None =>
+      match
+        @tanikun-domain.OfferingId::new(
+          "user-offering-\{state.next_custom_course_number}",
+        ) {
+        Ok(id) => id
+        Err(_) =>
+          return custom_course_error(
+            state,
+            form,
+            Schedule,
+            "開講IDを作成できません",
+          )
+      }
+  }
+  if editing && !state.is_custom_course(course_id) {
+    return custom_course_error(
+      state,
+      form,
+      Schedule,
+      "独自科目ではありません",
+    )
+  }
+  if editing && find_offering(state.offerings, offering_id) is None {
+    return custom_course_error(
+      state,
+      form,
+      Schedule,
+      "開講が見つかりません",
+    )
   }
   let course = match
     @tanikun-domain.Course::new(
@@ -899,7 +986,19 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
         "科目名を入力してください",
       )
   }
-  let theoretical_term = custom_term(form.term)
+  let regular_terms : Array[@tanikun-domain.Term] = []
+  if form.s1 {
+    regular_terms.push(@tanikun-domain.Term::S1)
+  }
+  if form.s2 {
+    regular_terms.push(@tanikun-domain.Term::S2)
+  }
+  if form.a1 {
+    regular_terms.push(@tanikun-domain.Term::A1)
+  }
+  if form.a2 {
+    regular_terms.push(@tanikun-domain.Term::A2)
+  }
   let schedule = if form.schedule == "intensive" {
     let semester = match custom_semester(form.term) {
       Some(value) => value
@@ -915,17 +1014,26 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
   } else if form.schedule == "year-long" {
     @tanikun-domain.OfferingSchedule::YearLong
   } else {
-    let term = match theoretical_term {
-      Some(value) => value
-      None =>
+    if regular_terms.is_empty() {
+      return custom_course_error(
+        state,
+        form,
+        Term,
+        "学期を選択してください",
+      )
+    }
+    let semester = regular_terms[0].semester()
+    for term in regular_terms {
+      if term.semester() != semester {
         return custom_course_error(
           state,
           form,
           Term,
-          "学期を選択してください",
+          "同じセメスターの学期を選んでください",
         )
+      }
     }
-    @tanikun-domain.OfferingSchedule::Regular(terms=[term])
+    @tanikun-domain.OfferingSchedule::Regular(terms=regular_terms)
   }
   let slots = if form.schedule == "intensive" {
     []
@@ -980,37 +1088,259 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
         "開講情報が正しくありません",
       )
   }
-  let selected_term = if form.schedule == "intensive" {
-    match custom_semester(form.term) {
-      Some(semester) => planner_term_for_semester(semester)
-      None => state.selected_term
+  let selected_term = match offering.schedule() {
+    @tanikun-domain.OfferingSchedule::Regular(terms~) =>
+      planner_term_for_regular(terms[0])
+    @tanikun-domain.OfferingSchedule::YearLong =>
+      if state.selected_term == W {
+        S1
+      } else {
+        state.selected_term
+      }
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      planner_term_for_semester(semester)
+  }
+  let catalogue : Array[@tanikun-domain.Course] = []
+  let offerings : Array[@tanikun-domain.CourseOffering] = []
+  let custom_course_ids = state.custom_course_ids.copy()
+  if editing {
+    for item in state.catalogue {
+      if item.id == course_id {
+        catalogue.push(course)
+      } else {
+        catalogue.push(item)
+      }
     }
-  } else if form.schedule == "year-long" {
-    if state.selected_term == W {
-      S1
-    } else {
-      state.selected_term
+    for item in state.offerings {
+      if item.id == offering_id {
+        offerings.push(offering)
+      } else {
+        offerings.push(item)
+      }
     }
   } else {
-    match theoretical_term {
-      Some(term) => planner_term_for_regular(term)
-      None => state.selected_term
+    for item in state.catalogue {
+      catalogue.push(item)
     }
+    catalogue.push(course)
+    for item in state.offerings {
+      offerings.push(item)
+    }
+    offerings.push(offering)
+    custom_course_ids.push(course.id)
   }
-  let catalogue = state.catalogue.copy()
-  catalogue.push(course)
-  let offerings = state.offerings.copy()
-  offerings.push(offering)
   bump({
     ..state,
     catalogue,
     offerings,
     selected_term,
+    selected_offering: if editing {
+      Some(offering_id)
+    } else {
+      None
+    },
+    custom_form: None,
+    custom_course_ids,
+    next_custom_course_number: if editing {
+      state.next_custom_course_number
+    } else {
+      state.next_custom_course_number + 1
+    },
+    picker: if editing {
+      None
+    } else {
+      Some(PickerTarget::All)
+    },
+    catalogue_query: "",
+    error: None,
+  })
+}
+
+///|
+fn toggle_custom_term(state : PlannerState, term : PlannerTerm) -> PlannerState {
+  match state.custom_form {
+    None => state
+    Some(form) => {
+      let next = match term {
+        S1 => { ..form, s1: !form.s1, }
+        S2 => { ..form, s2: !form.s2, }
+        A1 => { ..form, a1: !form.a1, }
+        A2 => { ..form, a2: !form.a2, }
+        W => form
+      }
+      bump({
+        ..state,
+        custom_form: Some({ ..next, error_field: None, error_message: "", }),
+      })
+    }
+  }
+}
+
+///|
+fn custom_day_value(day : @tanikun-domain.DayOfWeek) -> String {
+  match day {
+    @tanikun-domain.DayOfWeek::Monday => "0"
+    @tanikun-domain.DayOfWeek::Tuesday => "1"
+    @tanikun-domain.DayOfWeek::Wednesday => "2"
+    @tanikun-domain.DayOfWeek::Thursday => "3"
+    @tanikun-domain.DayOfWeek::Friday => "4"
+    @tanikun-domain.DayOfWeek::Saturday => "5"
+    @tanikun-domain.DayOfWeek::Sunday => "6"
+  }
+}
+
+///|
+fn custom_semester_value(semester : @tanikun-domain.Semester) -> String {
+  match semester {
+    @tanikun-domain.Semester::S => "S"
+    @tanikun-domain.Semester::A => "A"
+    @tanikun-domain.Semester::W => "W"
+  }
+}
+
+///|
+fn open_edit_custom_course(
+  state : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+) -> PlannerState {
+  let offering = match find_offering(state.offerings, offering_id) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        TimetableError::UnknownOffering(offering_id~).to_ui(),
+      )
+  }
+  if !state.is_custom_course(offering.course_id) {
+    return with_error(
+      state,
+      UiError::new(
+        UiErrorTarget::Course(course_id=offering.course_id),
+        UiErrorKind::General,
+        "独自科目ではありません",
+      ),
+    )
+  }
+  let course = match find_course(state.catalogue, offering.course_id) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::Course(course_id=offering.course_id),
+          UiErrorKind::DomainValidation,
+          "科目が見つかりません",
+        ),
+      )
+  }
+  let (schedule, term, s1, s2, a1, a2) = match offering.schedule() {
+    @tanikun-domain.OfferingSchedule::Regular(terms~) => {
+      let mut s1 = false
+      let mut s2 = false
+      let mut a1 = false
+      let mut a2 = false
+      for item in terms {
+        match item {
+          @tanikun-domain.Term::S1 => s1 = true
+          @tanikun-domain.Term::S2 => s2 = true
+          @tanikun-domain.Term::A1 => a1 = true
+          @tanikun-domain.Term::A2 => a2 = true
+        }
+      }
+      ("regular", "S1", s1, s2, a1, a2)
+    }
+    @tanikun-domain.OfferingSchedule::YearLong =>
+      ("year-long", "S1", false, false, false, false)
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      ("intensive", custom_semester_value(semester), false, false, false, false)
+  }
+  let slots = offering.slots()
+  let (day, period) = if slots.is_empty() {
+    ("1", "4")
+  } else {
+    (custom_day_value(slots[0].day), "\{slots[0].period.value()}")
+  }
+  let form : CustomCourseDraft = {
+    name: course.name,
+    credits: "\{course.credits.half_units()}",
+    academic_year: "\{offering.academic_year.year()}",
+    schedule,
+    term,
+    s1,
+    s2,
+    a1,
+    a2,
+    day,
+    period,
+    editing_course_id: Some(course.id),
+    editing_offering_id: Some(offering.id),
+    error_field: None,
+    error_message: "",
+  }
+  bump({
+    ..state,
+    custom_form: Some(form),
+    selected_offering: None,
+    picker: None,
+    error: None,
+  })
+}
+
+///|
+fn delete_custom_course(
+  state : PlannerState,
+  course_id : @tanikun-domain.CourseId,
+) -> PlannerState {
+  if !state.is_custom_course(course_id) {
+    return with_error(
+      state,
+      UiError::new(
+        UiErrorTarget::Course(course_id~),
+        UiErrorKind::General,
+        "独自科目ではありません",
+      ),
+    )
+  }
+  let offerings : Array[@tanikun-domain.CourseOffering] = []
+  for offering in state.offerings {
+    if offering.course_id != course_id {
+      offerings.push(offering)
+    }
+  }
+  for enrollment in state.enrollments {
+    for offering in state.offerings {
+      if offering.course_id == course_id &&
+        offering.id == enrollment.offering_id {
+        return with_error(
+          state,
+          UiError::new(
+            UiErrorTarget::Course(course_id~),
+            UiErrorKind::General,
+            "履修中の独自科目は削除できません",
+          ),
+        )
+      }
+    }
+  }
+  let catalogue : Array[@tanikun-domain.Course] = []
+  for course in state.catalogue {
+    if course.id != course_id {
+      catalogue.push(course)
+    }
+  }
+  let custom_course_ids : Array[@tanikun-domain.CourseId] = []
+  for id in state.custom_course_ids {
+    if id != course_id {
+      custom_course_ids.push(id)
+    }
+  }
+  bump({
+    ..state,
+    catalogue,
+    offerings,
+    custom_course_ids,
     selected_offering: None,
     custom_form: None,
-    next_custom_course_number: state.next_custom_course_number + 1,
-    picker: Some(PickerTarget::All),
-    catalogue_query: "",
     error: None,
   })
 }
@@ -1070,10 +1400,23 @@ fn remove_enrollment(
       enrollments.push(enrollment)
     }
   }
-  if !found {
-    return bump({ ..state, selected_offering: None, error: None, })
+  let selected_offering = match state.selected_offering {
+    Some(selected_id) =>
+      match find_offering(state.offerings, selected_id) {
+        Some(offering) =>
+          if state.is_custom_course(offering.course_id) {
+            Some(selected_id)
+          } else {
+            None
+          }
+        None => None
+      }
+    None => None
   }
-  bump({ ..state, enrollments, selected_offering: None, error: None, })
+  if !found {
+    return bump({ ..state, selected_offering, error: None, })
+  }
+  bump({ ..state, enrollments, selected_offering, error: None, })
 }
 
 ///|
