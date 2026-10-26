@@ -14,8 +14,10 @@ using @html {
   label,
   main_,
   nav,
+  option,
   p,
   section,
+  select,
   span,
   table,
   tbody,
@@ -193,6 +195,12 @@ fn term_section(
         h1(class="text-sm font-semibold", "応物単位くん"),
       ]),
       nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
+      button(
+        id="open-custom-course",
+        class="mt-1 min-h-8 rounded-md px-2 text-left text-xs text-primary-text hover:bg-primary-soft",
+        on_click=emit(@app.PlannerMsg::OpenCustomCourseForm),
+        "独自科目",
+      ),
     ],
   )
 }
@@ -881,6 +889,317 @@ fn credit_total_view(state : @app.PlannerState) -> Html {
 }
 
 ///|
+fn half_units_label(half_units : Int) -> String {
+  if half_units % 2 == 0 {
+    "\{half_units / 2}"
+  } else {
+    "\{half_units / 2}.5"
+  }
+}
+
+///|
+fn custom_field_class(
+  form : @app.CustomCourseDraft,
+  field : @app.CustomCourseField,
+  base : String,
+) -> String {
+  if form.error_field == Some(field) {
+    "\{base} border-danger-text"
+  } else {
+    base
+  }
+}
+
+///|
+fn custom_form_panel(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  match state.custom_form {
+    None => div(([] : Array[Html]))
+    Some(form) => {
+      let is_intensive = form.schedule == "intensive"
+      let current_year = state.profile.advancement_year.year()
+      let year_options : Array[Html] = []
+      for offset in 0..<=2 {
+        let year = current_year + offset
+        let value = "\{year}"
+        year_options.push(
+          option(value~, selected=form.academic_year == value, "\{year}年度"),
+        )
+      }
+      let credit_options : Array[Html] = []
+      for half_units in 1..<=20 {
+        let value = "\{half_units}"
+        credit_options.push(
+          option(
+            value~,
+            selected=form.credits == value,
+            "\{half_units_label(half_units)}単位",
+          ),
+        )
+      }
+      let term_options : Array[Html] = []
+      if is_intensive {
+        let semesters = [("S", "S"), ("A", "A"), ("W", "W")]
+        for entry in semesters {
+          let (value, label) = entry
+          term_options.push(option(value~, selected=form.term == value, label))
+        }
+      } else {
+        let terms = [("S1", "S1"), ("S2", "S2"), ("A1", "A1"), ("A2", "A2")]
+        for entry in terms {
+          let (value, label) = entry
+          term_options.push(option(value~, selected=form.term == value, label))
+        }
+      }
+      let day_options : Array[Html] = []
+      let days = ["月", "火", "水", "木", "金", "土", "日"]
+      for index in 0..<=6 {
+        let value = "\{index}"
+        day_options.push(
+          option(value~, selected=form.day == value, days[index]),
+        )
+      }
+      let period_options : Array[Html] = []
+      for period in 1..<=10 {
+        let value = "\{period}"
+        period_options.push(
+          option(value~, selected=form.period == value, "\{period}限"),
+        )
+      }
+      let body : Array[Html] = [
+        div(class="space-y-3 px-4 py-3", [
+          div([
+            label(
+              for_="custom-name",
+              class="mb-1 block text-xs font-medium text-muted",
+              "科目名",
+            ),
+            input(
+              id="custom-name",
+              class=custom_field_class(
+                form,
+                @app.CustomCourseField::Name,
+                "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm outline-none focus:border-primary",
+              ),
+              value=form.name,
+              placeholder="例: 線形代数",
+              on_input=fn(value) {
+                emit(
+                  @app.PlannerMsg::UpdateCustomCourseField(
+                    field=@app.CustomCourseField::Name,
+                    value~,
+                  ),
+                )
+              },
+            ),
+          ]),
+          div(class="grid grid-cols-2 gap-3", [
+            div([
+              label(
+                for_="custom-credits",
+                class="mb-1 block text-xs font-medium text-muted",
+                "単位数",
+              ),
+              select(
+                id="custom-credits",
+                class=custom_field_class(
+                  form,
+                  @app.CustomCourseField::Credits,
+                  "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+                ),
+                on_change=fn(value) {
+                  emit(
+                    @app.PlannerMsg::UpdateCustomCourseField(
+                      field=@app.CustomCourseField::Credits,
+                      value~,
+                    ),
+                  )
+                },
+                credit_options,
+              ),
+            ]),
+            div([
+              label(
+                for_="custom-year",
+                class="mb-1 block text-xs font-medium text-muted",
+                "年度",
+              ),
+              select(
+                id="custom-year",
+                class=custom_field_class(
+                  form,
+                  @app.CustomCourseField::Year,
+                  "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+                ),
+                on_change=fn(value) {
+                  emit(
+                    @app.PlannerMsg::UpdateCustomCourseField(
+                      field=@app.CustomCourseField::Year,
+                      value~,
+                    ),
+                  )
+                },
+                year_options,
+              ),
+            ]),
+          ]),
+          div([
+            label(
+              for_="custom-schedule",
+              class="mb-1 block text-xs font-medium text-muted",
+              "開講形態",
+            ),
+            select(
+              id="custom-schedule",
+              class=custom_field_class(
+                form,
+                @app.CustomCourseField::Schedule,
+                "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+              ),
+              on_change=fn(value) {
+                emit(
+                  @app.PlannerMsg::UpdateCustomCourseField(
+                    field=@app.CustomCourseField::Schedule,
+                    value~,
+                  ),
+                )
+              },
+              [
+                option(
+                  value="regular",
+                  selected=form.schedule == "regular",
+                  "通常",
+                ),
+                option(
+                  value="year-long",
+                  selected=form.schedule == "year-long",
+                  "通年",
+                ),
+                option(
+                  value="intensive",
+                  selected=form.schedule == "intensive",
+                  "集中講義",
+                ),
+              ],
+            ),
+          ]),
+          div([
+            label(
+              for_="custom-term",
+              class="mb-1 block text-xs font-medium text-muted",
+              if is_intensive {
+                "セメスター"
+              } else {
+                "学期"
+              },
+            ),
+            select(
+              id="custom-term",
+              class=custom_field_class(
+                form,
+                @app.CustomCourseField::Term,
+                "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+              ),
+              on_change=fn(value) {
+                emit(
+                  @app.PlannerMsg::UpdateCustomCourseField(
+                    field=@app.CustomCourseField::Term,
+                    value~,
+                  ),
+                )
+              },
+              term_options,
+            ),
+          ]),
+          if is_intensive {
+            div(([] : Array[Html]))
+          } else {
+            div(class="grid grid-cols-2 gap-3", [
+              div([
+                label(
+                  for_="custom-day",
+                  class="mb-1 block text-xs font-medium text-muted",
+                  "曜日",
+                ),
+                select(
+                  id="custom-day",
+                  class=custom_field_class(
+                    form,
+                    @app.CustomCourseField::Day,
+                    "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+                  ),
+                  on_change=fn(value) {
+                    emit(
+                      @app.PlannerMsg::UpdateCustomCourseField(
+                        field=@app.CustomCourseField::Day,
+                        value~,
+                      ),
+                    )
+                  },
+                  day_options,
+                ),
+              ]),
+              div([
+                label(
+                  for_="custom-period",
+                  class="mb-1 block text-xs font-medium text-muted",
+                  "時限",
+                ),
+                select(
+                  id="custom-period",
+                  class=custom_field_class(
+                    form,
+                    @app.CustomCourseField::Period,
+                    "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+                  ),
+                  on_change=fn(value) {
+                    emit(
+                      @app.PlannerMsg::UpdateCustomCourseField(
+                        field=@app.CustomCourseField::Period,
+                        value~,
+                      ),
+                    )
+                  },
+                  period_options,
+                ),
+              ]),
+            ])
+          },
+          if form.error_message.is_empty() {
+            div(([] : Array[Html]))
+          } else {
+            p(
+              id="custom-form-error",
+              class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
+              form.error_message,
+            )
+          },
+        ]),
+        div(class="flex justify-end border-t border-rule px-4 py-2", [
+          button(
+            id="custom-submit",
+            class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90",
+            on_click=emit(@app.PlannerMsg::SubmitCustomCourse),
+            "作成",
+          ),
+        ]),
+      ]
+      modal_shell(
+        id="custom-course",
+        title_id="custom-course-title",
+        close_id="close-custom-course",
+        title="独自科目を作成",
+        width_class="max-w-md",
+        close=emit(@app.PlannerMsg::CloseCustomCourseForm),
+        children=body,
+      )
+    }
+  }
+}
+
+///|
 fn planner_view(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -954,6 +1273,7 @@ fn planner_view(
     ),
     picker_panel(state, emit),
     course_detail(state, emit),
+    custom_form_panel(state, emit),
   ])
 }
 

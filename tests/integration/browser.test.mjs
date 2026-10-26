@@ -73,10 +73,12 @@ async function auditAccessibility(page) {
         issues.push(`table header missing scope: ${header.textContent}`);
       }
     }
-    for (const input of document.querySelectorAll("input")) {
-      const hasLabel = input.labels && input.labels.length > 0;
-      if (!hasLabel && !input.getAttribute("aria-label")) {
-        issues.push(`input missing label: ${input.id}`);
+    for (const control of document.querySelectorAll(
+      "input, select, textarea",
+    )) {
+      const hasLabel = control.labels && control.labels.length > 0;
+      if (!hasLabel && !control.getAttribute("aria-label")) {
+        issues.push(`form control missing label: ${control.id}`);
       }
     }
     for (const button of document.querySelectorAll("button")) {
@@ -478,6 +480,25 @@ test(
       .getByText("Calculus", { exact: true })
       .waitFor();
     await assertCreditTotal(page, "確定 2 / 見込 11単位");
+
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    assert.deepEqual(await auditAccessibility(page), []);
+    await page.locator("#custom-name").fill("Linear Algebra");
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#add-offering-user-offering-1").waitFor();
+    await page.locator("#add-offering-user-offering-1").click();
+    await page.locator("#add-offering-user-offering-1").waitFor({
+      state: "detached",
+    });
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra", { exact: true })
+      .waitFor();
+    await assertCreditTotal(page, "確定 2 / 見込 13単位");
 
     await page.evaluate(() => {
       const modal = document.createElement("section");
