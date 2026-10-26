@@ -90,6 +90,21 @@ test(
 
     assert.equal(await page.getByText("5日", { exact: true }).count(), 1);
     assert.equal(await page.getByText("6限", { exact: true }).count(), 1);
+    assert.equal(
+      await page.getByRole("button", { name: "表示する曜日を減らす" }).count(),
+      1,
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(
+      (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
+    );
+    assert.equal(await page.locator("#timetable thead th").count(), 6);
+    const lastDayHeader = await page
+      .locator("#timetable thead th")
+      .last()
+      .evaluate((element) => element.getBoundingClientRect().right);
+    assert.ok(lastDayHeader <= 390);
+    await page.setViewportSize({ width: 1280, height: 720 });
     assert.equal(await page.locator("#timetable thead th").count(), 6);
     const headers = await page.locator("#timetable thead th").allTextContents();
     assert.deepEqual(headers, ["時限", "月", "火", "水", "木", "金"]);
@@ -103,12 +118,24 @@ test(
       );
     assert.equal(dayCellWidths.length, 5);
     assert.equal(new Set(dayCellWidths).size, 1);
+    assert.equal(
+      await page
+        .locator("main#main-content")
+        .evaluate((element) => getComputedStyle(element).overflowY),
+      "visible",
+    );
+    assert.equal(
+      await page
+        .locator("#timetable-scroll")
+        .evaluate((element) => getComputedStyle(element).overflowY),
+      "visible",
+    );
     await page.locator("#slot-1-1").focus();
     assert.equal(
       await page
         .locator("#slot-1-1")
         .evaluate((element) => getComputedStyle(element).outlineColor),
-      "rgb(37, 75, 138)",
+      "rgb(0, 122, 255)",
     );
     await page
       .locator("#timetable")
@@ -122,7 +149,7 @@ test(
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy302-s").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#remove-picker-phy302-s").waitFor();
+    assert.equal(await page.locator("#remove-picker-phy302-s").count(), 0);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
@@ -155,6 +182,10 @@ test(
     await page.locator("#catalogue-search").fill("Physics");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
+    assert.equal(
+      await page.locator("#slot-1-2").getByText("+", { exact: true }).count(),
+      0,
+    );
     await page.locator("#slot-1-2").click();
     await page.locator("#picker").waitFor();
     await page.waitForFunction(
@@ -226,10 +257,10 @@ test(
     const addStyle = await page
       .locator("#add-offering-phy102-s2")
       .evaluate((element) => ({
-        background: getComputedStyle(element).backgroundColor,
+        color: getComputedStyle(element).color,
         height: element.getBoundingClientRect().height,
       }));
-    assert.notEqual(addStyle.background, "rgba(0, 0, 0, 0)");
+    assert.equal(addStyle.color, "rgb(0, 98, 204)");
     assert.ok(addStyle.height >= 40);
     await page.locator("#add-offering-phy102-s2").click();
     await page.locator("#picker").waitFor({ state: "detached" });
@@ -238,17 +269,32 @@ test(
       .getByText("Physics II", { exact: true })
       .waitFor();
     await page
-      .locator('#timetable button[id^="remove-phy102-s2"]')
-      .first()
+      .locator("#timetable")
+      .getByText("Physics II", { exact: true })
       .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.equal(
+      await page.locator("#course-detail-dialog").getAttribute("role"),
+      "dialog",
+    );
+    assert.equal(
+      await page.locator("#course-detail-dialog").getAttribute("aria-modal"),
+      "true",
+    );
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#add-offering-phy102-s2").click();
-    await page.locator("#picker").waitFor();
-    await page.locator("#remove-picker-phy102-s2").waitFor();
-    await page.locator("#remove-picker-phy102-s2").click();
-    await page.locator("#add-offering-phy102-s2").waitFor();
+    const addButton = page.locator("#add-offering-phy102-s2");
+    const addBox = await addButton.boundingBox();
+    assert.ok(addBox);
+    await page.mouse.dblclick(
+      addBox.x + addBox.width / 2,
+      addBox.y + addBox.height / 2,
+    );
+    await addButton.waitFor({ state: "detached" });
+    assert.equal(await addButton.count(), 0);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
@@ -256,7 +302,7 @@ test(
         .locator("#timetable")
         .getByText("Physics II", { exact: true })
         .count(),
-      0,
+      1,
     );
 
     await page.locator("#term-A1").click();
@@ -272,17 +318,18 @@ test(
       .waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
-    await page.locator("#remove-phy501-w").click();
+    await page.locator("#off-grid").getByText("Winter Workshop").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
     await page.getByText("集中講義はありません").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy501-w").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#remove-picker-phy501-w").waitFor();
-    await page.locator("#remove-picker-phy501-w").click();
-    await page.locator("#add-offering-phy501-w").waitFor();
+    assert.equal(await page.locator("#remove-picker-phy501-w").count(), 0);
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
-    await page.getByText("集中講義はありません").waitFor();
+    await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
 
     assert.deepEqual(errors, []);
   },

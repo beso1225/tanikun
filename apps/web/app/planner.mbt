@@ -57,7 +57,6 @@ pub(all) enum UiErrorTarget {
 ///|
 pub(all) enum UiErrorKind {
   DomainValidation
-  DuplicateEnrollment
   SlotConflict
   NotOfferedInTerm
   UnknownOffering
@@ -180,7 +179,6 @@ pub fn UiError::from_domain(
 
 ///|
 pub(all) enum TimetableError {
-  DuplicateEnrollment(offering_id~ : @tanikun-domain.OfferingId)
   SlotConflict(
     offering_id~ : @tanikun-domain.OfferingId,
     slot~ : @tanikun-domain.Slot
@@ -192,12 +190,6 @@ pub(all) enum TimetableError {
 ///|
 pub fn TimetableError::to_ui(self : TimetableError) -> UiError {
   match self {
-    DuplicateEnrollment(offering_id~) =>
-      UiError::new(
-        UiErrorTarget::Offering(offering_id~),
-        UiErrorKind::DuplicateEnrollment,
-        "同じ開講がすでに登録されています",
-      )
     SlotConflict(offering_id~, ..) =>
       UiError::new(
         UiErrorTarget::Offering(offering_id~),
@@ -323,6 +315,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({
         ..state,
         selected_term: term,
+        selected_offering: None,
         error: None,
         picker: None,
         catalogue_query: "",
@@ -396,7 +389,7 @@ fn with_error(state : PlannerState, error : UiError) -> PlannerState {
 }
 
 ///|
-fn find_offering(
+pub fn find_offering(
   offerings : Array[@tanikun-domain.CourseOffering],
   id : @tanikun-domain.OfferingId,
 ) -> @tanikun-domain.CourseOffering? {
@@ -492,11 +485,10 @@ fn add_offering(
         TimetableError::UnknownOffering(offering_id=id).to_ui(),
       )
   }
+  // A repeated UI action on an already-enrolled offering is a deliberate
+  // no-op, not a duplicate-enrollment error.
   if has_enrollment(state.enrollments, id) {
-    return with_error(
-      state,
-      TimetableError::DuplicateEnrollment(offering_id=id).to_ui(),
-    )
+    return state
   }
   if !offering_occupies_term(offering, state.selected_term) {
     return with_error(
@@ -536,16 +528,9 @@ fn remove_enrollment(
     }
   }
   if !found {
-    return with_error(
-      state,
-      UiError::new(
-        UiErrorTarget::Offering(offering_id=id),
-        UiErrorKind::UnknownEnrollment,
-        "履修が見つかりません",
-      ),
-    )
+    return bump({ ..state, selected_offering: None, error: None, })
   }
-  bump({ ..state, enrollments, error: None, })
+  bump({ ..state, enrollments, selected_offering: None, error: None, })
 }
 
 ///|
@@ -577,7 +562,7 @@ pub struct OffGridEntry {
 }
 
 ///|
-fn find_course(
+pub fn find_course(
   catalogue : Array[@tanikun-domain.Course],
   id : @tanikun-domain.CourseId,
 ) -> @tanikun-domain.Course? {
