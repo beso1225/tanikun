@@ -131,6 +131,19 @@ test(
     assert.equal(await page.title(), "応物単位くん");
     assert.deepEqual(await auditAccessibility(page), []);
     await assertCreditTotal(page, "見込 6単位");
+    const contextBox = await page.locator("#term-context").boundingBox();
+    assert.ok(contextBox);
+    await page.locator("#term-W").click();
+    await page
+      .getByText("Wでは時間割のグリッドを使いません", {
+        exact: true,
+      })
+      .waitFor();
+    const wContextBox = await page.locator("#term-context").boundingBox();
+    assert.ok(wContextBox);
+    assert.equal(wContextBox.x, contextBox.x);
+    await page.locator("#term-S1").click();
+    await page.locator("#timetable").waitFor();
 
     assert.equal(await page.locator("nav button").count(), 5);
     assert.equal(await page.locator("#term-S1").count(), 1);
@@ -181,6 +194,7 @@ test(
         .evaluate((element) => getComputedStyle(element).overflowY),
       "visible",
     );
+    await page.keyboard.press("Tab");
     await page.locator("#slot-1-1").focus();
     assert.equal(
       await page
