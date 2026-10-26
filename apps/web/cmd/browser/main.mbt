@@ -111,37 +111,29 @@ fn slots_label(slots : Array[@tanikun-domain.Slot]) -> String {
 }
 
 ///|
-fn enrollment_status_label(status : @tanikun-domain.EnrollmentStatus) -> String {
+fn enrollment_status_view(
+  status : @tanikun-domain.EnrollmentStatus,
+) -> (String, String) {
   match status {
-    @tanikun-domain.EnrollmentStatus::Planned => "予定"
-    @tanikun-domain.EnrollmentStatus::InProgress => "履修中"
+    @tanikun-domain.EnrollmentStatus::Planned => ("予定", "text-muted-tile")
+    @tanikun-domain.EnrollmentStatus::InProgress =>
+      ("履修中", "text-primary-text")
     @tanikun-domain.EnrollmentStatus::Confirmed(
       @tanikun-domain.ConfirmedGrade::Passed(..)
-    ) => "合格"
+    ) => ("合格", "text-success-text-tile")
     @tanikun-domain.EnrollmentStatus::Confirmed(
       @tanikun-domain.ConfirmedGrade::Failed(..)
-    ) => "不合格"
+    ) => ("不合格", "text-danger-text")
     @tanikun-domain.EnrollmentStatus::Confirmed(
       @tanikun-domain.ConfirmedGrade::NotTaken
-    ) => "未履修"
+    ) => ("未履修", "text-muted-tile")
   }
 }
 
 ///|
-fn enrollment_status_class(status : @tanikun-domain.EnrollmentStatus) -> String {
-  match status {
-    @tanikun-domain.EnrollmentStatus::Planned => "text-muted"
-    @tanikun-domain.EnrollmentStatus::InProgress => "text-primary-text"
-    @tanikun-domain.EnrollmentStatus::Confirmed(
-      @tanikun-domain.ConfirmedGrade::Passed(..)
-    ) => "text-success-text"
-    @tanikun-domain.EnrollmentStatus::Confirmed(
-      @tanikun-domain.ConfirmedGrade::Failed(..)
-    ) => "text-danger-text"
-    @tanikun-domain.EnrollmentStatus::Confirmed(
-      @tanikun-domain.ConfirmedGrade::NotTaken
-    ) => "text-muted"
-  }
+fn enrollment_status_badge(status : @tanikun-domain.EnrollmentStatus) -> Html {
+  let (label, class_name) = enrollment_status_view(status)
+  span(class="text-[0.6875rem] font-medium \{class_name}", label)
 }
 
 ///|
@@ -306,10 +298,7 @@ fn timetable_grid(
                     class="block break-words text-[0.6875rem] font-medium leading-tight tracking-tight text-ink sm:text-sm",
                     block.course_name,
                   ),
-                  span(
-                    class="text-[0.6875rem] font-medium \{enrollment_status_class(block.status)}",
-                    enrollment_status_label(block.status),
-                  ),
+                  enrollment_status_badge(block.status),
                 ]),
               ),
             ],
@@ -375,10 +364,7 @@ fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
             p(class="truncate text-sm font-medium text-ink", entry.course_name),
             div(class="mt-0.5 flex items-center gap-2 text-xs text-muted", [
               span("\{credits_label(entry.credits)}単位"),
-              span(
-                class="\{enrollment_status_class(entry.status)}",
-                enrollment_status_label(entry.status),
-              ),
+              enrollment_status_badge(entry.status),
             ]),
           ]),
         ],
@@ -580,9 +566,9 @@ fn status_button(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   let class_name = if active {
-    "min-h-8 rounded-md bg-primary px-2 text-xs font-medium text-white"
+    "min-h-11 rounded-md bg-primary px-2 text-sm font-medium text-white"
   } else {
-    "min-h-8 rounded-md bg-canvas px-2 text-xs text-ink hover:bg-rule/40"
+    "min-h-11 rounded-md bg-canvas px-2 text-sm text-ink hover:bg-rule/40"
   }
   button(
     id~,
@@ -611,9 +597,9 @@ fn grade_button(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   let class_name = if active {
-    "min-h-7 rounded-md bg-primary-soft px-2 text-xs font-medium text-primary-text"
+    "min-h-9 rounded-md bg-primary-soft px-2 text-sm font-medium text-primary-text"
   } else {
-    "min-h-7 rounded-md px-2 text-xs text-muted hover:bg-canvas"
+    "min-h-9 rounded-md px-2 text-sm text-muted hover:bg-canvas"
   }
   button(
     id~,
