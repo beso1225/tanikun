@@ -307,7 +307,7 @@ test(
       "hidden",
     );
     assert.equal(await page.locator("#catalogue-search").inputValue(), "");
-    await page.locator("#add-offering-phy102-s2").focus();
+    await page.locator("#open-custom-course").focus();
     await page.keyboard.press("Tab");
     assert.equal(
       await page.evaluate(() => document.activeElement?.id),
@@ -481,10 +481,18 @@ test(
       .waitFor();
     await assertCreditTotal(page, "確定 2 / 見込 11単位");
 
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
     await page.locator("#open-custom-course").click();
     await page.locator("#custom-course").waitFor();
     assert.deepEqual(await auditAccessibility(page), []);
     await page.locator("#custom-name").fill("Linear Algebra");
+    await page.locator("#custom-term-s1").click();
+    await page.locator("#custom-term-s1[aria-pressed='true']").waitFor();
+    assert.equal(
+      await page.locator("#custom-term-s2").getAttribute("aria-pressed"),
+      "true",
+    );
     await page.locator("#custom-submit").click();
     await page.locator("#picker").waitFor();
     await page.locator("#add-offering-user-offering-1").waitFor();
@@ -499,6 +507,45 @@ test(
       .getByText("Linear Algebra", { exact: true })
       .waitFor();
     await assertCreditTotal(page, "確定 2 / 見込 13単位");
+
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#edit-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#custom-name").fill("Linear Algebra II");
+    await page.locator("#custom-submit").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /Linear Algebra II/,
+    );
+    await page.locator("#close-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra II", { exact: true })
+      .waitFor();
+
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra II", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#delete-custom-course").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Linear Algebra II", { exact: true })
+        .count(),
+      0,
+    );
+    await assertCreditTotal(page, "確定 2 / 見込 11単位");
 
     await page.evaluate(() => {
       const modal = document.createElement("section");

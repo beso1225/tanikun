@@ -195,12 +195,6 @@ fn term_section(
         h1(class="text-sm font-semibold", "応物単位くん"),
       ]),
       nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
-      button(
-        id="open-custom-course",
-        class="mt-1 min-h-8 rounded-md px-2 text-left text-xs text-primary-text hover:bg-primary-soft",
-        on_click=emit(@app.PlannerMsg::OpenCustomCourseForm),
-        "独自科目",
-      ),
     ],
   )
 }
@@ -531,6 +525,14 @@ fn picker_panel(
           ),
         ]),
         div(class="max-h-[60vh] overflow-y-auto", items),
+        div(class="border-t border-rule px-4 py-2", [
+          button(
+            id="open-custom-course",
+            class="min-h-9 rounded-md px-2 text-sm text-primary-text hover:bg-primary-soft",
+            on_click=emit(@app.PlannerMsg::OpenCustomCourseForm),
+            "独自科目を作成",
+          ),
+        ]),
       ]
       modal_shell(
         id="picker",
@@ -824,7 +826,37 @@ fn course_detail(
               let current = state.enrollment_status(offering_id)
               let body : Array[Html] = [
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
-                status_controls(offering_id, current, emit),
+                match current {
+                  Some(_) => status_controls(offering_id, current, emit)
+                  None => div(([] : Array[Html]))
+                },
+                if state.is_custom_course(course.id) {
+                  div(
+                    class="flex justify-end gap-1 border-t border-rule px-4 py-2",
+                    [
+                      button(
+                        id="edit-custom-course",
+                        class="min-h-11 rounded-md px-2 text-sm text-primary-text hover:bg-primary-soft",
+                        on_click=emit(
+                          @app.PlannerMsg::OpenEditCustomCourse(offering_id~),
+                        ),
+                        "編集",
+                      ),
+                      button(
+                        id="delete-custom-course",
+                        class="min-h-11 rounded-md px-2 text-sm text-danger-text hover:bg-danger/10",
+                        on_click=emit(
+                          @app.PlannerMsg::DeleteCustomCourse(
+                            course_id=course.id,
+                          ),
+                        ),
+                        "独自科目を削除",
+                      ),
+                    ],
+                  )
+                } else {
+                  div(([] : Array[Html]))
+                },
                 div(class="flex justify-end border-t border-rule px-4 py-2", [
                   button(
                     id="remove-detail",
@@ -911,6 +943,34 @@ fn custom_field_class(
 }
 
 ///|
+fn term_toggle_button(
+  id : String,
+  label : String,
+  active : Bool,
+  term : @app.PlannerTerm,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  let class_name = if active {
+    "min-h-9 rounded-md bg-primary px-3 text-sm font-medium text-white"
+  } else {
+    "min-h-9 rounded-md bg-canvas px-3 text-sm text-ink hover:bg-rule/40"
+  }
+  button(
+    id~,
+    class=class_name,
+    attrs=@html.Attrs::build().aria_pressed(
+      if active {
+        "true"
+      } else {
+        "false"
+      },
+    ),
+    on_click=emit(@app.PlannerMsg::ToggleCustomTerm(term~)),
+    label,
+  )
+}
+
+///|
 fn custom_form_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -919,6 +979,8 @@ fn custom_form_panel(
     None => div(([] : Array[Html]))
     Some(form) => {
       let is_intensive = form.schedule == "intensive"
+      let is_regular = form.schedule == "regular"
+      let editing = form.editing_course_id is Some(_)
       let current_year = state.profile.advancement_year.year()
       let year_options : Array[Html] = []
       for offset in 0..<=2 {
@@ -946,12 +1008,6 @@ fn custom_form_panel(
           let (value, label) = entry
           term_options.push(option(value~, selected=form.term == value, label))
         }
-      } else {
-        let terms = [("S1", "S1"), ("S2", "S2"), ("A1", "A1"), ("A2", "A2")]
-        for entry in terms {
-          let (value, label) = entry
-          term_options.push(option(value~, selected=form.term == value, label))
-        }
       }
       let day_options : Array[Html] = []
       let days = ["月", "火", "水", "木", "金", "土", "日"]
@@ -969,7 +1025,7 @@ fn custom_form_panel(
         )
       }
       let body : Array[Html] = [
-        div(class="space-y-3 px-4 py-3", [
+        div(class="max-h-[70vh] space-y-3 overflow-y-auto px-4 py-3", [
           div([
             label(
               for_="custom-name",
@@ -1085,34 +1141,68 @@ fn custom_form_panel(
               ],
             ),
           ]),
-          div([
-            label(
-              for_="custom-term",
-              class="mb-1 block text-xs font-medium text-muted",
-              if is_intensive {
-                "セメスター"
-              } else {
-                "学期"
-              },
-            ),
-            select(
-              id="custom-term",
-              class=custom_field_class(
-                form,
-                @app.CustomCourseField::Term,
-                "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+          if is_regular {
+            div([
+              p(class="mb-1 text-xs font-medium text-muted", "学期"),
+              div(class="flex flex-wrap gap-1", [
+                term_toggle_button(
+                  "custom-term-s1",
+                  "S1",
+                  form.s1,
+                  @app.PlannerTerm::S1,
+                  emit,
+                ),
+                term_toggle_button(
+                  "custom-term-s2",
+                  "S2",
+                  form.s2,
+                  @app.PlannerTerm::S2,
+                  emit,
+                ),
+                term_toggle_button(
+                  "custom-term-a1",
+                  "A1",
+                  form.a1,
+                  @app.PlannerTerm::A1,
+                  emit,
+                ),
+                term_toggle_button(
+                  "custom-term-a2",
+                  "A2",
+                  form.a2,
+                  @app.PlannerTerm::A2,
+                  emit,
+                ),
+              ]),
+            ])
+          } else if is_intensive {
+            div([
+              label(
+                for_="custom-term",
+                class="mb-1 block text-xs font-medium text-muted",
+                "セメスター",
               ),
-              on_change=fn(value) {
-                emit(
-                  @app.PlannerMsg::UpdateCustomCourseField(
-                    field=@app.CustomCourseField::Term,
-                    value~,
-                  ),
-                )
-              },
-              term_options,
-            ),
-          ]),
+              select(
+                id="custom-term",
+                class=custom_field_class(
+                  form,
+                  @app.CustomCourseField::Term,
+                  "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+                ),
+                on_change=fn(value) {
+                  emit(
+                    @app.PlannerMsg::UpdateCustomCourseField(
+                      field=@app.CustomCourseField::Term,
+                      value~,
+                    ),
+                  )
+                },
+                term_options,
+              ),
+            ])
+          } else {
+            div(([] : Array[Html]))
+          },
           if is_intensive {
             div(([] : Array[Html]))
           } else {
@@ -1182,7 +1272,11 @@ fn custom_form_panel(
             id="custom-submit",
             class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90",
             on_click=emit(@app.PlannerMsg::SubmitCustomCourse),
-            "作成",
+            if editing {
+              "保存"
+            } else {
+              "作成"
+            },
           ),
         ]),
       ]
@@ -1190,7 +1284,11 @@ fn custom_form_panel(
         id="custom-course",
         title_id="custom-course-title",
         close_id="close-custom-course",
-        title="独自科目を作成",
+        title=if editing {
+          "独自科目を編集"
+        } else {
+          "独自科目を作成"
+        },
         width_class="max-w-md",
         close=emit(@app.PlannerMsg::CloseCustomCourseForm),
         children=body,
