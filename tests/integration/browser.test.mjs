@@ -59,6 +59,47 @@ function startStaticServer(root) {
   });
 }
 
+async function auditAccessibility(page) {
+  return page.evaluate(() => {
+    const issues = [];
+    if (document.querySelectorAll("main").length !== 1) {
+      issues.push("page must have exactly one main landmark");
+    }
+    if (!document.querySelector('a[href="#main-content"]')) {
+      issues.push("page must have a skip link");
+    }
+    for (const header of document.querySelectorAll("th")) {
+      if (!header.getAttribute("scope")) {
+        issues.push(`table header missing scope: ${header.textContent}`);
+      }
+    }
+    for (const input of document.querySelectorAll("input")) {
+      const hasLabel = input.labels && input.labels.length > 0;
+      if (!hasLabel && !input.getAttribute("aria-label")) {
+        issues.push(`input missing label: ${input.id}`);
+      }
+    }
+    for (const button of document.querySelectorAll("button")) {
+      const hasText = button.textContent.trim().length > 0;
+      const hasName =
+        button.getAttribute("aria-label") || button.getAttribute("title");
+      if (!hasText && !hasName) {
+        issues.push(`unnamed button: ${button.id}`);
+      }
+    }
+    for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+      if (dialog.getAttribute("aria-modal") !== "true") {
+        issues.push(`dialog missing aria-modal: ${dialog.id}`);
+      }
+      const labelledBy = dialog.getAttribute("aria-labelledby");
+      if (!labelledBy || !document.getElementById(labelledBy)) {
+        issues.push(`dialog missing labelled heading: ${dialog.id}`);
+      }
+    }
+    return issues;
+  });
+}
+
 test(
   "built page renders the five-term planner and resizes",
   { timeout: 60_000 },
@@ -80,6 +121,7 @@ test(
     assert.equal(response?.status(), 200);
     await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
     assert.equal(await page.title(), "応物単位くん");
+    assert.deepEqual(await auditAccessibility(page), []);
 
     assert.equal(await page.locator("nav button").count(), 5);
     assert.equal(await page.locator("#term-S1").count(), 1);
@@ -191,6 +233,7 @@ test(
     await page.waitForFunction(
       () => document.activeElement?.id === "catalogue-search",
     );
+    assert.deepEqual(await auditAccessibility(page), []);
     assert.equal(await page.locator("#picker-backdrop").count(), 1);
     assert.equal(await page.locator("#picker").getAttribute("role"), "dialog");
     assert.equal(
@@ -273,6 +316,7 @@ test(
       .getByText("Physics II", { exact: true })
       .click();
     await page.locator("#course-detail-dialog").waitFor();
+    assert.deepEqual(await auditAccessibility(page), []);
     assert.equal(
       await page.locator("#course-detail-dialog").getAttribute("role"),
       "dialog",
@@ -281,6 +325,17 @@ test(
       await page.locator("#course-detail-dialog").getAttribute("aria-modal"),
       "true",
     );
+    await page.keyboard.press("Escape");
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.match(
+      await page.evaluate(() => document.activeElement?.id),
+      /^open-detail-phy102-s2/,
+    );
+    await page
+      .locator("#timetable")
+      .getByText("Physics II", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
 
