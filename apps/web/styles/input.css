@@ -43,8 +43,7 @@
     background: var(--color-primary-soft);
   }
 
-  body:has(#picker),
-  body:has(#course-detail-dialog) {
+  body:has([role="dialog"][aria-modal="true"]) {
     overflow: hidden;
   }
 

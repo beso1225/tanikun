@@ -325,6 +325,19 @@ test(
       await page.locator("#course-detail-dialog").getAttribute("aria-modal"),
       "true",
     );
+    assert.equal(
+      await page
+        .locator("body")
+        .evaluate((body) => getComputedStyle(body).overflow),
+      "hidden",
+    );
+    assert.equal(await page.locator("#close-detail").count(), 1);
+    await page.locator("#close-detail").focus();
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "remove-detail",
+    );
     await page.keyboard.press("Escape");
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
     assert.match(
@@ -385,6 +398,37 @@ test(
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
+
+    await page.evaluate(() => {
+      const modal = document.createElement("section");
+      modal.id = "synthetic-modal";
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("aria-labelledby", "synthetic-title");
+      modal.innerHTML =
+        '<h2 id="synthetic-title">Synthetic dialog</h2><button id="synthetic-close" data-dialog-close="true">完了</button>';
+      modal
+        .querySelector("#synthetic-close")
+        .addEventListener("click", () => modal.remove());
+      document.querySelector("#app").append(modal);
+    });
+    await page.waitForFunction(
+      () => document.activeElement?.id === "synthetic-close",
+    );
+    assert.equal(
+      await page
+        .locator("body")
+        .evaluate((body) => getComputedStyle(body).overflow),
+      "hidden",
+    );
+    await page.keyboard.press("Escape");
+    await page.locator("#synthetic-modal").waitFor({ state: "detached" });
+    assert.notEqual(
+      await page
+        .locator("body")
+        .evaluate((body) => getComputedStyle(body).overflow),
+      "hidden",
+    );
 
     assert.deepEqual(errors, []);
   },

@@ -4,7 +4,7 @@ This document is the current baseline for the planner UI. Apply it to every new 
 
 ## Modals
 
-Every modal uses the shared `modal_shell` in [main.mbt](../apps/web/cmd/browser/main.mbt). The shell owns the backdrop, dialog semantics, header, close control, and body.
+Every modal uses the shared `modal_shell` in [main.mbt](../apps/web/cmd/browser/main.mbt). The shell owns the backdrop, dialog semantics, header, close control, and body. The browser-level behavior matches any element with `role="dialog"` and `aria-modal="true"`, not a fixed dialog ID.
 
 A modal must have:
 
@@ -44,4 +44,4 @@ The picker and the course detail dialog use this shell. The settings dialog in #
 
 ## Verification
 
-`just test-browser` runs a scripted DOM audit for the rules above. It also checks that Escape closes the picker, focus returns to the slot that opened it, and the focus ring uses the primary token.
+`just test-browser` runs a scripted DOM audit for the page landmark and skip link, table scopes, input labels, icon-only control names, and dialog attributes. The same test checks Escape, focus restore, focus trap, scroll lock, and the primary focus ring for the picker and the course detail dialog. Contrast is checked by hand and is not part of the browser audit.

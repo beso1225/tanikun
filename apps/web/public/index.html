@@ -12,8 +12,7 @@
     <script>
       (() => {
         const dialog = () =>
-          document.querySelector("#picker") ??
-          document.querySelector("#course-detail-dialog");
+          document.querySelector('[role="dialog"][aria-modal="true"]');
         let returnFocus = null;
         document.addEventListener(
           "click",
