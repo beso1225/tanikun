@@ -652,3 +652,41 @@ test "removing an opened offering closes its detail" {
     Some(_) => fail("detail should close after removing the offering")
   }
 }
+
+///|
+test "credit totals derive confirmed and projected values" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
+  )
+  let totals = match state.credit_totals() {
+    Ok(totals) => totals
+    Err(_) => fail("expected credit totals")
+  }
+  assert_eq(totals.confirmed.half_units(), 0)
+  assert_eq(totals.projected.half_units(), 4)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::RemoveEnrollment(
+      offering_id=planner_offering_id("offering-1"),
+    ),
+  )
+  let totals = match state.credit_totals() {
+    Ok(totals) => totals
+    Err(_) => fail("expected empty credit totals")
+  }
+  assert_eq(totals.confirmed.half_units(), 0)
+  assert_eq(totals.projected.half_units(), 0)
+}
+
+///|
+test "invalid planner input reports a credit total error" {
+  let state = planner_state()
+  state.enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("missing-offering")),
+  )
+  match state.credit_totals() {
+    Err(_) => ()
+    Ok(_) => fail("expected an invalid credit total")
+  }
+}

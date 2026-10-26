@@ -100,6 +100,14 @@ async function auditAccessibility(page) {
   });
 }
 
+async function assertCreditTotal(page, expected) {
+  await page.waitForFunction(
+    (value) =>
+      document.querySelector("#credit-total")?.textContent.includes(value),
+    expected,
+  );
+}
+
 test(
   "built page renders the five-term planner and resizes",
   { timeout: 60_000 },
@@ -122,6 +130,7 @@ test(
     await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
     assert.equal(await page.title(), "応物単位くん");
     assert.deepEqual(await auditAccessibility(page), []);
+    await assertCreditTotal(page, "見込 6単位");
 
     assert.equal(await page.locator("nav button").count(), 5);
     assert.equal(await page.locator("#term-S1").count(), 1);
@@ -195,6 +204,7 @@ test(
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
+    await assertCreditTotal(page, "見込 7単位");
 
     await page.locator("#add-day").click();
     await page.getByText("6日", { exact: true }).waitFor();
@@ -311,6 +321,7 @@ test(
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
       .waitFor();
+    await assertCreditTotal(page, "見込 9単位");
     await page
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
@@ -351,6 +362,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await assertCreditTotal(page, "見込 7単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -363,6 +375,7 @@ test(
     );
     await addButton.waitFor({ state: "detached" });
     assert.equal(await addButton.count(), 0);
+    await assertCreditTotal(page, "見込 9単位");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
