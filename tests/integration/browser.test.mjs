@@ -508,22 +508,15 @@ test(
       .waitFor();
     await assertCreditTotal(page, "確定 2 / 見込 13単位");
 
-    await page
-      .locator("#timetable")
-      .getByText("Linear Algebra", { exact: true })
-      .click();
-    await page.locator("#course-detail-dialog").waitFor();
-    await page.locator("#edit-custom-course").click();
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#edit-custom-user-offering-1").click();
     await page.locator("#custom-course").waitFor();
     await page.locator("#custom-name").fill("Linear Algebra II");
     await page.locator("#custom-submit").click();
-    await page.locator("#course-detail-dialog").waitFor();
-    assert.match(
-      await page.locator("#course-detail-dialog").innerText(),
-      /Linear Algebra II/,
-    );
-    await page.locator("#close-detail").click();
-    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await page.locator("#picker").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     await page
       .locator("#timetable")
       .getByText("Linear Algebra II", { exact: true })
@@ -535,10 +528,17 @@ test(
       .click();
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
-    await page.locator("#course-detail-dialog").waitFor();
-    await page.locator("#confirm-delete-custom-course").waitFor();
-    await page.locator("#confirm-delete-custom-course").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await assertCreditTotal(page, "確定 2 / 見込 11単位");
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#edit-custom-user-offering-1").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#delete-custom-course").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
       await page
         .locator("#timetable")
@@ -546,7 +546,6 @@ test(
         .count(),
       0,
     );
-    await assertCreditTotal(page, "確定 2 / 見込 11単位");
 
     await page.locator("#slot-0-3").click();
     await page.locator("#picker").waitFor();

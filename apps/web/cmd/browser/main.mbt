@@ -483,8 +483,23 @@ fn picker_panel(
             p(class="mt-0.5 truncate text-xs text-muted", detail),
           ]),
         ]
+        let row_actions : Array[Html] = []
+        if entry.custom {
+          row_actions.push(
+            button(
+              id="edit-custom-\{entry.offering_id.value}",
+              class="min-h-11 rounded-md px-2 text-sm text-muted hover:bg-canvas",
+              on_click=emit(
+                @app.PlannerMsg::OpenEditCustomCourse(
+                  offering_id=entry.offering_id,
+                ),
+              ),
+              "編集",
+            ),
+          )
+        }
         if !entry.enrolled {
-          row_children.push(
+          row_actions.push(
             button(
               id="add-offering-\{entry.offering_id.value}",
               class="min-h-11 min-w-20 shrink-0 rounded-md px-2 text-sm font-medium text-primary-text hover:bg-primary-soft",
@@ -494,6 +509,9 @@ fn picker_panel(
               "追加",
             ),
           )
+        }
+        for action in row_actions {
+          row_children.push(action)
         }
         items.push(
           div(
@@ -828,65 +846,6 @@ fn course_detail(
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
                 match current {
                   Some(_) => status_controls(offering_id, current, emit)
-                  None => div(([] : Array[Html]))
-                },
-                if state.is_custom_course(course.id) {
-                  div(
-                    class="flex justify-end gap-1 border-t border-rule px-4 py-2",
-                    [
-                      button(
-                        id="edit-custom-course",
-                        class="min-h-11 rounded-md px-2 text-sm text-primary-text hover:bg-primary-soft",
-                        on_click=emit(
-                          @app.PlannerMsg::OpenEditCustomCourse(offering_id~),
-                        ),
-                        "編集",
-                      ),
-                      button(
-                        id="delete-custom-course",
-                        class="min-h-11 rounded-md px-2 text-sm text-danger-text hover:bg-danger/10",
-                        on_click=emit(
-                          @app.PlannerMsg::DeleteCustomCourse(
-                            course_id=course.id,
-                          ),
-                        ),
-                        "独自科目を削除",
-                      ),
-                    ],
-                  )
-                } else {
-                  div(([] : Array[Html]))
-                },
-                match state.pending_custom_delete {
-                  Some(pending_id) =>
-                    if pending_id == course.id {
-                      div(class="border-t border-rule bg-danger/5 px-4 py-3", [
-                        p(
-                          class="text-sm text-ink",
-                          "履修を削除しました。この独自科目も削除しますか？",
-                        ),
-                        div(class="mt-2 flex justify-end gap-1", [
-                          button(
-                            id="keep-custom-course",
-                            class="min-h-9 rounded-md px-2 text-sm text-muted hover:bg-canvas",
-                            on_click=emit(@app.PlannerMsg::CancelCustomDelete),
-                            "残す",
-                          ),
-                          button(
-                            id="confirm-delete-custom-course",
-                            class="min-h-9 rounded-md px-2 text-sm text-danger-text hover:bg-danger/10",
-                            on_click=emit(
-                              @app.PlannerMsg::ConfirmCustomDelete(
-                                course_id=course.id,
-                              ),
-                            ),
-                            "削除する",
-                          ),
-                        ]),
-                      ])
-                    } else {
-                      div(([] : Array[Html]))
-                    }
                   None => div(([] : Array[Html]))
                 },
                 div(class="flex justify-end border-t border-rule px-4 py-2", [
@@ -1289,28 +1248,55 @@ fn custom_form_panel(
               ]),
             ])
           },
-          if form.error_message.is_empty() {
-            div(([] : Array[Html]))
-          } else {
+          if !form.error_message.is_empty() {
             p(
               id="custom-form-error",
               class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
               form.error_message,
             )
+          } else {
+            match state.error {
+              Some(error) =>
+                p(
+                  id="custom-form-error",
+                  class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
+                  error.message,
+                )
+              None => div(([] : Array[Html]))
+            }
           },
         ]),
-        div(class="flex justify-end border-t border-rule px-4 py-2", [
-          button(
-            id="custom-submit",
-            class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90",
-            on_click=emit(@app.PlannerMsg::SubmitCustomCourse),
+        div(
+          class="flex items-center justify-end gap-1 border-t border-rule px-4 py-2",
+          [
             if editing {
-              "保存"
+              match form.editing_course_id {
+                Some(course_id) =>
+                  button(
+                    id="delete-custom-course",
+                    class="min-h-11 rounded-md px-2 text-sm text-danger-text hover:bg-danger/10",
+                    on_click=emit(
+                      @app.PlannerMsg::DeleteCustomCourse(course_id~),
+                    ),
+                    "削除",
+                  )
+                None => div(([] : Array[Html]))
+              }
             } else {
-              "作成"
+              div(([] : Array[Html]))
             },
-          ),
-        ]),
+            button(
+              id="custom-submit",
+              class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90",
+              on_click=emit(@app.PlannerMsg::SubmitCustomCourse),
+              if editing {
+                "保存"
+              } else {
+                "作成"
+              },
+            ),
+          ],
+        ),
       ]
       modal_shell(
         id="custom-course",
