@@ -170,12 +170,24 @@ test(
     assert.equal(await page.locator("#term-A2").count(), 1);
     assert.equal(await page.locator("#term-W").count(), 1);
 
+    assert.equal(await page.locator("#add-day").count(), 0);
+    assert.equal(await page.locator("#open-settings").count(), 1);
+    await page.locator("#open-settings").click();
+    await page.locator("#settings").waitFor();
+    assert.equal(
+      await page.locator("#settings").getAttribute("role"),
+      "dialog",
+    );
+    assert.deepEqual(await auditAccessibility(page), []);
     assert.equal(await page.getByText("5日", { exact: true }).count(), 1);
     assert.equal(await page.getByText("6限", { exact: true }).count(), 1);
+    await page.keyboard.press("Escape");
+    await page.locator("#settings").waitFor({ state: "detached" });
     assert.equal(
-      await page.getByRole("button", { name: "表示する曜日を減らす" }).count(),
-      1,
+      await page.evaluate(() => document.activeElement?.id),
+      "open-settings",
     );
+    assert.equal(await page.getByText("5日", { exact: true }).count(), 0);
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(
       (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
@@ -252,16 +264,19 @@ test(
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
     await assertCreditTotal(page, "見込 7単位");
 
+    await page.locator("#open-settings").click();
+    await page.locator("#settings").waitFor();
     await page.locator("#add-day").click();
     await page.getByText("6日", { exact: true }).waitFor();
+    await page.locator("#add-period").click();
+    await page.getByText("7限", { exact: true }).waitFor();
+    await page.locator("#close-settings").click();
+    await page.locator("#settings").waitFor({ state: "detached" });
     assert.equal(await page.locator("#timetable thead th").count(), 7);
     assert.equal(
       await page.locator("#timetable thead th").last().textContent(),
       "土",
     );
-
-    await page.locator("#add-period").click();
-    await page.getByText("7限", { exact: true }).waitFor();
     assert.equal(await page.locator("#timetable tbody tr").count(), 7);
 
     await page.locator("#term-S2").click();
@@ -618,13 +633,17 @@ test(
     await page.locator("#off-grid").getByText("Intensive Custom").waitFor();
 
     await page.setViewportSize({ width: 390, height: 600 });
+    await page.locator("#open-settings").click();
+    await page.locator("#settings").waitFor();
     await page.locator("#add-day").click();
     await page.getByText("7日", { exact: true }).waitFor();
-    assert.equal(await page.locator("#timetable thead th").count(), 8);
     for (let index = 0; index < 3; index += 1) {
       await page.locator("#add-period").click();
     }
     await page.getByText("10限", { exact: true }).waitFor();
+    await page.locator("#close-settings").click();
+    await page.locator("#settings").waitFor({ state: "detached" });
+    assert.equal(await page.locator("#timetable thead th").count(), 8);
     assert.equal(await page.locator("#timetable tbody tr").count(), 10);
     assert.ok(
       (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
