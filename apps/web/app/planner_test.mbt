@@ -113,7 +113,6 @@ fn planner_state() -> @app.PlannerState raise Error {
     [],
     @tanikun-domain.Overrides::empty(),
     @tanikun-domain.AcademicProfile::new(program, year),
-    requirement_set,
     requirement_sets,
   )
 }
@@ -815,7 +814,6 @@ test "a later override does not change a frozen pass snapshot" {
     state.enrollments,
     overrides,
     state.profile,
-    state.requirement_set,
     state.requirement_sets,
   )
   let snapshot = match state.enrollments[0].snapshot() {
@@ -1422,4 +1420,135 @@ test "offering display exposes master values before an override" {
   assert_eq(display.slots.length(), 1)
   assert_true(display.slots[0].day == @tanikun-domain.DayOfWeek::Monday)
   assert_eq(display.slots[0].period.value(), 1)
+}
+
+///|
+test "profile candidates come from the requirement sets" {
+  let state = @app.sample_state()
+  let programs = state.program_ids()
+  assert_eq(programs.length(), 2)
+  assert_true(programs[0].value == "applied-physics")
+  assert_true(programs[1].value == "applied-chemistry")
+  let physics_years = state.advancement_years(programs[0])
+  assert_eq(physics_years.length(), 2)
+  assert_eq(physics_years[0].year(), 2026)
+  assert_eq(physics_years[1].year(), 2025)
+  let chemistry_years = state.advancement_years(programs[1])
+  assert_eq(chemistry_years.length(), 1)
+  assert_eq(chemistry_years[0].year(), 2026)
+}
+
+///|
+test "switching programs keeps planner data and recomputes the summary" {
+  let state = @app.sample_state()
+  let state = create_named_custom_course(state, "Profile Custom")
+  let offering_id = planner_offering_id("phy101-s1")
+  let state = open_override_form(state, offering_id)
+  let state = update_override(
+    state,
+    @app.OverrideField::Name,
+    "Profile Override",
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  let catalogue_len = state.catalogue.length()
+  let offering_len = state.offerings.length()
+  let enrollment_len = state.enrollments.length()
+  let custom_len = state.custom_course_ids.length()
+  let selected = state.selected_term
+  let visible_days = state.visible_days
+  let visible_periods = state.visible_periods
+  let before = match state.requirement_summary() {
+    Ok(summary) => summary.satisfaction
+    Err(_) => fail("expected the initial requirement summary")
+  }
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectProgram(program_id="applied-chemistry"),
+  )
+  assert_true(state.profile.program_id.value == "applied-chemistry")
+  assert_true(state.profile.advancement_year.year() == 2026)
+  assert_eq(state.catalogue.length(), catalogue_len)
+  assert_eq(state.offerings.length(), offering_len)
+  assert_eq(state.enrollments.length(), enrollment_len)
+  assert_eq(state.custom_course_ids.length(), custom_len)
+  assert_true(state.selected_term == selected)
+  assert_eq(state.visible_days, visible_days)
+  assert_eq(state.visible_periods, visible_periods)
+  assert_eq(state.overrides.len(), 1)
+  let after = match state.requirement_summary() {
+    Ok(summary) => summary.satisfaction
+    Err(_) => fail("expected the switched requirement summary")
+  }
+  assert_true(before == @tanikun-requirements.Satisfaction::Satisfied)
+  assert_true(after != @tanikun-requirements.Satisfaction::Satisfied)
+}
+
+///|
+test "switching the advancement year uses the selected program" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectAdvancementYear(year="2025"),
+  )
+  assert_true(state.profile.program_id.value == "applied-physics")
+  assert_eq(state.profile.advancement_year.year(), 2025)
+  match state.active_requirement_set() {
+    Some(set) => assert_eq(set.key.advancement_year.year(), 2025)
+    None => fail("expected a requirement set for the prior year")
+  }
+}
+
+///|
+test "a missing profile requirement set is visible and recoverable" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectAdvancementYear(year="2024"),
+  )
+  assert_eq(state.profile.advancement_year.year(), 2024)
+  match state.active_requirement_set() {
+    None => ()
+    Some(_) => fail("expected no requirement set")
+  }
+  match state.requirement_summary() {
+    Err(_) => ()
+    Ok(_) => fail("expected a missing requirement-set error")
+  }
+  match state.credit_totals() {
+    Err(_) => ()
+    Ok(_) => fail("expected totals to fail without a requirement set")
+  }
+  match state.error {
+    Some(error) =>
+      assert_true(error.kind == @app.UiErrorKind::MissingRequirementSet)
+    None => fail("expected a visible missing-set error")
+  }
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectAdvancementYear(year="2026"),
+  )
+  match state.requirement_summary() {
+    Ok(_) => ()
+    Err(_) => fail("recovering to an available year should work")
+  }
+}
+
+///|
+test "selecting a program without requirement sets keeps the old profile" {
+  let state = planner_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectProgram(program_id="applied-chemistry"),
+  )
+  assert_true(state.profile.program_id.value == "applied-physics")
+  assert_true(state.profile.advancement_year.year() == 2026)
+  match state.error {
+    Some(error) =>
+      assert_true(error.kind == @app.UiErrorKind::MissingRequirementSet)
+    None => fail("expected a missing-set error")
+  }
+  match state.requirement_summary() {
+    Ok(_) => ()
+    Err(_) => fail("the previous profile should still evaluate")
+  }
 }
