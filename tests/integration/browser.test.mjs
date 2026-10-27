@@ -663,6 +663,65 @@ test(
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Intensive Custom").waitFor();
 
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.locator("#term-S2").click();
+    await page
+      .locator("#timetable")
+      .getByText("Physics II", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#open-override-editor").click();
+    await page.locator("#override-editor").waitFor();
+    assert.deepEqual(await auditAccessibility(page), []);
+    await page.locator("#override-name").fill("Physics II Advanced");
+    await page.locator("#override-submit").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /Physics II Advanced/,
+    );
+    await page.locator("#close-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Physics II Advanced", { exact: true })
+      .waitFor();
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics II", { exact: true })
+        .count(),
+      0,
+    );
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#catalogue-search").fill("Advanced");
+    await page
+      .locator("#picker")
+      .getByText("Physics II Advanced", { exact: true })
+      .waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+
+    await page
+      .locator("#timetable")
+      .getByText("Physics II Advanced", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#open-override-editor").click();
+    await page.locator("#override-editor").waitFor();
+    await page.locator("#override-slots-enabled").click();
+    await page.locator("#override-day").selectOption("3");
+    await page.locator("#override-period").selectOption("5");
+    await page.locator("#override-submit").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#close-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.equal(await page.locator("#slot-1-2").count(), 1);
+    assert.equal(await page.locator("#slot-3-5").count(), 0);
+
     await page.setViewportSize({ width: 390, height: 600 });
     await page.locator("#open-settings").click();
     await page.locator("#settings").waitFor();
