@@ -164,3 +164,27 @@ test "requirement sets accept distinct keys" {
   )
   assert_eq(sets.len(), 2)
 }
+
+///|
+test "requirement sets expose their keys in insertion order" {
+  let year = academic_year(2026)
+  let first_key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("applied-physics"),
+    year,
+  )
+  let second_key = @tanikun-requirements.RequirementSetKey::new(
+    program_id("applied-chemistry"),
+    academic_year(2025),
+  )
+  let first = expect_ok(requirement_set(first_key, [], [], "rule-a"))
+  let second = expect_ok(requirement_set(second_key, [], [], "rule-b"))
+  let sets = expect_ok(
+    @tanikun-requirements.RequirementSets::new([first, second]),
+  )
+  let keys = sets.keys()
+  assert_eq(keys.length(), 2)
+  assert_true(keys[0] == first_key)
+  assert_true(keys[1] == second_key)
+  keys.clear()
+  assert_eq(sets.len(), 2)
+}

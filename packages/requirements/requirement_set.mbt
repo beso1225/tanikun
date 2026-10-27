@@ -106,6 +106,18 @@ pub fn[Rule] RequirementSets::len(self : RequirementSets[Rule]) -> Int {
 }
 
 ///|
+/// Returns the stored keys in collection order. The returned array is a copy.
+pub fn[Rule] RequirementSets::keys(
+  self : RequirementSets[Rule],
+) -> Array[RequirementSetKey] {
+  let keys : Array[RequirementSetKey] = []
+  for set in self.sets {
+    keys.push(set.key)
+  }
+  keys
+}
+
+///|
 pub fn[Rule] RequirementSets::lookup(
   self : RequirementSets[Rule],
   program_id : @tanikun-domain.ProgramId,
