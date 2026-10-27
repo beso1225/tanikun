@@ -83,4 +83,28 @@
   #timetable tbody tr:last-child > * {
     border-bottom-width: 0;
   }
+
+  #timetable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  #timetable tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: var(--color-paper);
+  }
+
+  #timetable thead th:first-child {
+    left: 0;
+    z-index: 30;
+  }
+
+  #timetable td button,
+  #timetable th button {
+    scroll-margin-top: 3rem;
+    scroll-margin-left: 4rem;
+  }
 }

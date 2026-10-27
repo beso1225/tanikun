@@ -601,6 +601,32 @@ test(
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Intensive Custom").waitFor();
 
+    await page.setViewportSize({ width: 390, height: 600 });
+    await page.locator("#add-day").click();
+    await page.getByText("7日", { exact: true }).waitFor();
+    assert.equal(await page.locator("#timetable thead th").count(), 8);
+    for (let index = 0; index < 3; index += 1) {
+      await page.locator("#add-period").click();
+    }
+    await page.getByText("10限", { exact: true }).waitFor();
+    assert.equal(await page.locator("#timetable tbody tr").count(), 10);
+    assert.ok(
+      (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
+    );
+    await page.evaluate(() => window.scrollTo(0, 500));
+    await page.waitForTimeout(100);
+    const stickyHeader = await page
+      .locator("#timetable thead th")
+      .first()
+      .boundingBox();
+    assert.ok(stickyHeader);
+    assert.ok(stickyHeader.y <= 1);
+    await page.locator("#slot-0-10").focus();
+    await page.waitForTimeout(100);
+    const bottomCell = await page.locator("#slot-0-10").boundingBox();
+    assert.ok(bottomCell);
+    assert.ok(bottomCell.y >= stickyHeader.y + stickyHeader.height);
+
     await page.evaluate(() => {
       const modal = document.createElement("section");
       modal.id = "synthetic-modal";

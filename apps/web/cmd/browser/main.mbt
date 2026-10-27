@@ -1422,7 +1422,7 @@ fn planner_view(
       "時間割へスキップ",
     ),
     div(
-      class="mx-auto flex min-h-screen max-w-6xl flex-col overflow-hidden bg-paper md:min-h-[calc(100vh-3rem)] md:rounded-xl md:border md:border-rule md:shadow-[0_16px_48px_rgba(0,0,0,0.10)]",
+      class="mx-auto flex min-h-screen max-w-6xl flex-col overflow-visible bg-paper md:min-h-[calc(100vh-3rem)] md:rounded-xl md:border md:border-rule md:shadow-[0_16px_48px_rgba(0,0,0,0.10)]",
       content,
     ),
     picker_panel(state, emit),
