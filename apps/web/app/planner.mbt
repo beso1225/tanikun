@@ -276,6 +276,7 @@ pub struct PlannerState {
   error : UiError?
   catalogue_query : String
   picker : PickerTarget?
+  settings_open : Bool
   custom_form : CustomCourseDraft?
   custom_course_ids : Array[@tanikun-domain.CourseId]
   next_custom_course_number : Int
@@ -321,6 +322,7 @@ pub fn PlannerState::new(
     error: None,
     catalogue_query: "",
     picker: None,
+    settings_open: false,
     custom_form: None,
     custom_course_ids: [],
     next_custom_course_number: 1,
@@ -422,6 +424,8 @@ pub(all) enum PlannerMsg {
     offering_id~ : @tanikun-domain.OfferingId,
     target~ : EnrollmentStatusTarget
   )
+  OpenSettings
+  CloseSettings
   OpenCustomCourseForm
   CloseCustomCourseForm
   UpdateCustomCourseField(field~ : CustomCourseField, value~ : String)
@@ -469,6 +473,16 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
     UpdateEnrollmentStatus(offering_id~, target~) =>
       update_enrollment_status(state, offering_id, target)
+    OpenSettings =>
+      bump({
+        ..state,
+        settings_open: true,
+        picker: None,
+        selected_offering: None,
+        custom_form: None,
+        error: None,
+      })
+    CloseSettings => bump({ ..state, settings_open: false, error: None, })
     OpenCustomCourseForm =>
       bump({
         ..state,

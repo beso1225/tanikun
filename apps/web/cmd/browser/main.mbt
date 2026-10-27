@@ -9,6 +9,7 @@ using @html {
   div,
   h1,
   h2,
+  h3,
   header,
   input,
   label,
@@ -200,54 +201,106 @@ fn term_section(
 }
 
 ///|
-fn range_controls(
+fn settings_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
-  div(
-    attrs=@html.Attrs::build().role("group").aria_label("表示範囲"),
-    class="flex items-center gap-1 rounded-md bg-canvas p-0.5 text-xs",
-    [
-      button(
-        id="remove-day",
-        title="表示する曜日を減らす",
-        attrs=@html.Attrs::build().aria_label("表示する曜日を減らす"),
-        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-        disabled=state.visible_days <= 5,
-        on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
-        "-",
-      ),
-      span(class="min-w-6 text-center text-ink", "\{state.visible_days}日"),
-      button(
-        id="add-day",
-        title="表示する曜日を増やす",
-        attrs=@html.Attrs::build().aria_label("表示する曜日を増やす"),
-        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-        disabled=state.visible_days >= 7,
-        on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
-        "+",
-      ),
-      span(class="px-1 text-rule", "/"),
-      button(
-        id="remove-period",
-        title="表示する時限を減らす",
-        attrs=@html.Attrs::build().aria_label("表示する時限を減らす"),
-        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-        disabled=state.visible_periods <= 6,
-        on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
-        "-",
-      ),
-      span(class="min-w-6 text-center text-ink", "\{state.visible_periods}限"),
-      button(
-        id="add-period",
-        title="表示する時限を増やす",
-        attrs=@html.Attrs::build().aria_label("表示する時限を増やす"),
-        class="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rule/50 disabled:opacity-30",
-        disabled=state.visible_periods >= 10,
-        on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
-        "+",
-      ),
-    ],
+  if !state.settings_open {
+    return div(([] : Array[Html]))
+  }
+  let body : Array[Html] = [
+    div(class="space-y-4 px-4 py-4", [
+      h3(class="text-sm font-semibold", "時間割の表示"),
+      div([
+        p(
+          id="days-label",
+          class="mb-2 text-sm font-medium",
+          "表示する曜日",
+        ),
+        div(
+          attrs=@html.Attrs::build().role("group").aria_labelledby("days-label"),
+          class="flex items-center gap-2",
+          [
+            button(
+              id="remove-day",
+              title="表示する曜日を減らす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する曜日を減らす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_days <= 5,
+              on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
+              "-",
+            ),
+            span(
+              class="min-w-12 text-center text-sm",
+              "\{state.visible_days}日",
+            ),
+            button(
+              id="add-day",
+              title="表示する曜日を増やす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する曜日を増やす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_days >= 7,
+              on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
+              "+",
+            ),
+          ],
+        ),
+      ]),
+      div([
+        p(
+          id="periods-label",
+          class="mb-2 text-sm font-medium",
+          "表示する時限",
+        ),
+        div(
+          attrs=@html.Attrs::build()
+            .role("group")
+            .aria_labelledby("periods-label"),
+          class="flex items-center gap-2",
+          [
+            button(
+              id="remove-period",
+              title="表示する時限を減らす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する時限を減らす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_periods <= 6,
+              on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
+              "-",
+            ),
+            span(
+              class="min-w-12 text-center text-sm",
+              "\{state.visible_periods}限",
+            ),
+            button(
+              id="add-period",
+              title="表示する時限を増やす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する時限を増やす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_periods >= 10,
+              on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
+              "+",
+            ),
+          ],
+        ),
+      ]),
+    ]),
+  ]
+  modal_shell(
+    id="settings",
+    title_id="settings-title",
+    close_id="close-settings",
+    title="設定",
+    width_class="max-w-sm",
+    close=emit(@app.PlannerMsg::CloseSettings),
+    children=body,
   )
 }
 
@@ -1385,12 +1438,17 @@ fn planner_view(
           class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
           [
             credit_total_view(state),
-            range_controls(state, emit),
             button(
               id="open-catalogue-picker",
               class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
               on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
               [span("+"), span("科目")],
+            ),
+            button(
+              id="open-settings",
+              class="min-h-8 rounded-md px-2 text-xs text-muted hover:bg-canvas",
+              on_click=emit(@app.PlannerMsg::OpenSettings),
+              "設定",
             ),
           ],
         ),
@@ -1428,6 +1486,7 @@ fn planner_view(
     picker_panel(state, emit),
     course_detail(state, emit),
     custom_form_panel(state, emit),
+    settings_panel(state, emit),
   ])
 }
 

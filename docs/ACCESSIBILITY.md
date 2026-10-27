@@ -17,7 +17,7 @@ A modal must have:
 - a body scroll lock while open;
 - backdrop click dismissal.
 
-The picker and the course detail dialog use this shell. The settings dialog in #62 must use it too.
+The picker, course detail, custom course, and settings dialogs use this shell.
 
 ## Controls and forms
 
