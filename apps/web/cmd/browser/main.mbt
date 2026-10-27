@@ -249,18 +249,26 @@ fn override_form_panel(
         )
       }
       let day_options : Array[Html] = []
-      let days = ["月", "火", "水", "木", "金", "土", "日"]
-      for index in 0..<=6 {
-        let value = "\{index}"
+      let day_values = [
+        @tanikun-domain.DayOfWeek::Monday,
+        @tanikun-domain.DayOfWeek::Tuesday,
+        @tanikun-domain.DayOfWeek::Wednesday,
+        @tanikun-domain.DayOfWeek::Thursday,
+        @tanikun-domain.DayOfWeek::Friday,
+        @tanikun-domain.DayOfWeek::Saturday,
+        @tanikun-domain.DayOfWeek::Sunday,
+      ]
+      for day in day_values {
+        let value = "\{day_index(day)}"
         day_options.push(
-          option(value~, selected=form.day == value, days[index]),
+          option(value~, selected=form.day == day, day_label(day)),
         )
       }
       let period_options : Array[Html] = []
       for period in 1..<=10 {
         let value = "\{period}"
         period_options.push(
-          option(value~, selected=form.period == value, "\{period}限"),
+          option(value~, selected=form.period.value() == period, "\{period}限"),
         )
       }
       let slots_class = if form.slots_enabled {
@@ -336,7 +344,7 @@ fn override_form_panel(
                 ),
                 on_click=emit(@app.PlannerMsg::ToggleOverrideSlots),
                 if form.slots_enabled {
-                  "曜限の上書きを解除"
+                  "曜限を上書きしない"
                 } else {
                   "曜限を上書き"
                 },
@@ -346,6 +354,7 @@ fn override_form_panel(
                   class="mt-2 grid grid-cols-2 gap-2",
                   attrs=override_field_attrs(form, @app.OverrideField::Slots),
                   [
+                    label(for_="override-day", class="sr-only", "曜日"),
                     select(
                       id="override-day",
                       class=override_field_class(
@@ -358,6 +367,7 @@ fn override_form_panel(
                       },
                       day_options,
                     ),
+                    label(for_="override-period", class="sr-only", "時限"),
                     select(
                       id="override-period",
                       class=override_field_class(
@@ -400,7 +410,7 @@ fn override_form_panel(
               id="remove-overrides",
               class="min-h-11 rounded-md px-2 text-sm text-danger-text hover:bg-danger/10",
               on_click=emit(@app.PlannerMsg::RemoveAllOverrides),
-              "上書きを解除",
+              "すべての上書きを解除",
             ),
             button(
               id="override-submit",

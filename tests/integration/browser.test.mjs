@@ -713,6 +713,20 @@ test(
     await page.locator("#open-override-editor").click();
     await page.locator("#override-editor").waitFor();
     await page.locator("#override-slots-enabled").click();
+    await page
+      .locator("#override-slots-enabled[aria-pressed='true']")
+      .waitFor();
+    assert.equal(
+      await page.locator("#override-slots-enabled").innerText(),
+      "曜限を上書きしない",
+    );
+    assert.equal(
+      await page.locator("#remove-overrides").innerText(),
+      "すべての上書きを解除",
+    );
+    assert.deepEqual(await auditAccessibility(page), []);
+    assert.equal(await page.getByLabel("曜日").count(), 1);
+    assert.equal(await page.getByLabel("時限").count(), 1);
     await page.locator("#override-day").selectOption("3");
     await page.locator("#override-period").selectOption("5");
     await page.locator("#override-submit").click();

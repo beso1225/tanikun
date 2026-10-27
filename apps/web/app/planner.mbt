@@ -278,8 +278,8 @@ pub struct OverrideDraft {
   credits : String
   slots_enabled : Bool
   supports_slots : Bool
-  day : String
-  period : String
+  day : @tanikun-domain.DayOfWeek
+  period : @tanikun-domain.Period
   error_field : OverrideField?
   error_message : String
 }
@@ -909,6 +909,34 @@ fn open_override_editor(
     None => ""
   }
   let (default_day, default_period) = default_override_slot(offering)
+  let default_day = match custom_day(default_day) {
+    Some(value) => value
+    None => @tanikun-domain.DayOfWeek::Monday
+  }
+  let default_period = match option_int(default_period, 1, 10) {
+    Some(value) =>
+      match @tanikun-domain.Period::new(value) {
+        Ok(period) => period
+        Err(_) =>
+          return with_error(
+            state,
+            UiError::new(
+              UiErrorTarget::Offering(offering_id=offering.id),
+              UiErrorKind::DomainValidation,
+              "時限が正しくありません",
+            ),
+          )
+      }
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::Offering(offering_id=offering.id),
+          UiErrorKind::DomainValidation,
+          "時限が正しくありません",
+        ),
+      )
+  }
   let (slots_enabled, day, period) = match
     state.overrides.find(
       @tanikun-domain.OverrideTarget::Offering(offering.id),
@@ -920,7 +948,7 @@ fn open_override_editor(
           if slots.is_empty() {
             (false, default_day, default_period)
           } else {
-            (true, custom_day_value(slots[0].day), "\{slots[0].period.value()}")
+            (true, slots[0].day, slots[0].period)
           }
         None => (false, default_day, default_period)
       }
@@ -974,6 +1002,10 @@ fn update_override_field(
 
 ///|
 fn update_override_day(state : PlannerState, value : String) -> PlannerState {
+  let day = match custom_day(value) {
+    Some(value) => value
+    None => return state
+  }
   match state.override_form {
     None => state
     Some(form) =>
@@ -981,7 +1013,7 @@ fn update_override_day(state : PlannerState, value : String) -> PlannerState {
         ..state,
         override_form: Some({
           ..form,
-          day: value,
+          day,
           error_field: None,
           error_message: "",
         }),
@@ -992,6 +1024,14 @@ fn update_override_day(state : PlannerState, value : String) -> PlannerState {
 
 ///|
 fn update_override_period(state : PlannerState, value : String) -> PlannerState {
+  let period = match option_int(value, 1, 10) {
+    Some(value) => value
+    None => return state
+  }
+  let period = match @tanikun-domain.Period::new(period) {
+    Ok(value) => value
+    Err(_) => return state
+  }
   match state.override_form {
     None => state
     Some(form) =>
@@ -999,7 +1039,7 @@ fn update_override_period(state : PlannerState, value : String) -> PlannerState 
         ..state,
         override_form: Some({
           ..form,
-          period: value,
+          period,
           error_field: None,
           error_message: "",
         }),
@@ -1201,36 +1241,8 @@ fn submit_override(state : PlannerState) -> PlannerState {
         "この開講では曜限を変更できません",
       )
     }
-    let day = match custom_day(form.day) {
-      Some(value) => value
-      None =>
-        return override_form_error(
-          state,
-          form,
-          Slots,
-          "曜日を選択してください",
-        )
-    }
-    let period = match option_int(form.period, 1, 10) {
-      Some(value) => value
-      None =>
-        return override_form_error(
-          state,
-          form,
-          Slots,
-          "時限を選択してください",
-        )
-    }
-    let period = match @tanikun-domain.Period::new(period) {
-      Ok(value) => value
-      Err(_) =>
-        return override_form_error(
-          state,
-          form,
-          Slots,
-          "時限を選択してください",
-        )
-    }
+    let day = form.day
+    let period = form.period
     match
       @tanikun-domain.Override::new(
         @tanikun-domain.OverrideTarget::Offering(form.offering_id),

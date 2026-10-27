@@ -45,4 +45,6 @@ The picker, course detail, custom course, override editor, and settings dialogs 
 
 ## Verification
 
+Run the same audit after any conditional render that adds controls, not only when the dialog opens.
+
 `just test-browser` runs a scripted DOM audit for the page landmark and skip link, table scopes, input labels, icon-only control names, and dialog attributes. The same test checks Escape, focus restore, focus trap, scroll lock, and the primary focus ring for the picker and the course detail dialog. Contrast is checked by hand and is not part of the browser audit.
