@@ -189,6 +189,27 @@ test(
       "dialog",
     );
     assert.deepEqual(await auditAccessibility(page), []);
+    assert.equal(await page.locator("#settings-title").innerText(), "設定");
+    assert.equal(
+      await page.getByRole("heading", { name: "時間割の表示" }).count(),
+      1,
+    );
+    const dayGroup = page.locator(
+      '#settings [role="group"][aria-labelledby="days-label"]',
+    );
+    assert.equal(await dayGroup.getByRole("button").count(), 2);
+    const periodGroup = page.locator(
+      '#settings [role="group"][aria-labelledby="periods-label"]',
+    );
+    assert.equal(await periodGroup.getByRole("button").count(), 2);
+    assert.equal(
+      await page.getByRole("group", { name: "表示する曜日" }).count(),
+      1,
+    );
+    assert.equal(
+      await page.getByRole("group", { name: "表示する時限" }).count(),
+      1,
+    );
     assert.equal(await page.getByText("5日", { exact: true }).count(), 1);
     assert.equal(await page.getByText("6限", { exact: true }).count(), 1);
     await page.keyboard.press("Escape");
