@@ -172,6 +172,16 @@ test(
 
     assert.equal(await page.locator("#add-day").count(), 0);
     assert.equal(await page.locator("#open-settings").count(), 1);
+    const addButtonBox = await page
+      .locator("#open-catalogue-picker")
+      .boundingBox();
+    const settingsButtonBox = await page
+      .locator("#open-settings")
+      .boundingBox();
+    assert.ok(addButtonBox);
+    assert.ok(settingsButtonBox);
+    assert.ok(settingsButtonBox.x > addButtonBox.x);
+    assert.equal(await page.locator("#open-settings").innerText(), "設定");
     await page.locator("#open-settings").click();
     await page.locator("#settings").waitFor();
     assert.equal(

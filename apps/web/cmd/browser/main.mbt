@@ -9,6 +9,7 @@ using @html {
   div,
   h1,
   h2,
+  h3,
   header,
   input,
   label,
@@ -209,6 +210,7 @@ fn settings_panel(
   }
   let body : Array[Html] = [
     div(class="space-y-4 px-4 py-4", [
+      h3(class="text-sm font-semibold", "時間割の表示"),
       div([
         p(class="mb-2 text-sm font-medium", "表示する曜日"),
         div(class="flex items-center gap-2", [
@@ -274,7 +276,7 @@ fn settings_panel(
     id="settings",
     title_id="settings-title",
     close_id="close-settings",
-    title="表示設定",
+    title="設定",
     width_class="max-w-sm",
     close=emit(@app.PlannerMsg::CloseSettings),
     children=body,
@@ -1416,16 +1418,16 @@ fn planner_view(
           [
             credit_total_view(state),
             button(
-              id="open-settings",
-              class="min-h-8 rounded-md px-2 text-xs text-muted hover:bg-canvas",
-              on_click=emit(@app.PlannerMsg::OpenSettings),
-              "表示",
-            ),
-            button(
               id="open-catalogue-picker",
               class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
               on_click=emit(@app.PlannerMsg::OpenCataloguePicker),
               [span("+"), span("科目")],
+            ),
+            button(
+              id="open-settings",
+              class="min-h-8 rounded-md px-2 text-xs text-muted hover:bg-canvas",
+              on_click=emit(@app.PlannerMsg::OpenSettings),
+              "設定",
             ),
           ],
         ),
