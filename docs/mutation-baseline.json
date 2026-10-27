@@ -50,7 +50,7 @@
       "summary": {
         "killed": 217,
         "kills_by_kind": {
-          "assertion": 1416,
+          "assertion": 1419,
           "doc_test": 0,
           "property": 0,
           "snapshot": 0
@@ -242,7 +242,7 @@
       ]
     }
   },
-  "recorded_at": "2026-10-24",
+  "recorded_at": "2026-10-27",
   "target": "js",
   "tool": "turtles 0.4.5"
 }

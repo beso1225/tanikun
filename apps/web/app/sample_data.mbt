@@ -158,16 +158,45 @@ pub fn sample_state() -> PlannerState {
       sample_ok(@tanikun-domain.Credits::new(4)),
     ),
   )
-  let requirement_set = sample_ok(
-    @tanikun-requirements.RequirementSet::new(
-      @tanikun-requirements.RequirementSetKey::new(program, year),
-      [],
-      [],
-      rule,
+  let chemistry_rule = sample_ok(
+    @tanikun-requirements.Rule::total_minimum(
+      sample_ok(@tanikun-domain.Credits::new(20)),
     ),
   )
+  let prior_rule = sample_ok(
+    @tanikun-requirements.Rule::total_minimum(
+      sample_ok(@tanikun-domain.Credits::new(20)),
+    ),
+  )
+  let chemistry = sample_ok(@tanikun-domain.ProgramId::new("applied-chemistry"))
+  let prior_year = sample_ok(@tanikun-domain.AcademicYear::new(2025))
   let requirement_sets = sample_ok(
-    @tanikun-requirements.RequirementSets::new([requirement_set]),
+    @tanikun-requirements.RequirementSets::new([
+      sample_ok(
+        @tanikun-requirements.RequirementSet::new(
+          @tanikun-requirements.RequirementSetKey::new(program, year),
+          [],
+          [],
+          rule,
+        ),
+      ),
+      sample_ok(
+        @tanikun-requirements.RequirementSet::new(
+          @tanikun-requirements.RequirementSetKey::new(chemistry, year),
+          [],
+          [],
+          chemistry_rule,
+        ),
+      ),
+      sample_ok(
+        @tanikun-requirements.RequirementSet::new(
+          @tanikun-requirements.RequirementSetKey::new(program, prior_year),
+          [],
+          [],
+          prior_rule,
+        ),
+      ),
+    ]),
   )
   PlannerState::new(
     [phy101, phy102, phy103, phy201, phy301, phy302, phy401, phy501],
@@ -175,7 +204,6 @@ pub fn sample_state() -> PlannerState {
     enrollments,
     @tanikun-domain.Overrides::empty(),
     @tanikun-domain.AcademicProfile::new(program, year),
-    requirement_set,
     requirement_sets,
   )
 }

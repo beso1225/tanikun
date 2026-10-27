@@ -167,6 +167,98 @@ fn find_block(
 }
 
 ///|
+fn program_label(value : String) -> String {
+  match value {
+    "applied-physics" => "応用物理"
+    "applied-chemistry" => "応用化学"
+    _ => value
+  }
+}
+
+///|
+fn profile_panel(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  let program_options : Array[Html] = []
+  for program in state.program_ids() {
+    let value = program.value
+    program_options.push(
+      option(
+        value~,
+        selected=state.profile.program_id == program,
+        program_label(value),
+      ),
+    )
+  }
+  let year_options : Array[Html] = []
+  for year in state.advancement_years(state.profile.program_id) {
+    let value = "\{year.year()}"
+    year_options.push(
+      option(
+        value~,
+        selected=state.profile.advancement_year == year,
+        "\{year.year()}年度",
+      ),
+    )
+  }
+  let summary = match state.requirement_summary() {
+    Ok(value) =>
+      p(
+        id="requirement-summary",
+        class="text-xs text-muted",
+        attrs=@html.Attrs::build().role("status"),
+        "要件: \{value.label()}",
+      )
+    Err(_) => {
+      let message = match state.active_requirement_set() {
+        None => "要件: 要件セットが見つかりません"
+        Some(_) => "要件: 要件を評価できません"
+      }
+      p(
+        id="requirement-summary",
+        class="text-xs text-danger-text",
+        attrs=@html.Attrs::build().role("status"),
+        message,
+      )
+    }
+  }
+  div(class="mt-1 space-y-2 border-t border-rule/60 pt-3", [
+    div([
+      label(
+        for_="program-select",
+        class="mb-1 block text-xs text-muted",
+        "プログラム",
+      ),
+      select(
+        id="program-select",
+        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+        on_change=fn(value) {
+          emit(@app.PlannerMsg::SelectProgram(program_id=value))
+        },
+        program_options,
+      ),
+    ]),
+    div([
+      label(
+        for_="year-select",
+        class="mb-1 block text-xs text-muted",
+        "進級年度",
+      ),
+      select(
+        id="year-select",
+        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+        on_change=fn(value) {
+          emit(@app.PlannerMsg::SelectAdvancementYear(year=value))
+        },
+        year_options,
+      ),
+    ]),
+    summary,
+  ])
+}
+
+///|
 fn term_section(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -196,6 +288,7 @@ fn term_section(
         h1(class="text-sm font-semibold", "応物単位くん"),
       ]),
       nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
+      profile_panel(state, emit),
     ],
   )
 }
@@ -1681,7 +1774,7 @@ fn planner_view(
           span(
             id="term-context",
             class="hidden text-xs text-muted lg:inline",
-            "\{state.profile.advancement_year.year()}年度 応用物理",
+            "\{state.profile.advancement_year.year()}年度 \{program_label(state.profile.program_id.value)}",
           ),
         ]),
         div(
@@ -1718,6 +1811,7 @@ fn planner_view(
         p(
           id="planner-error",
           class="mx-4 mb-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
+          attrs=@html.Attrs::build().role("alert"),
           error.message,
         ),
       )

@@ -61,6 +61,7 @@ pub(all) enum UiErrorKind {
   NotOfferedInTerm
   UnknownOffering
   UnknownEnrollment
+  MissingRequirementSet
   General
 } derive(Eq)
 
@@ -293,9 +294,6 @@ pub struct PlannerState {
   enrollments : Array[@tanikun-domain.Enrollment]
   overrides : @tanikun-domain.Overrides
   profile : @tanikun-domain.AcademicProfile
-  requirement_set : @tanikun-requirements.RequirementSet[
-    @tanikun-requirements.Rule,
-  ]
   requirement_sets : @tanikun-requirements.RequirementSets[
     @tanikun-requirements.Rule,
   ]
@@ -331,9 +329,6 @@ pub fn PlannerState::new(
   enrollments : Array[@tanikun-domain.Enrollment],
   overrides : @tanikun-domain.Overrides,
   profile : @tanikun-domain.AcademicProfile,
-  requirement_set : @tanikun-requirements.RequirementSet[
-    @tanikun-requirements.Rule,
-  ],
   requirement_sets : @tanikun-requirements.RequirementSets[
     @tanikun-requirements.Rule,
   ],
@@ -344,7 +339,6 @@ pub fn PlannerState::new(
     enrollments: enrollments.copy(),
     overrides,
     profile,
-    requirement_set,
     requirement_sets,
     selected_term: S1,
     selected_offering: None,
@@ -376,14 +370,10 @@ pub struct PlannerCreditTotals {
 pub fn PlannerState::credit_totals(
   self : PlannerState,
 ) -> Result[PlannerCreditTotals, @tanikun-domain.DomainError] {
-  let input = @tanikun-requirements.EvaluationInput::new(
-    self.profile,
-    self.requirement_set,
-    self.catalogue,
-    self.offerings,
-    self.enrollments,
-    self.overrides,
-  )
+  let input = match self.evaluation_input() {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
   match @tanikun-requirements.credit_summary(input) {
     Ok(projection) =>
       Ok({
@@ -393,6 +383,132 @@ pub fn PlannerState::credit_totals(
       })
     Err(error) => Err(error)
   }
+}
+
+///|
+/// A one-line requirement result for the selected profile.
+pub struct RequirementSummary {
+  satisfaction : @tanikun-requirements.Satisfaction
+}
+
+///|
+pub fn RequirementSummary::label(self : RequirementSummary) -> String {
+  match self.satisfaction {
+    @tanikun-requirements.Satisfaction::Satisfied => "充足"
+    @tanikun-requirements.Satisfaction::Partial => "部分充足"
+    @tanikun-requirements.Satisfaction::Unsatisfied => "未充足"
+  }
+}
+
+///|
+/// Looks up the active requirement set from the profile and the available sets.
+pub fn PlannerState::active_requirement_set(
+  self : PlannerState,
+) -> @tanikun-requirements.RequirementSet[@tanikun-requirements.Rule]? {
+  self.requirement_sets.lookup_for_profile(self.profile)
+}
+
+///|
+fn PlannerState::evaluation_input(
+  self : PlannerState,
+) -> Result[
+  @tanikun-requirements.EvaluationInput[@tanikun-requirements.Rule],
+  @tanikun-domain.DomainError,
+] {
+  let requirement_set = match self.active_requirement_set() {
+    Some(value) => value
+    None =>
+      return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
+  }
+  Ok(
+    @tanikun-requirements.EvaluationInput::new(
+      self.profile,
+      requirement_set,
+      self.catalogue,
+      self.offerings,
+      self.enrollments,
+      self.overrides,
+    ),
+  )
+}
+
+///|
+/// Evaluates the current planner state against the active requirement set.
+pub fn PlannerState::requirement_summary(
+  self : PlannerState,
+) -> Result[RequirementSummary, @tanikun-domain.DomainError] {
+  let input = match self.evaluation_input() {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
+  match @tanikun-requirements.evaluate(input) {
+    Ok(evaluation) =>
+      Ok({ satisfaction: evaluation.requirements.optimistic.satisfaction, })
+    Err(error) => Err(error)
+  }
+}
+
+///|
+/// Available program IDs, in requirement-set order.
+pub fn PlannerState::program_ids(
+  self : PlannerState,
+) -> Array[@tanikun-domain.ProgramId] {
+  let programs : Array[@tanikun-domain.ProgramId] = []
+  for key in self.requirement_sets.keys() {
+    let mut seen = false
+    for program in programs {
+      if program == key.program_id {
+        seen = true
+      }
+    }
+    if !seen {
+      programs.push(key.program_id)
+    }
+  }
+  let mut current_seen = false
+  for program in programs {
+    if program == self.profile.program_id {
+      current_seen = true
+    }
+  }
+  if !current_seen {
+    programs.push(self.profile.program_id)
+  }
+  programs
+}
+
+///|
+/// Available advancement years for a program, in requirement-set order.
+pub fn PlannerState::advancement_years(
+  self : PlannerState,
+  program_id : @tanikun-domain.ProgramId,
+) -> Array[@tanikun-domain.AcademicYear] {
+  let years : Array[@tanikun-domain.AcademicYear] = []
+  for key in self.requirement_sets.keys() {
+    if key.program_id == program_id {
+      let mut seen = false
+      for year in years {
+        if year == key.advancement_year {
+          seen = true
+        }
+      }
+      if !seen {
+        years.push(key.advancement_year)
+      }
+    }
+  }
+  if self.profile.program_id == program_id {
+    let mut seen = false
+    for year in years {
+      if year == self.profile.advancement_year {
+        seen = true
+      }
+    }
+    if !seen {
+      years.push(self.profile.advancement_year)
+    }
+  }
+  years
 }
 
 ///|
@@ -463,6 +579,8 @@ pub(all) enum PlannerMsg {
     offering_id~ : @tanikun-domain.OfferingId,
     target~ : EnrollmentStatusTarget
   )
+  SelectProgram(program_id~ : String)
+  SelectAdvancementYear(year~ : String)
   OpenSettings
   CloseSettings
   OpenOverrideEditor(offering_id~ : @tanikun-domain.OfferingId)
@@ -520,6 +638,8 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
     UpdateEnrollmentStatus(offering_id~, target~) =>
       update_enrollment_status(state, offering_id, target)
+    SelectProgram(program_id~) => select_program(state, program_id)
+    SelectAdvancementYear(year~) => select_advancement_year(state, year)
     OpenSettings =>
       bump({
         ..state,
@@ -1315,6 +1435,106 @@ fn submit_override(state : PlannerState) -> PlannerState {
     selected_offering: Some(form.offering_id),
     error: None,
   })
+}
+
+///|
+fn apply_profile(
+  state : PlannerState,
+  profile : @tanikun-domain.AcademicProfile,
+) -> PlannerState {
+  let error = match state.requirement_sets.lookup_for_profile(profile) {
+    Some(_) => None
+    None =>
+      Some(
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::MissingRequirementSet,
+          "選択したプロファイルの要件セットがありません",
+        ),
+      )
+  }
+  bump({ ..state, profile, error, })
+}
+
+///|
+fn has_year(
+  years : Array[@tanikun-domain.AcademicYear],
+  year : @tanikun-domain.AcademicYear,
+) -> Bool {
+  for candidate in years {
+    if candidate == year {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn select_program(state : PlannerState, value : String) -> PlannerState {
+  let program = match @tanikun-domain.ProgramId::new(value) {
+    Ok(value) => value
+    Err(_) =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "プログラムが正しくありません",
+        ),
+      )
+  }
+  let years = state.advancement_years(program)
+  if years.is_empty() {
+    return with_error(
+      state,
+      UiError::new(
+        UiErrorTarget::General,
+        UiErrorKind::MissingRequirementSet,
+        "このプログラムの要件セットがありません",
+      ),
+    )
+  }
+  let year = if has_year(years, state.profile.advancement_year) {
+    state.profile.advancement_year
+  } else {
+    years[0]
+  }
+  apply_profile(state, @tanikun-domain.AcademicProfile::new(program, year))
+}
+
+///|
+fn select_advancement_year(state : PlannerState, year : String) -> PlannerState {
+  let year = match option_int(year, 2000, 2100) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "年度が正しくありません",
+        ),
+      )
+  }
+  let advancement_year = match @tanikun-domain.AcademicYear::new(year) {
+    Ok(value) => value
+    Err(_) =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "年度が正しくありません",
+        ),
+      )
+  }
+  apply_profile(
+    state,
+    @tanikun-domain.AcademicProfile::new(
+      state.profile.program_id,
+      advancement_year,
+    ),
+  )
 }
 
 ///|

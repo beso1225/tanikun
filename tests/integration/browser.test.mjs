@@ -149,6 +149,62 @@ test(
       "0px",
     );
     await assertCreditTotal(page, "見込 6単位");
+    assert.equal(await page.getByLabel("プログラム").count(), 1);
+    assert.equal(await page.getByLabel("進級年度").count(), 1);
+    assert.equal(
+      await page.locator("#program-select").inputValue(),
+      "applied-physics",
+    );
+    assert.equal(await page.locator("#year-select").inputValue(), "2026");
+    assert.equal(
+      await page.locator("#requirement-summary").getAttribute("role"),
+      "status",
+    );
+    assert.equal(
+      await page.locator("#requirement-summary").innerText(),
+      "要件: 充足",
+    );
+
+    await page.locator("#program-select").selectOption("applied-chemistry");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#requirement-summary")?.textContent ===
+        "要件: 部分充足",
+    );
+    assert.equal(
+      await page.locator("#program-select").inputValue(),
+      "applied-chemistry",
+    );
+    assert.equal(await page.locator("#year-select").inputValue(), "2026");
+    assert.equal(await page.locator("#year-select option").count(), 1);
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics I", { exact: true })
+        .count(),
+      1,
+    );
+    await assertCreditTotal(page, "見込 6単位");
+
+    await page.locator("#program-select").selectOption("applied-physics");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#year-select")?.value === "2026" &&
+        document.querySelector("#requirement-summary")?.textContent ===
+          "要件: 充足",
+    );
+    assert.equal(await page.locator("#year-select option").count(), 2);
+    await page.locator("#year-select").selectOption("2025");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#year-select")?.value === "2025" &&
+        document.querySelector("#requirement-summary")?.textContent ===
+          "要件: 部分充足",
+    );
+    await page.locator("#year-select").selectOption("2026");
+    await page.waitForFunction(
+      () => document.querySelector("#year-select")?.value === "2026",
+    );
 
     await page.getByRole("link", { name: "時間割へスキップ" }).focus();
     let tileReached = false;

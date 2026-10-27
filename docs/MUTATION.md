@@ -36,7 +36,7 @@ lint checks.
 
 ## Baseline
 
-Recorded on 2026-10-24 with `--target js --jobs 2` after the #35 and #36
+Recorded on 2026-10-27 with `--target js --jobs 2` after the #35 and #36
 production refactors. #37 consolidated test files, which mutation testing
 excludes, so it does not move this baseline. The machine-readable baseline,
 including every accepted survivor, is
