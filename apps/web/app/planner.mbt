@@ -227,18 +227,26 @@ pub(all) enum CustomCourseField {
 pub extend CustomCourseField with Eq::{not_equal, equal}
 
 ///|
+/// The schedule shape selected in the custom course form.
+pub(all) enum CustomCourseSchedule {
+  Regular
+  YearLong
+  Intensive
+} derive(Eq)
+
+///|
+pub extend CustomCourseSchedule with Eq::{not_equal, equal}
+
+///|
 /// Editable draft for a custom course and its first offering. The form keeps
 /// strings so every field can be validated together on submit.
 pub struct CustomCourseDraft {
   name : String
   credits : String
   academic_year : String
-  schedule : String
+  schedule : CustomCourseSchedule
   term : String
-  s1 : Bool
-  s2 : Bool
-  a1 : Bool
-  a2 : Bool
+  terms : Array[PlannerTerm]
   day : String
   period : String
   editing_course_id : @tanikun-domain.CourseId?
@@ -726,12 +734,9 @@ fn new_custom_course_draft(state : PlannerState) -> CustomCourseDraft {
     name: "",
     credits: "4",
     academic_year: "\{year}",
-    schedule: "regular",
+    schedule: CustomCourseSchedule::Regular,
     term: term_label,
-    s1: term == @tanikun-domain.Term::S1,
-    s2: term == @tanikun-domain.Term::S2,
-    a1: term == @tanikun-domain.Term::A1,
-    a2: term == @tanikun-domain.Term::A2,
+    terms: [planner_term_for_regular(term)],
     day: "1",
     period: "4",
     editing_course_id: None,
@@ -746,23 +751,17 @@ fn new_custom_course_draft(state : PlannerState) -> CustomCourseDraft {
     Some(PickerTarget::Intensive) =>
       {
         ..base,
-        schedule: "intensive",
+        schedule: CustomCourseSchedule::Intensive,
         term: custom_semester_value(state.selected_term.semester()),
-        s1: false,
-        s2: false,
-        a1: false,
-        a2: false,
+        terms: [],
       }
     Some(PickerTarget::All) =>
       if state.selected_term == W {
         {
           ..base,
-          schedule: "intensive",
+          schedule: CustomCourseSchedule::Intensive,
           term: "W",
-          s1: false,
-          s2: false,
-          a1: false,
-          a2: false,
+          terms: [],
         }
       } else {
         base
@@ -784,16 +783,22 @@ fn update_custom_course_field(
         Name => { ..form, name: value, }
         Credits => { ..form, credits: value, }
         Year => { ..form, academic_year: value, }
-        Schedule =>
+        Schedule => {
+          let schedule = match value {
+            "year-long" => CustomCourseSchedule::YearLong
+            "intensive" => CustomCourseSchedule::Intensive
+            _ => CustomCourseSchedule::Regular
+          }
           {
             ..form,
-            schedule: value,
-            term: if value == "intensive" {
+            schedule,
+            term: if schedule == CustomCourseSchedule::Intensive {
               "S"
             } else {
               "S1"
             },
           }
+        }
         Term => { ..form, term: value, }
         Day => { ..form, day: value, }
         Period => { ..form, period: value, }
@@ -996,19 +1001,16 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
       )
   }
   let regular_terms : Array[@tanikun-domain.Term] = []
-  if form.s1 {
-    regular_terms.push(@tanikun-domain.Term::S1)
+  for item in form.terms {
+    match item {
+      S1 => regular_terms.push(@tanikun-domain.Term::S1)
+      S2 => regular_terms.push(@tanikun-domain.Term::S2)
+      A1 => regular_terms.push(@tanikun-domain.Term::A1)
+      A2 => regular_terms.push(@tanikun-domain.Term::A2)
+      W => ()
+    }
   }
-  if form.s2 {
-    regular_terms.push(@tanikun-domain.Term::S2)
-  }
-  if form.a1 {
-    regular_terms.push(@tanikun-domain.Term::A1)
-  }
-  if form.a2 {
-    regular_terms.push(@tanikun-domain.Term::A2)
-  }
-  let schedule = if form.schedule == "intensive" {
+  let schedule = if form.schedule == CustomCourseSchedule::Intensive {
     let semester = match custom_semester(form.term) {
       Some(value) => value
       None =>
@@ -1020,7 +1022,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
         )
     }
     @tanikun-domain.OfferingSchedule::Intensive(semester~)
-  } else if form.schedule == "year-long" {
+  } else if form.schedule == CustomCourseSchedule::YearLong {
     @tanikun-domain.OfferingSchedule::YearLong
   } else {
     if regular_terms.is_empty() {
@@ -1044,7 +1046,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     }
     @tanikun-domain.OfferingSchedule::Regular(terms=regular_terms)
   }
-  let slots = if form.schedule == "intensive" {
+  let slots = if form.schedule == CustomCourseSchedule::Intensive {
     []
   } else {
     let day = match custom_day(form.day) {
@@ -1174,16 +1176,26 @@ fn toggle_custom_term(state : PlannerState, term : PlannerTerm) -> PlannerState 
   match state.custom_form {
     None => state
     Some(form) => {
-      let next = match term {
-        S1 => { ..form, s1: !form.s1, }
-        S2 => { ..form, s2: !form.s2, }
-        A1 => { ..form, a1: !form.a1, }
-        A2 => { ..form, a2: !form.a2, }
-        W => form
+      let terms : Array[PlannerTerm] = []
+      let mut found = false
+      for item in form.terms {
+        if item == term {
+          found = true
+        } else {
+          terms.push(item)
+        }
+      }
+      if !found {
+        terms.push(term)
       }
       bump({
         ..state,
-        custom_form: Some({ ..next, error_field: None, error_message: "", }),
+        custom_form: Some({
+          ..form,
+          terms,
+          error_field: None,
+          error_message: "",
+        }),
         error: None,
       })
     }
@@ -1247,26 +1259,18 @@ fn open_edit_custom_course(
         ),
       )
   }
-  let (schedule, term, s1, s2, a1, a2) = match offering.schedule() {
-    @tanikun-domain.OfferingSchedule::Regular(terms~) => {
-      let mut s1 = false
-      let mut s2 = false
-      let mut a1 = false
-      let mut a2 = false
-      for item in terms {
-        match item {
-          @tanikun-domain.Term::S1 => s1 = true
-          @tanikun-domain.Term::S2 => s2 = true
-          @tanikun-domain.Term::A1 => a1 = true
-          @tanikun-domain.Term::A2 => a2 = true
-        }
+  let (schedule, term, terms) = match offering.schedule() {
+    @tanikun-domain.OfferingSchedule::Regular(terms=domain_terms) => {
+      let selected : Array[PlannerTerm] = []
+      for item in domain_terms {
+        selected.push(planner_term_for_regular(item))
       }
-      ("regular", "S1", s1, s2, a1, a2)
+      (CustomCourseSchedule::Regular, "S1", selected)
     }
     @tanikun-domain.OfferingSchedule::YearLong =>
-      ("year-long", "S1", false, false, false, false)
+      (CustomCourseSchedule::YearLong, "S1", [])
     @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
-      ("intensive", custom_semester_value(semester), false, false, false, false)
+      (CustomCourseSchedule::Intensive, custom_semester_value(semester), [])
   }
   let slots = offering.slots()
   let (day, period) = if slots.is_empty() {
@@ -1280,10 +1284,7 @@ fn open_edit_custom_course(
     academic_year: "\{offering.academic_year.year()}",
     schedule,
     term,
-    s1,
-    s2,
-    a1,
-    a2,
+    terms,
     day,
     period,
     editing_course_id: Some(course.id),

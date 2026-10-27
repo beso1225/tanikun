@@ -1100,7 +1100,7 @@ test "opening the custom form from a slot picker prefills the slot" {
     Some(form) => {
       assert_eq(form.day, "1")
       assert_eq(form.period, "3")
-      assert_eq(form.schedule, "regular")
+      assert_true(form.schedule == @app.CustomCourseSchedule::Regular)
     }
     None => fail("expected the custom form")
   }
