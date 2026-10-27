@@ -212,63 +212,84 @@ fn settings_panel(
     div(class="space-y-4 px-4 py-4", [
       h3(class="text-sm font-semibold", "時間割の表示"),
       div([
-        p(class="mb-2 text-sm font-medium", "表示する曜日"),
-        div(class="flex items-center gap-2", [
-          button(
-            id="remove-day",
-            title="表示する曜日を減らす",
-            attrs=@html.Attrs::build().aria_label(
-              "表示する曜日を減らす",
+        p(
+          id="days-label",
+          class="mb-2 text-sm font-medium",
+          "表示する曜日",
+        ),
+        div(
+          attrs=@html.Attrs::build().role("group").aria_labelledby("days-label"),
+          class="flex items-center gap-2",
+          [
+            button(
+              id="remove-day",
+              title="表示する曜日を減らす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する曜日を減らす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_days <= 5,
+              on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
+              "-",
             ),
-            class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
-            disabled=state.visible_days <= 5,
-            on_click=emit(@app.PlannerMsg::DecreaseVisibleDays),
-            "-",
-          ),
-          span(class="min-w-12 text-center text-sm", "\{state.visible_days}日"),
-          button(
-            id="add-day",
-            title="表示する曜日を増やす",
-            attrs=@html.Attrs::build().aria_label(
-              "表示する曜日を増やす",
+            span(
+              class="min-w-12 text-center text-sm",
+              "\{state.visible_days}日",
             ),
-            class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
-            disabled=state.visible_days >= 7,
-            on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
-            "+",
-          ),
-        ]),
+            button(
+              id="add-day",
+              title="表示する曜日を増やす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する曜日を増やす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_days >= 7,
+              on_click=emit(@app.PlannerMsg::IncreaseVisibleDays),
+              "+",
+            ),
+          ],
+        ),
       ]),
       div([
-        p(class="mb-2 text-sm font-medium", "表示する時限"),
-        div(class="flex items-center gap-2", [
-          button(
-            id="remove-period",
-            title="表示する時限を減らす",
-            attrs=@html.Attrs::build().aria_label(
-              "表示する時限を減らす",
+        p(
+          id="periods-label",
+          class="mb-2 text-sm font-medium",
+          "表示する時限",
+        ),
+        div(
+          attrs=@html.Attrs::build()
+            .role("group")
+            .aria_labelledby("periods-label"),
+          class="flex items-center gap-2",
+          [
+            button(
+              id="remove-period",
+              title="表示する時限を減らす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する時限を減らす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_periods <= 6,
+              on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
+              "-",
             ),
-            class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
-            disabled=state.visible_periods <= 6,
-            on_click=emit(@app.PlannerMsg::DecreaseVisiblePeriods),
-            "-",
-          ),
-          span(
-            class="min-w-12 text-center text-sm",
-            "\{state.visible_periods}限",
-          ),
-          button(
-            id="add-period",
-            title="表示する時限を増やす",
-            attrs=@html.Attrs::build().aria_label(
-              "表示する時限を増やす",
+            span(
+              class="min-w-12 text-center text-sm",
+              "\{state.visible_periods}限",
             ),
-            class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
-            disabled=state.visible_periods >= 10,
-            on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
-            "+",
-          ),
-        ]),
+            button(
+              id="add-period",
+              title="表示する時限を増やす",
+              attrs=@html.Attrs::build().aria_label(
+                "表示する時限を増やす",
+              ),
+              class="flex h-11 w-11 items-center justify-center rounded-md border border-rule text-muted hover:bg-canvas disabled:opacity-30",
+              disabled=state.visible_periods >= 10,
+              on_click=emit(@app.PlannerMsg::IncreaseVisiblePeriods),
+              "+",
+            ),
+          ],
+        ),
       ]),
     ]),
   ]
