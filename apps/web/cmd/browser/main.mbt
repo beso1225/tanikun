@@ -188,7 +188,7 @@ fn term_section(
     )
   }
   aside(
-    class="flex w-full shrink-0 flex-col gap-3 border-b border-rule bg-canvas p-3 md:w-56 md:border-b-0 md:border-r",
+    class="flex w-full shrink-0 flex-col gap-3 border-b border-rule bg-canvas p-3 md:w-56 md:rounded-bl-xl md:border-b-0 md:border-r",
     [
       div(class="flex items-center gap-2 px-2 pt-1", [
         app_mark(),
@@ -1368,7 +1368,7 @@ fn planner_view(
   }
   let content : Array[Html] = [
     header(
-      class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-rule bg-paper px-4",
+      class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-rule bg-paper px-4 md:rounded-t-xl",
       [
         div(class="flex min-w-0 items-baseline gap-3", [
           h2(

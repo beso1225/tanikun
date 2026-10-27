@@ -132,6 +132,22 @@ test(
     await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
     assert.equal(await page.title(), "応物単位くん");
     assert.deepEqual(await auditAccessibility(page), []);
+    assert.notEqual(
+      await page
+        .locator("header")
+        .first()
+        .evaluate((element) => getComputedStyle(element).borderTopLeftRadius),
+      "0px",
+    );
+    assert.notEqual(
+      await page
+        .locator("aside")
+        .first()
+        .evaluate(
+          (element) => getComputedStyle(element).borderBottomLeftRadius,
+        ),
+      "0px",
+    );
     await assertCreditTotal(page, "見込 6単位");
     const contextBox = await page.locator("#term-context").boundingBox();
     assert.ok(contextBox);
