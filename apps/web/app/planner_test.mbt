@@ -1396,6 +1396,12 @@ test "a later override does not change a frozen pass display" {
     state.scheduled_blocks(@app.PlannerTerm::S1)[0].course_name,
     "Physics",
   )
+  let display = match state.offering_display(id) {
+    Some(value) => value
+    None => fail("expected an offering display")
+  }
+  assert_eq(display.name, "Physics")
+  assert_eq(display.credits.half_units(), 4)
   let totals = match state.credit_totals() {
     Ok(value) => value
     Err(_) => fail("expected credit totals")

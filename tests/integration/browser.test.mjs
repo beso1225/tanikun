@@ -149,6 +149,37 @@ test(
       "0px",
     );
     await assertCreditTotal(page, "見込 6単位");
+
+    await page.getByRole("link", { name: "時間割へスキップ" }).focus();
+    let tileReached = false;
+    for (let index = 0; index < 50; index += 1) {
+      await page.keyboard.press("Tab");
+      const activeId = await page.evaluate(
+        () => document.activeElement?.id ?? "",
+      );
+      if (activeId.startsWith("open-detail-phy101-s1")) {
+        tileReached = true;
+        break;
+      }
+    }
+    assert.ok(tileReached);
+    await page.keyboard.press("Enter");
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /2単位 · S1 · 月1/,
+    );
+    assert.equal(
+      await page.locator("#status-planned").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.match(
+      await page.evaluate(() => document.activeElement?.id),
+      /^open-detail-phy101-s1/,
+    );
+
     const contextBox = await page.locator("#term-context").boundingBox();
     assert.ok(contextBox);
     await page.locator("#term-W").click();
