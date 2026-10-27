@@ -1584,3 +1584,18 @@ test "a program switch keeps the current year when the target program has it" {
   assert_true(state.profile.program_id.value == "applied-chemistry")
   assert_eq(state.profile.advancement_year.year(), 2026)
 }
+
+///|
+test "a program switch falls back to its only available year" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::SelectAdvancementYear(year="2025"),
+  )
+  assert_eq(state.profile.advancement_year.year(), 2025)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectProgram(program_id="applied-chemistry"),
+  )
+  assert_true(state.profile.program_id.value == "applied-chemistry")
+  assert_eq(state.profile.advancement_year.year(), 2026)
+}
