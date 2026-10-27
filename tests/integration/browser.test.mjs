@@ -149,6 +149,37 @@ test(
       "0px",
     );
     await assertCreditTotal(page, "見込 6単位");
+
+    await page.getByRole("link", { name: "時間割へスキップ" }).focus();
+    let tileReached = false;
+    for (let index = 0; index < 50; index += 1) {
+      await page.keyboard.press("Tab");
+      const activeId = await page.evaluate(
+        () => document.activeElement?.id ?? "",
+      );
+      if (activeId.startsWith("open-detail-phy101-s1")) {
+        tileReached = true;
+        break;
+      }
+    }
+    assert.ok(tileReached);
+    await page.keyboard.press("Enter");
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /2単位 · S1 · 月1/,
+    );
+    assert.equal(
+      await page.locator("#status-planned").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.match(
+      await page.evaluate(() => document.activeElement?.id),
+      /^open-detail-phy101-s1/,
+    );
+
     const contextBox = await page.locator("#term-context").boundingBox();
     assert.ok(contextBox);
     await page.locator("#term-W").click();
@@ -420,6 +451,14 @@ test(
       .click();
     await page.locator("#course-detail-dialog").waitFor();
     assert.deepEqual(await auditAccessibility(page), []);
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /2単位 · S2 · 火2/,
+    );
+    assert.equal(
+      await page.locator("#status-planned").getAttribute("aria-pressed"),
+      "true",
+    );
     assert.equal(
       await page.locator("#course-detail-dialog").getAttribute("role"),
       "dialog",
@@ -447,10 +486,7 @@ test(
       await page.evaluate(() => document.activeElement?.id),
       /^open-detail-phy102-s2/,
     );
-    await page
-      .locator("#timetable")
-      .getByText("Physics II", { exact: true })
-      .click();
+    await page.keyboard.press("Enter");
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
@@ -493,6 +529,14 @@ test(
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
     await page.locator("#off-grid").getByText("Winter Workshop").click();
     await page.locator("#course-detail-dialog").waitFor();
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /1単位 · 集中 W · 曜限なし/,
+    );
+    assert.equal(
+      await page.locator("#status-planned").getAttribute("aria-pressed"),
+      "true",
+    );
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
     await page.getByText("集中講義はありません").waitFor();
@@ -510,6 +554,10 @@ test(
       .getByText("Physics I", { exact: true })
       .click();
     await page.locator("#course-detail-dialog").waitFor();
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /2単位 · S1 · 月1/,
+    );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
       "true",
@@ -518,6 +566,14 @@ test(
     await page.locator("#status-passed[aria-pressed='true']").waitFor();
     await page.locator("#grade-good").click();
     await page.locator("#grade-good[aria-pressed='true']").waitFor();
+    assert.equal(
+      await page.locator("#status-passed").getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(
+      await page.locator("#grade-good").getAttribute("aria-pressed"),
+      "true",
+    );
     await page.locator("#close-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
     assert.match(
