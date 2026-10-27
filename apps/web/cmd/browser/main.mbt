@@ -934,6 +934,19 @@ fn custom_field_class(
 }
 
 ///|
+fn has_planner_term(
+  terms : Array[@app.PlannerTerm],
+  term : @app.PlannerTerm,
+) -> Bool {
+  for item in terms {
+    if item == term {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn term_toggle_button(
   id : String,
   label : String,
@@ -962,6 +975,20 @@ fn term_toggle_button(
 }
 
 ///|
+fn custom_field_attrs(
+  form : @app.CustomCourseDraft,
+  field : @app.CustomCourseField,
+) -> @html.Attrs {
+  if form.error_field == Some(field) {
+    @html.Attrs::build()
+    .aria_invalid("true")
+    .aria_describedby("custom-form-error")
+  } else {
+    @html.Attrs::build()
+  }
+}
+
+///|
 fn custom_form_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -969,8 +996,8 @@ fn custom_form_panel(
   match state.custom_form {
     None => div(([] : Array[Html]))
     Some(form) => {
-      let is_intensive = form.schedule == "intensive"
-      let is_regular = form.schedule == "regular"
+      let is_intensive = form.schedule == @app.CustomCourseSchedule::Intensive
+      let is_regular = form.schedule == @app.CustomCourseSchedule::Regular
       let editing = form.editing_course_id is Some(_)
       let current_year = state.profile.advancement_year.year()
       let year_options : Array[Html] = []
@@ -1015,6 +1042,78 @@ fn custom_form_panel(
           option(value~, selected=form.period == value, "\{period}限"),
         )
       }
+      let schedule_regular = form.schedule == @app.CustomCourseSchedule::Regular
+      let schedule_year_long = form.schedule ==
+        @app.CustomCourseSchedule::YearLong
+      let schedule_intensive = form.schedule ==
+        @app.CustomCourseSchedule::Intensive
+      let term_control : Html = if is_regular {
+        div([
+          p(class="mb-1 text-xs font-medium text-muted", "学期"),
+          div(
+            attrs=custom_field_attrs(form, @app.CustomCourseField::Term),
+            class="flex flex-wrap gap-1",
+            [
+              term_toggle_button(
+                "custom-term-s1",
+                "S1",
+                has_planner_term(form.terms, @app.PlannerTerm::S1),
+                @app.PlannerTerm::S1,
+                emit,
+              ),
+              term_toggle_button(
+                "custom-term-s2",
+                "S2",
+                has_planner_term(form.terms, @app.PlannerTerm::S2),
+                @app.PlannerTerm::S2,
+                emit,
+              ),
+              term_toggle_button(
+                "custom-term-a1",
+                "A1",
+                has_planner_term(form.terms, @app.PlannerTerm::A1),
+                @app.PlannerTerm::A1,
+                emit,
+              ),
+              term_toggle_button(
+                "custom-term-a2",
+                "A2",
+                has_planner_term(form.terms, @app.PlannerTerm::A2),
+                @app.PlannerTerm::A2,
+                emit,
+              ),
+            ],
+          ),
+        ])
+      } else if is_intensive {
+        div([
+          label(
+            for_="custom-term",
+            class="mb-1 block text-xs font-medium text-muted",
+            "セメスター",
+          ),
+          select(
+            id="custom-term",
+            class=custom_field_class(
+              form,
+              @app.CustomCourseField::Term,
+              "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+            ),
+            attrs=custom_field_attrs(form, @app.CustomCourseField::Term),
+            on_change=fn(value) {
+              emit(
+                @app.PlannerMsg::UpdateCustomCourseField(
+                  field=@app.CustomCourseField::Term,
+                  value~,
+                ),
+              )
+            },
+            term_options,
+          ),
+        ])
+      } else {
+        div(([] : Array[Html]))
+      }
       let body : Array[Html] = [
         div(class="max-h-[70vh] space-y-3 overflow-y-auto px-4 py-3", [
           div([
@@ -1030,6 +1129,7 @@ fn custom_form_panel(
                 @app.CustomCourseField::Name,
                 "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm outline-none focus:border-primary",
               ),
+              attrs=custom_field_attrs(form, @app.CustomCourseField::Name),
               value=form.name,
               placeholder="例: 線形代数",
               on_input=fn(value) {
@@ -1056,6 +1156,7 @@ fn custom_form_panel(
                   @app.CustomCourseField::Credits,
                   "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                 ),
+                attrs=custom_field_attrs(form, @app.CustomCourseField::Credits),
                 on_change=fn(value) {
                   emit(
                     @app.PlannerMsg::UpdateCustomCourseField(
@@ -1080,6 +1181,7 @@ fn custom_form_panel(
                   @app.CustomCourseField::Year,
                   "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                 ),
+                attrs=custom_field_attrs(form, @app.CustomCourseField::Year),
                 on_change=fn(value) {
                   emit(
                     @app.PlannerMsg::UpdateCustomCourseField(
@@ -1105,6 +1207,7 @@ fn custom_form_panel(
                 @app.CustomCourseField::Schedule,
                 "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
               ),
+              attrs=custom_field_attrs(form, @app.CustomCourseField::Schedule),
               on_change=fn(value) {
                 emit(
                   @app.PlannerMsg::UpdateCustomCourseField(
@@ -1114,86 +1217,17 @@ fn custom_form_panel(
                 )
               },
               [
-                option(
-                  value="regular",
-                  selected=form.schedule == "regular",
-                  "通常",
-                ),
-                option(
-                  value="year-long",
-                  selected=form.schedule == "year-long",
-                  "通年",
-                ),
+                option(value="regular", selected=schedule_regular, "通常"),
+                option(value="year-long", selected=schedule_year_long, "通年"),
                 option(
                   value="intensive",
-                  selected=form.schedule == "intensive",
+                  selected=schedule_intensive,
                   "集中講義",
                 ),
               ],
             ),
           ]),
-          if is_regular {
-            div([
-              p(class="mb-1 text-xs font-medium text-muted", "学期"),
-              div(class="flex flex-wrap gap-1", [
-                term_toggle_button(
-                  "custom-term-s1",
-                  "S1",
-                  form.s1,
-                  @app.PlannerTerm::S1,
-                  emit,
-                ),
-                term_toggle_button(
-                  "custom-term-s2",
-                  "S2",
-                  form.s2,
-                  @app.PlannerTerm::S2,
-                  emit,
-                ),
-                term_toggle_button(
-                  "custom-term-a1",
-                  "A1",
-                  form.a1,
-                  @app.PlannerTerm::A1,
-                  emit,
-                ),
-                term_toggle_button(
-                  "custom-term-a2",
-                  "A2",
-                  form.a2,
-                  @app.PlannerTerm::A2,
-                  emit,
-                ),
-              ]),
-            ])
-          } else if is_intensive {
-            div([
-              label(
-                for_="custom-term",
-                class="mb-1 block text-xs font-medium text-muted",
-                "セメスター",
-              ),
-              select(
-                id="custom-term",
-                class=custom_field_class(
-                  form,
-                  @app.CustomCourseField::Term,
-                  "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
-                ),
-                on_change=fn(value) {
-                  emit(
-                    @app.PlannerMsg::UpdateCustomCourseField(
-                      field=@app.CustomCourseField::Term,
-                      value~,
-                    ),
-                  )
-                },
-                term_options,
-              ),
-            ])
-          } else {
-            div(([] : Array[Html]))
-          },
+          term_control,
           if is_intensive {
             div(([] : Array[Html]))
           } else {
@@ -1211,6 +1245,7 @@ fn custom_form_panel(
                     @app.CustomCourseField::Day,
                     "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                   ),
+                  attrs=custom_field_attrs(form, @app.CustomCourseField::Day),
                   on_change=fn(value) {
                     emit(
                       @app.PlannerMsg::UpdateCustomCourseField(
@@ -1235,6 +1270,7 @@ fn custom_form_panel(
                     @app.CustomCourseField::Period,
                     "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                   ),
+                  attrs=custom_field_attrs(form, @app.CustomCourseField::Period),
                   on_change=fn(value) {
                     emit(
                       @app.PlannerMsg::UpdateCustomCourseField(
@@ -1252,6 +1288,7 @@ fn custom_form_panel(
             p(
               id="custom-form-error",
               class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
+              attrs=@html.Attrs::build().role("alert"),
               form.error_message,
             )
           } else {
@@ -1260,6 +1297,7 @@ fn custom_form_panel(
                 p(
                   id="custom-form-error",
                   class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
+                  attrs=@html.Attrs::build().role("alert"),
                   error.message,
                 )
               None => div(([] : Array[Html]))

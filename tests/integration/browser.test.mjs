@@ -486,6 +486,21 @@ test(
     await page.locator("#open-custom-course").click();
     await page.locator("#custom-course").waitFor();
     assert.deepEqual(await auditAccessibility(page), []);
+    await page.locator("#custom-submit").click();
+    await page.locator("#custom-form-error").waitFor();
+    assert.equal(
+      await page.locator("#custom-form-error").getAttribute("role"),
+      "alert",
+    );
+    assert.equal(
+      await page.locator("#custom-name").getAttribute("aria-invalid"),
+      "true",
+    );
+    assert.equal(
+      await page.locator("#custom-name").getAttribute("aria-describedby"),
+      "custom-form-error",
+    );
+    assert.equal(await page.locator("#custom-course").count(), 1);
     await page.locator("#custom-name").fill("Linear Algebra");
     await page.locator("#custom-term-s1").click();
     await page.locator("#custom-term-s1[aria-pressed='true']").waitFor();
