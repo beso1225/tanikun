@@ -24,6 +24,7 @@ The picker and the course detail dialog use this shell. The settings dialog in #
 - Every icon-only control needs an `aria-label` that names the action.
 - A group of related icon-only controls needs a group label.
 - Every input needs a `<label>` or an `aria-label`.
+- A rejected form submit must keep the form open, announce the error with `role="alert"`, and connect it to the offending control with `aria-invalid` and `aria-describedby`.
 - Visible focus uses the `--color-primary` ring.
 
 ## Tables

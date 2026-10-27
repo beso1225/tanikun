@@ -73,10 +73,12 @@ async function auditAccessibility(page) {
         issues.push(`table header missing scope: ${header.textContent}`);
       }
     }
-    for (const input of document.querySelectorAll("input")) {
-      const hasLabel = input.labels && input.labels.length > 0;
-      if (!hasLabel && !input.getAttribute("aria-label")) {
-        issues.push(`input missing label: ${input.id}`);
+    for (const control of document.querySelectorAll(
+      "input, select, textarea",
+    )) {
+      const hasLabel = control.labels && control.labels.length > 0;
+      if (!hasLabel && !control.getAttribute("aria-label")) {
+        issues.push(`form control missing label: ${control.id}`);
       }
     }
     for (const button of document.querySelectorAll("button")) {
@@ -305,7 +307,7 @@ test(
       "hidden",
     );
     assert.equal(await page.locator("#catalogue-search").inputValue(), "");
-    await page.locator("#add-offering-phy102-s2").focus();
+    await page.locator("#open-custom-course").focus();
     await page.keyboard.press("Tab");
     assert.equal(
       await page.evaluate(() => document.activeElement?.id),
@@ -478,6 +480,126 @@ test(
       .getByText("Calculus", { exact: true })
       .waitFor();
     await assertCreditTotal(page, "確定 2 / 見込 11単位");
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    assert.deepEqual(await auditAccessibility(page), []);
+    await page.locator("#custom-submit").click();
+    await page.locator("#custom-form-error").waitFor();
+    assert.equal(
+      await page.locator("#custom-form-error").getAttribute("role"),
+      "alert",
+    );
+    assert.equal(
+      await page.locator("#custom-name").getAttribute("aria-invalid"),
+      "true",
+    );
+    assert.equal(
+      await page.locator("#custom-name").getAttribute("aria-describedby"),
+      "custom-form-error",
+    );
+    assert.equal(await page.locator("#custom-course").count(), 1);
+    await page.locator("#custom-name").fill("Linear Algebra");
+    await page.locator("#custom-term-s1").click();
+    await page.locator("#custom-term-s1[aria-pressed='true']").waitFor();
+    assert.equal(
+      await page.locator("#custom-term-s2").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#add-offering-user-offering-1").waitFor();
+    await page.locator("#add-offering-user-offering-1").click();
+    await page.locator("#add-offering-user-offering-1").waitFor({
+      state: "detached",
+    });
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra", { exact: true })
+      .waitFor();
+    await assertCreditTotal(page, "確定 2 / 見込 13単位");
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#edit-custom-user-offering-1").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#custom-name").fill("Linear Algebra II");
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra II", { exact: true })
+      .waitFor();
+
+    await page
+      .locator("#timetable")
+      .getByText("Linear Algebra II", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await assertCreditTotal(page, "確定 2 / 見込 11単位");
+
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#edit-custom-user-offering-1").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#delete-custom-course").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Linear Algebra II", { exact: true })
+        .count(),
+      0,
+    );
+
+    await page.locator("#slot-0-3").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#custom-name").fill("Slot Custom");
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    assert.equal(
+      await page.locator("#picker-title").innerText(),
+      "月3限に追加",
+    );
+    await page.locator("#add-offering-user-offering-2").click();
+    await page.locator("#add-offering-user-offering-2").waitFor({
+      state: "detached",
+    });
+    await page
+      .locator("#timetable")
+      .getByText("Slot Custom", { exact: true })
+      .waitFor();
+
+    await page.locator("#open-intensive-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    await page.locator("#custom-name").fill("Intensive Custom");
+    await page.locator("#custom-submit").click();
+    await page.locator("#picker").waitFor();
+    assert.equal(
+      await page.locator("#picker-title").innerText(),
+      "集中講義を追加",
+    );
+    await page.locator("#add-offering-user-offering-3").click();
+    await page.locator("#add-offering-user-offering-3").waitFor({
+      state: "detached",
+    });
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#off-grid").getByText("Intensive Custom").waitFor();
 
     await page.evaluate(() => {
       const modal = document.createElement("section");
