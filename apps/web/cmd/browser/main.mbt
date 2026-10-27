@@ -259,6 +259,65 @@ fn profile_panel(
 }
 
 ///|
+fn timetable_year_panel(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  let grade_options : Array[Html] = []
+  for grade in 1..<=4 {
+    let value = "\{grade}"
+    grade_options.push(
+      option(
+        value~,
+        selected=state.timetable_year.grade == grade,
+        "\{grade}年",
+      ),
+    )
+  }
+  let year_options : Array[Html] = []
+  for year in state.timetable_years() {
+    let value = "\{year.academic_year.year()}"
+    year_options.push(
+      option(
+        value~,
+        selected=state.timetable_year.academic_year == year.academic_year,
+        "\{year.academic_year.year()}年度",
+      ),
+    )
+  }
+  div(class="grid grid-cols-2 gap-2", [
+    div([
+      label(
+        for_="grade-select",
+        class="mb-1 block text-xs text-muted",
+        "学年",
+      ),
+      select(
+        id="grade-select",
+        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+        on_change=fn(value) { emit(@app.PlannerMsg::SelectGrade(grade=value)) },
+        grade_options,
+      ),
+    ]),
+    div([
+      label(
+        for_="timetable-year-select",
+        class="mb-1 block text-xs text-muted",
+        "年度",
+      ),
+      select(
+        id="timetable-year-select",
+        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+        on_change=fn(value) {
+          emit(@app.PlannerMsg::SelectTimetableYear(year=value))
+        },
+        year_options,
+      ),
+    ]),
+  ])
+}
+
+///|
 fn term_section(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -287,6 +346,7 @@ fn term_section(
         app_mark(),
         h1(class="text-sm font-semibold", "応物単位くん"),
       ]),
+      timetable_year_panel(state, emit),
       nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
       profile_panel(state, emit),
     ],
@@ -1758,6 +1818,12 @@ fn planner_view(
     p(
       class="mt-4 text-sm text-muted",
       "Wでは時間割のグリッドを使いません",
+    )
+  } else if !state.has_offerings_for_timetable_year() {
+    p(
+      id="empty-year",
+      class="mt-4 text-sm text-muted",
+      "この年度の開講科目はありません",
     )
   } else {
     timetable_grid(state, emit)

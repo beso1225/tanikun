@@ -37,9 +37,10 @@ fn sample_slot(
 }
 
 ///|
-fn sample_offering(
+fn sample_offering_in_year(
   id : String,
   course : @tanikun-domain.Course,
+  year : @tanikun-domain.AcademicYear,
   schedule : @tanikun-domain.OfferingSchedule,
   slots : Array[@tanikun-domain.Slot],
 ) -> @tanikun-domain.CourseOffering {
@@ -47,12 +48,22 @@ fn sample_offering(
     @tanikun-domain.CourseOffering::new(
       sample_ok(@tanikun-domain.OfferingId::new(id)),
       course.id,
-      sample_year(),
+      year,
       schedule,
       @tanikun-domain.OfferingStatus::Offered,
       slots,
     ),
   )
+}
+
+///|
+fn sample_offering(
+  id : String,
+  course : @tanikun-domain.Course,
+  schedule : @tanikun-domain.OfferingSchedule,
+  slots : Array[@tanikun-domain.Slot],
+) -> @tanikun-domain.CourseOffering {
+  sample_offering_in_year(id, course, sample_year(), schedule, slots)
 }
 
 ///|
@@ -68,6 +79,8 @@ pub fn sample_state() -> PlannerState {
   let phy302 = sample_course("PHY302", "Seminar S2", 2)
   let phy401 = sample_course("PHY401", "Seminar A", 2)
   let phy501 = sample_course("PHY501", "Winter Workshop", 2)
+  let phy601 = sample_course("PHY601", "Advanced Physics", 4)
+  let phy602 = sample_course("PHY602", "Graduation Seminar", 2)
   let offerings = [
     sample_offering(
       "phy101-s1",
@@ -130,6 +143,20 @@ pub fn sample_state() -> PlannerState {
         semester=@tanikun-domain.Semester::W,
       ),
       [],
+    ),
+    sample_offering_in_year(
+      "phy601-s1",
+      phy601,
+      sample_ok(@tanikun-domain.AcademicYear::new(2027)),
+      @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::S1]),
+      [sample_slot(@tanikun-domain.DayOfWeek::Monday, 4)],
+    ),
+    sample_offering_in_year(
+      "phy602-a1",
+      phy602,
+      sample_ok(@tanikun-domain.AcademicYear::new(2027)),
+      @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::A1]),
+      [sample_slot(@tanikun-domain.DayOfWeek::Tuesday, 4)],
     ),
   ]
   let enrollments = [
@@ -199,7 +226,9 @@ pub fn sample_state() -> PlannerState {
     ]),
   )
   PlannerState::new(
-    [phy101, phy102, phy103, phy201, phy301, phy302, phy401, phy501],
+    [
+      phy101, phy102, phy103, phy201, phy301, phy302, phy401, phy501, phy601, phy602,
+    ],
     offerings,
     enrollments,
     @tanikun-domain.Overrides::empty(),

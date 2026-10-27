@@ -62,6 +62,7 @@ pub(all) enum UiErrorKind {
   UnknownOffering
   UnknownEnrollment
   MissingRequirementSet
+  DifferentAcademicYear
   General
 } derive(Eq)
 
@@ -286,6 +287,55 @@ pub struct OverrideDraft {
 }
 
 ///|
+/// The timetable grade and academic year selected in the shell. The mapping is
+/// anchored at the profile's advancement year, which is the year the student
+/// enters the third year: grade 3 is the advancement year, grade 2 the year
+/// before, grade 1 two years before, and grade 4 one year after.
+pub struct TimetableYear {
+  grade : Int
+  academic_year : @tanikun-domain.AcademicYear
+}
+
+///|
+fn year_for_grade(
+  profile : @tanikun-domain.AcademicProfile,
+  grade : Int,
+) -> @tanikun-domain.AcademicYear? {
+  if grade < 1 || grade > 4 {
+    return None
+  }
+  let year = profile.advancement_year.year() + grade - 3
+  match @tanikun-domain.AcademicYear::new(year) {
+    Ok(value) => Some(value)
+    Err(_) => None
+  }
+}
+
+///|
+fn grade_for_year(
+  profile : @tanikun-domain.AcademicProfile,
+  year : @tanikun-domain.AcademicYear,
+) -> Int? {
+  let grade = year.year() - profile.advancement_year.year() + 3
+  if grade < 1 || grade > 4 {
+    None
+  } else {
+    Some(grade)
+  }
+}
+
+///|
+fn timetable_year_for_grade(
+  profile : @tanikun-domain.AcademicProfile,
+  grade : Int,
+) -> TimetableYear? {
+  match year_for_grade(profile, grade) {
+    Some(academic_year) => Some({ grade, academic_year, })
+    None => None
+  }
+}
+
+///|
 /// In-memory Phase 2 planner state. Derived credits and requirements are not
 /// stored here; they are computed from this state.
 pub struct PlannerState {
@@ -294,6 +344,7 @@ pub struct PlannerState {
   enrollments : Array[@tanikun-domain.Enrollment]
   overrides : @tanikun-domain.Overrides
   profile : @tanikun-domain.AcademicProfile
+  timetable_year : TimetableYear
   requirement_sets : @tanikun-requirements.RequirementSets[
     @tanikun-requirements.Rule,
   ]
@@ -339,6 +390,7 @@ pub fn PlannerState::new(
     enrollments: enrollments.copy(),
     overrides,
     profile,
+    timetable_year: { grade: 3, academic_year: profile.advancement_year, },
     requirement_sets,
     selected_term: S1,
     selected_offering: None,
@@ -581,6 +633,8 @@ pub(all) enum PlannerMsg {
   )
   SelectProgram(program_id~ : String)
   SelectAdvancementYear(year~ : String)
+  SelectGrade(grade~ : String)
+  SelectTimetableYear(year~ : String)
   OpenSettings
   CloseSettings
   OpenOverrideEditor(offering_id~ : @tanikun-domain.OfferingId)
@@ -640,6 +694,8 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       update_enrollment_status(state, offering_id, target)
     SelectProgram(program_id~) => select_program(state, program_id)
     SelectAdvancementYear(year~) => select_advancement_year(state, year)
+    SelectGrade(grade~) => select_grade(state, grade)
+    SelectTimetableYear(year~) => select_timetable_year(state, year)
     OpenSettings =>
       bump({
         ..state,
@@ -1438,6 +1494,21 @@ fn submit_override(state : PlannerState) -> PlannerState {
 }
 
 ///|
+/// The four timetable years derived from the profile's advancement year.
+pub fn PlannerState::timetable_years(
+  self : PlannerState,
+) -> Array[TimetableYear] {
+  let years : Array[TimetableYear] = []
+  for grade in 1..<=4 {
+    match timetable_year_for_grade(self.profile, grade) {
+      Some(value) => years.push(value)
+      None => ()
+    }
+  }
+  years
+}
+
+///|
 fn apply_profile(
   state : PlannerState,
   profile : @tanikun-domain.AcademicProfile,
@@ -1453,7 +1524,94 @@ fn apply_profile(
         ),
       )
   }
-  bump({ ..state, profile, error, })
+  let timetable_year = match
+    timetable_year_for_grade(profile, state.timetable_year.grade) {
+    Some(value) => value
+    None => { grade: 3, academic_year: profile.advancement_year, }
+  }
+  bump({ ..state, profile, timetable_year, error, })
+}
+
+///|
+fn clear_timetable_selection(state : PlannerState) -> PlannerState {
+  {
+    ..state,
+    selected_offering: None,
+    picker: None,
+    override_form: None,
+    error: None,
+  }
+}
+
+///|
+fn select_grade(state : PlannerState, grade : String) -> PlannerState {
+  let grade = match option_int(grade, 1, 4) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "学年が正しくありません",
+        ),
+      )
+  }
+  let timetable_year = match timetable_year_for_grade(state.profile, grade) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "学年が正しくありません",
+        ),
+      )
+  }
+  bump(clear_timetable_selection({ ..state, timetable_year, }))
+}
+
+///|
+fn select_timetable_year(state : PlannerState, value : String) -> PlannerState {
+  let year = match option_int(value, 2000, 2100) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "年度が正しくありません",
+        ),
+      )
+  }
+  let academic_year = match @tanikun-domain.AcademicYear::new(year) {
+    Ok(value) => value
+    Err(_) =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "年度が正しくありません",
+        ),
+      )
+  }
+  let grade = match grade_for_year(state.profile, academic_year) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::General,
+          UiErrorKind::General,
+          "この年度は選択できません",
+        ),
+      )
+  }
+  let timetable_year : TimetableYear = { grade, academic_year, }
+  bump(clear_timetable_selection({ ..state, timetable_year, }))
 }
 
 ///|
@@ -1539,7 +1697,7 @@ fn select_advancement_year(state : PlannerState, year : String) -> PlannerState 
 
 ///|
 fn new_custom_course_draft(state : PlannerState) -> CustomCourseDraft {
-  let year = state.profile.advancement_year.year()
+  let year = state.timetable_year.academic_year.year()
   let term = match state.selected_term.term() {
     Some(value) => value
     None => @tanikun-domain.Term::S1
@@ -2201,6 +2359,19 @@ fn find_slot_conflict_excluding(
 }
 
 ///|
+pub fn PlannerState::has_offerings_for_timetable_year(
+  self : PlannerState,
+) -> Bool {
+  for offering in self.offerings {
+    if offering.academic_year == self.timetable_year.academic_year &&
+      offering.status == @tanikun-domain.OfferingStatus::Offered {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn add_offering(
   state : PlannerState,
   id : @tanikun-domain.OfferingId,
@@ -2217,6 +2388,16 @@ fn add_offering(
   // no-op, not a duplicate-enrollment error.
   if has_enrollment(state.enrollments, id) {
     return state
+  }
+  if offering.academic_year != state.timetable_year.academic_year {
+    return with_error(
+      state,
+      UiError::new(
+        UiErrorTarget::Offering(offering_id=id),
+        UiErrorKind::DifferentAcademicYear,
+        "選択した年度の開講ではありません",
+      ),
+    )
   }
   if !offering_occupies_term(offering, state.selected_term) {
     return with_error(
@@ -2349,7 +2530,8 @@ pub fn PlannerState::catalogue_entries(
 ) -> Array[CatalogueEntry] {
   let entries : Array[CatalogueEntry] = []
   for offering in self.offerings {
-    if offering_occupies_term(offering, term) &&
+    if offering.academic_year == self.timetable_year.academic_year &&
+      offering_occupies_term(offering, term) &&
       offering.status == @tanikun-domain.OfferingStatus::Offered {
       match find_course(self.catalogue, offering.course_id) {
         Some(course) => {
@@ -2422,7 +2604,8 @@ pub fn PlannerState::scheduled_blocks(
   for enrollment in self.enrollments {
     match find_offering(self.offerings, enrollment.offering_id) {
       Some(offering) =>
-        if offering_occupies_term(offering, term) {
+        if offering.academic_year == self.timetable_year.academic_year &&
+          offering_occupies_term(offering, term) {
           match find_course(self.catalogue, offering.course_id) {
             Some(course) =>
               for slot in effective_slots_or(offering, self.overrides) {
@@ -2456,7 +2639,8 @@ pub fn PlannerState::off_grid_entries(
   for enrollment in self.enrollments {
     match find_offering(self.offerings, enrollment.offering_id) {
       Some(offering) =>
-        if offering_occupies_term(offering, term) {
+        if offering.academic_year == self.timetable_year.academic_year &&
+          offering_occupies_term(offering, term) {
           match offering.schedule() {
             @tanikun-domain.OfferingSchedule::Intensive(_) =>
               match find_course(self.catalogue, offering.course_id) {
