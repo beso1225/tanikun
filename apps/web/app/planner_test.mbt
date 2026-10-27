@@ -1552,3 +1552,35 @@ test "selecting a program without requirement sets keeps the old profile" {
     Err(_) => fail("the previous profile should still evaluate")
   }
 }
+
+///|
+test "a program switch keeps the current year when the target program has it" {
+  let base = planner_state()
+  let physics = base.profile.program_id
+  let year = base.profile.advancement_year
+  let chemistry = planner_expect_ok(
+    @tanikun-domain.ProgramId::new("applied-chemistry"),
+  )
+  let prior_year = planner_expect_ok(@tanikun-domain.AcademicYear::new(2025))
+  let sets = planner_expect_ok(
+    @tanikun-requirements.RequirementSets::new([
+      planner_requirement_set(physics, year),
+      planner_requirement_set(chemistry, prior_year),
+      planner_requirement_set(chemistry, year),
+    ]),
+  )
+  let state = @app.PlannerState::new(
+    base.catalogue,
+    base.offerings,
+    base.enrollments,
+    base.overrides,
+    base.profile,
+    sets,
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectProgram(program_id="applied-chemistry"),
+  )
+  assert_true(state.profile.program_id.value == "applied-chemistry")
+  assert_eq(state.profile.advancement_year.year(), 2026)
+}

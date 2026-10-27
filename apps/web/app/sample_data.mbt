@@ -165,7 +165,7 @@ pub fn sample_state() -> PlannerState {
   )
   let prior_rule = sample_ok(
     @tanikun-requirements.Rule::total_minimum(
-      sample_ok(@tanikun-domain.Credits::new(2)),
+      sample_ok(@tanikun-domain.Credits::new(20)),
     ),
   )
   let chemistry = sample_ok(@tanikun-domain.ProgramId::new("applied-chemistry"))

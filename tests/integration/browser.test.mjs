@@ -157,15 +157,19 @@ test(
     );
     assert.equal(await page.locator("#year-select").inputValue(), "2026");
     assert.equal(
+      await page.locator("#requirement-summary").getAttribute("role"),
+      "status",
+    );
+    assert.equal(
       await page.locator("#requirement-summary").innerText(),
-      "要件: 達成",
+      "要件: 充足",
     );
 
     await page.locator("#program-select").selectOption("applied-chemistry");
     await page.waitForFunction(
       () =>
         document.querySelector("#requirement-summary")?.textContent ===
-        "要件: 一部達成",
+        "要件: 部分充足",
     );
     assert.equal(
       await page.locator("#program-select").inputValue(),
@@ -187,7 +191,7 @@ test(
       () =>
         document.querySelector("#year-select")?.value === "2026" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件: 達成",
+          "要件: 充足",
     );
     assert.equal(await page.locator("#year-select option").count(), 2);
     await page.locator("#year-select").selectOption("2025");
@@ -195,7 +199,7 @@ test(
       () =>
         document.querySelector("#year-select")?.value === "2025" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件: 達成",
+          "要件: 部分充足",
     );
     await page.locator("#year-select").selectOption("2026");
     await page.waitForFunction(

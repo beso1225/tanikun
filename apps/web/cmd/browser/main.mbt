@@ -207,14 +207,21 @@ fn profile_panel(
       p(
         id="requirement-summary",
         class="text-xs text-muted",
+        attrs=@html.Attrs::build().role("status"),
         "要件: \{value.label()}",
       )
-    Err(_) =>
+    Err(_) => {
+      let message = match state.active_requirement_set() {
+        None => "要件: 要件セットが見つかりません"
+        Some(_) => "要件: 要件を評価できません"
+      }
       p(
         id="requirement-summary",
         class="text-xs text-danger-text",
-        "要件: 要件セットが見つかりません",
+        attrs=@html.Attrs::build().role("status"),
+        message,
       )
+    }
   }
   div(class="mt-1 space-y-2 border-t border-rule/60 pt-3", [
     div([
@@ -1804,6 +1811,7 @@ fn planner_view(
         p(
           id="planner-error",
           class="mx-4 mb-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
+          attrs=@html.Attrs::build().role("alert"),
           error.message,
         ),
       )

@@ -370,20 +370,10 @@ pub struct PlannerCreditTotals {
 pub fn PlannerState::credit_totals(
   self : PlannerState,
 ) -> Result[PlannerCreditTotals, @tanikun-domain.DomainError] {
-  let requirement_set = match
-    self.requirement_sets.lookup_for_profile(self.profile) {
-    Some(value) => value
-    None =>
-      return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
+  let input = match self.evaluation_input() {
+    Ok(value) => value
+    Err(error) => return Err(error)
   }
-  let input = @tanikun-requirements.EvaluationInput::new(
-    self.profile,
-    requirement_set,
-    self.catalogue,
-    self.offerings,
-    self.enrollments,
-    self.overrides,
-  )
   match @tanikun-requirements.credit_summary(input) {
     Ok(projection) =>
       Ok({
@@ -404,9 +394,9 @@ pub struct RequirementSummary {
 ///|
 pub fn RequirementSummary::label(self : RequirementSummary) -> String {
   match self.satisfaction {
-    @tanikun-requirements.Satisfaction::Satisfied => "達成"
-    @tanikun-requirements.Satisfaction::Partial => "一部達成"
-    @tanikun-requirements.Satisfaction::Unsatisfied => "未達"
+    @tanikun-requirements.Satisfaction::Satisfied => "充足"
+    @tanikun-requirements.Satisfaction::Partial => "部分充足"
+    @tanikun-requirements.Satisfaction::Unsatisfied => "未充足"
   }
 }
 
@@ -419,23 +409,38 @@ pub fn PlannerState::active_requirement_set(
 }
 
 ///|
-/// Evaluates the current planner state against the active requirement set.
-pub fn PlannerState::requirement_summary(
+fn PlannerState::evaluation_input(
   self : PlannerState,
-) -> Result[RequirementSummary, @tanikun-domain.DomainError] {
+) -> Result[
+  @tanikun-requirements.EvaluationInput[@tanikun-requirements.Rule],
+  @tanikun-domain.DomainError,
+] {
   let requirement_set = match self.active_requirement_set() {
     Some(value) => value
     None =>
       return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
   }
-  let input = @tanikun-requirements.EvaluationInput::new(
-    self.profile,
-    requirement_set,
-    self.catalogue,
-    self.offerings,
-    self.enrollments,
-    self.overrides,
+  Ok(
+    @tanikun-requirements.EvaluationInput::new(
+      self.profile,
+      requirement_set,
+      self.catalogue,
+      self.offerings,
+      self.enrollments,
+      self.overrides,
+    ),
   )
+}
+
+///|
+/// Evaluates the current planner state against the active requirement set.
+pub fn PlannerState::requirement_summary(
+  self : PlannerState,
+) -> Result[RequirementSummary, @tanikun-domain.DomainError] {
+  let input = match self.evaluation_input() {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
   match @tanikun-requirements.evaluate(input) {
     Ok(evaluation) =>
       Ok({ satisfaction: evaluation.requirements.optimistic.satisfaction, })
@@ -1452,6 +1457,19 @@ fn apply_profile(
 }
 
 ///|
+fn has_year(
+  years : Array[@tanikun-domain.AcademicYear],
+  year : @tanikun-domain.AcademicYear,
+) -> Bool {
+  for candidate in years {
+    if candidate == year {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn select_program(state : PlannerState, value : String) -> PlannerState {
   let program = match @tanikun-domain.ProgramId::new(value) {
     Ok(value) => value
@@ -1476,18 +1494,8 @@ fn select_program(state : PlannerState, value : String) -> PlannerState {
       ),
     )
   }
-  let year = if state.profile.program_id == program {
-    let mut found = false
-    for candidate in years {
-      if candidate == state.profile.advancement_year {
-        found = true
-      }
-    }
-    if found {
-      state.profile.advancement_year
-    } else {
-      years[0]
-    }
+  let year = if has_year(years, state.profile.advancement_year) {
+    state.profile.advancement_year
   } else {
     years[0]
   }
