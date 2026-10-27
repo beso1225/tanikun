@@ -257,6 +257,34 @@ pub struct CustomCourseDraft {
 }
 
 ///|
+/// A field in the override editor.
+pub(all) enum OverrideField {
+  Name
+  Credits
+  Slots
+  General
+} derive(Eq)
+
+///|
+pub extend OverrideField with Eq::{not_equal, equal}
+
+///|
+/// Editable override values for one offering. Empty text or an empty credit
+/// selection removes that override; the master value is shown as the fallback.
+pub struct OverrideDraft {
+  offering_id : @tanikun-domain.OfferingId
+  course_id : @tanikun-domain.CourseId
+  name : String
+  credits : String
+  slots_enabled : Bool
+  supports_slots : Bool
+  day : String
+  period : String
+  error_field : OverrideField?
+  error_message : String
+}
+
+///|
 /// In-memory Phase 2 planner state. Derived credits and requirements are not
 /// stored here; they are computed from this state.
 pub struct PlannerState {
@@ -277,6 +305,7 @@ pub struct PlannerState {
   catalogue_query : String
   picker : PickerTarget?
   settings_open : Bool
+  override_form : OverrideDraft?
   custom_form : CustomCourseDraft?
   custom_course_ids : Array[@tanikun-domain.CourseId]
   next_custom_course_number : Int
@@ -323,6 +352,7 @@ pub fn PlannerState::new(
     catalogue_query: "",
     picker: None,
     settings_open: false,
+    override_form: None,
     custom_form: None,
     custom_course_ids: [],
     next_custom_course_number: 1,
@@ -376,6 +406,15 @@ pub(all) enum EnrollmentStatusTarget {
 }
 
 ///|
+/// Returns the enrollment for an offering, if it is enrolled.
+pub fn PlannerState::enrollment_for(
+  self : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+) -> @tanikun-domain.Enrollment? {
+  find_enrollment(self.enrollments, offering_id)
+}
+
+///|
 /// Returns the current status for an offering, if it is enrolled.
 pub fn PlannerState::enrollment_status(
   self : PlannerState,
@@ -426,6 +465,14 @@ pub(all) enum PlannerMsg {
   )
   OpenSettings
   CloseSettings
+  OpenOverrideEditor(offering_id~ : @tanikun-domain.OfferingId)
+  CloseOverrideEditor
+  UpdateOverrideField(field~ : OverrideField, value~ : String)
+  UpdateOverrideDay(value~ : String)
+  UpdateOverridePeriod(value~ : String)
+  ToggleOverrideSlots
+  RemoveAllOverrides
+  SubmitOverride
   OpenCustomCourseForm
   CloseCustomCourseForm
   UpdateCustomCourseField(field~ : CustomCourseField, value~ : String)
@@ -479,16 +526,37 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         settings_open: true,
         picker: None,
         selected_offering: None,
+        override_form: None,
         custom_form: None,
         error: None,
       })
     CloseSettings => bump({ ..state, settings_open: false, error: None, })
+    OpenOverrideEditor(offering_id~) => open_override_editor(state, offering_id)
+    CloseOverrideEditor =>
+      match state.override_form {
+        Some(form) =>
+          bump({
+            ..state,
+            override_form: None,
+            selected_offering: Some(form.offering_id),
+            error: None,
+          })
+        None => state
+      }
+    UpdateOverrideField(field~, value~) =>
+      update_override_field(state, field, value)
+    UpdateOverrideDay(value~) => update_override_day(state, value)
+    UpdateOverridePeriod(value~) => update_override_period(state, value)
+    ToggleOverrideSlots => toggle_override_slots(state)
+    RemoveAllOverrides => remove_all_overrides(state)
+    SubmitOverride => submit_override(state)
     OpenCustomCourseForm =>
       bump({
         ..state,
         custom_form: Some(new_custom_course_draft(state)),
         picker: None,
         selected_offering: None,
+        override_form: None,
         error: None,
       })
     CloseCustomCourseForm => {
@@ -616,31 +684,47 @@ fn offering_occupies_term(
 }
 
 ///|
-fn find_slot_conflict(
+fn find_slot_conflict_with_overrides(
   state : PlannerState,
   offering : @tanikun-domain.CourseOffering,
+  overrides : @tanikun-domain.Overrides,
+  excluded_offering : @tanikun-domain.OfferingId?,
 ) -> @tanikun-domain.Slot? {
-  let slots = offering.slots()
+  let slots = effective_slots_or(offering, overrides)
   for planner_term in PlannerTerm::values() {
     if offering_occupies_term(offering, planner_term) {
       for enrollment in state.enrollments {
-        match find_offering(state.offerings, enrollment.offering_id) {
-          Some(other) =>
-            if offering_occupies_term(other, planner_term) {
-              for slot in slots {
-                for other_slot in other.slots() {
-                  if slot == other_slot {
-                    return Some(slot)
+        let excluded = match excluded_offering {
+          Some(id) => enrollment.offering_id == id
+          None => false
+        }
+        if !excluded {
+          match find_offering(state.offerings, enrollment.offering_id) {
+            Some(other) =>
+              if offering_occupies_term(other, planner_term) {
+                for slot in slots {
+                  for other_slot in effective_slots_or(other, overrides) {
+                    if slot == other_slot {
+                      return Some(slot)
+                    }
                   }
                 }
               }
-            }
-          None => ()
+            None => ()
+          }
         }
       }
     }
   }
   None
+}
+
+///|
+fn find_slot_conflict(
+  state : PlannerState,
+  offering : @tanikun-domain.CourseOffering,
+) -> @tanikun-domain.Slot? {
+  find_slot_conflict_with_overrides(state, offering, state.overrides, None)
 }
 
 ///|
@@ -729,6 +813,496 @@ fn update_enrollment_status(
     }
   }
   bump({ ..state, enrollments, error: None, })
+}
+
+///|
+fn find_enrollment(
+  enrollments : Array[@tanikun-domain.Enrollment],
+  id : @tanikun-domain.OfferingId,
+) -> @tanikun-domain.Enrollment? {
+  for enrollment in enrollments {
+    if enrollment.offering_id == id {
+      return Some(enrollment)
+    }
+  }
+  None
+}
+
+///|
+fn effective_slots_or(
+  offering : @tanikun-domain.CourseOffering,
+  overrides : @tanikun-domain.Overrides,
+) -> Array[@tanikun-domain.Slot] {
+  match @tanikun-domain.effective_slots(offering, overrides) {
+    Ok(slots) => slots
+    Err(_) => offering.slots()
+  }
+}
+
+///|
+fn override_supports_slots(offering : @tanikun-domain.CourseOffering) -> Bool {
+  match offering.schedule() {
+    @tanikun-domain.OfferingSchedule::Intensive(_) => false
+    _ => true
+  }
+}
+
+///|
+fn default_override_slot(
+  offering : @tanikun-domain.CourseOffering,
+) -> (String, String) {
+  let slots = offering.slots()
+  if slots.is_empty() {
+    ("1", "4")
+  } else {
+    (custom_day_value(slots[0].day), "\{slots[0].period.value()}")
+  }
+}
+
+///|
+fn open_override_editor(
+  state : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+) -> PlannerState {
+  let offering = match find_offering(state.offerings, offering_id) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        TimetableError::UnknownOffering(offering_id~).to_ui(),
+      )
+  }
+  let course = match find_course(state.catalogue, offering.course_id) {
+    Some(value) => value
+    None =>
+      return with_error(
+        state,
+        UiError::new(
+          UiErrorTarget::Course(course_id=offering.course_id),
+          UiErrorKind::DomainValidation,
+          "科目が見つかりません",
+        ),
+      )
+  }
+  let name = match
+    state.overrides.find(
+      @tanikun-domain.OverrideTarget::Course(course.id),
+      @tanikun-domain.OverrideAttribute::DisplayName,
+    ) {
+    Some(entry) =>
+      match entry.text() {
+        Some(value) => value
+        None => ""
+      }
+    None => ""
+  }
+  let credits = match
+    state.overrides.find(
+      @tanikun-domain.OverrideTarget::Course(course.id),
+      @tanikun-domain.OverrideAttribute::Credits,
+    ) {
+    Some(entry) =>
+      match entry.credits() {
+        Some(value) => "\{value.half_units()}"
+        None => ""
+      }
+    None => ""
+  }
+  let (default_day, default_period) = default_override_slot(offering)
+  let (slots_enabled, day, period) = match
+    state.overrides.find(
+      @tanikun-domain.OverrideTarget::Offering(offering.id),
+      @tanikun-domain.OverrideAttribute::Slots,
+    ) {
+    Some(entry) =>
+      match entry.slots() {
+        Some(slots) =>
+          if slots.is_empty() {
+            (false, default_day, default_period)
+          } else {
+            (true, custom_day_value(slots[0].day), "\{slots[0].period.value()}")
+          }
+        None => (false, default_day, default_period)
+      }
+    None => (false, default_day, default_period)
+  }
+  let form : OverrideDraft = {
+    offering_id: offering.id,
+    course_id: course.id,
+    name,
+    credits,
+    slots_enabled,
+    supports_slots: override_supports_slots(offering),
+    day,
+    period,
+    error_field: None,
+    error_message: "",
+  }
+  bump({
+    ..state,
+    override_form: Some(form),
+    selected_offering: None,
+    picker: None,
+    custom_form: None,
+    settings_open: false,
+    error: None,
+  })
+}
+
+///|
+fn update_override_field(
+  state : PlannerState,
+  field : OverrideField,
+  value : String,
+) -> PlannerState {
+  match state.override_form {
+    None => state
+    Some(form) => {
+      let next = match field {
+        Name => { ..form, name: value, }
+        Credits => { ..form, credits: value, }
+        _ => form
+      }
+      bump({
+        ..state,
+        override_form: Some({ ..next, error_field: None, error_message: "", }),
+        error: None,
+      })
+    }
+  }
+}
+
+///|
+fn update_override_day(state : PlannerState, value : String) -> PlannerState {
+  match state.override_form {
+    None => state
+    Some(form) =>
+      bump({
+        ..state,
+        override_form: Some({
+          ..form,
+          day: value,
+          error_field: None,
+          error_message: "",
+        }),
+        error: None,
+      })
+  }
+}
+
+///|
+fn update_override_period(state : PlannerState, value : String) -> PlannerState {
+  match state.override_form {
+    None => state
+    Some(form) =>
+      bump({
+        ..state,
+        override_form: Some({
+          ..form,
+          period: value,
+          error_field: None,
+          error_message: "",
+        }),
+        error: None,
+      })
+  }
+}
+
+///|
+fn toggle_override_slots(state : PlannerState) -> PlannerState {
+  match state.override_form {
+    None => state
+    Some(form) =>
+      if !form.supports_slots {
+        state
+      } else {
+        bump({
+          ..state,
+          override_form: Some({
+            ..form,
+            slots_enabled: !form.slots_enabled,
+            error_field: None,
+            error_message: "",
+          }),
+          error: None,
+        })
+      }
+  }
+}
+
+///|
+fn override_form_error(
+  state : PlannerState,
+  form : OverrideDraft,
+  field : OverrideField,
+  message : String,
+) -> PlannerState {
+  bump({
+    ..state,
+    override_form: Some({
+      ..form,
+      error_field: Some(field),
+      error_message: message,
+    }),
+  })
+}
+
+///|
+fn override_entry_kept(
+  entry : @tanikun-domain.Override,
+  form : OverrideDraft,
+) -> Bool {
+  match entry.target {
+    @tanikun-domain.OverrideTarget::Course(course_id) =>
+      if course_id == form.course_id {
+        match entry.attribute {
+          @tanikun-domain.OverrideAttribute::DisplayName => false
+          @tanikun-domain.OverrideAttribute::Credits => false
+          @tanikun-domain.OverrideAttribute::Slots => true
+        }
+      } else {
+        true
+      }
+    @tanikun-domain.OverrideTarget::Offering(offering_id) =>
+      if offering_id == form.offering_id {
+        match entry.attribute {
+          @tanikun-domain.OverrideAttribute::Slots => false
+          _ => true
+        }
+      } else {
+        true
+      }
+  }
+}
+
+///|
+fn remove_all_overrides(state : PlannerState) -> PlannerState {
+  match state.override_form {
+    None => state
+    Some(form) => {
+      let entries : Array[@tanikun-domain.Override] = []
+      for entry in state.overrides.entries() {
+        if override_entry_kept(entry, form) {
+          entries.push(entry)
+        }
+      }
+      let overrides = match @tanikun-domain.Overrides::new(entries) {
+        Ok(value) => value
+        Err(error) =>
+          return override_form_error(
+            state,
+            form,
+            General,
+            UiError::from_domain(
+              error,
+              UiErrorTarget::Offering(offering_id=form.offering_id),
+            ).message,
+          )
+      }
+      bump({
+        ..state,
+        overrides,
+        override_form: None,
+        selected_offering: Some(form.offering_id),
+        error: None,
+      })
+    }
+  }
+}
+
+///|
+fn submit_override(state : PlannerState) -> PlannerState {
+  let form = match state.override_form {
+    Some(value) => value
+    None => return state
+  }
+  let offering = match find_offering(state.offerings, form.offering_id) {
+    Some(value) => value
+    None =>
+      return override_form_error(
+        state,
+        form,
+        General,
+        "開講が見つかりません",
+      )
+  }
+  let entries : Array[@tanikun-domain.Override] = []
+  for entry in state.overrides.entries() {
+    if override_entry_kept(entry, form) {
+      entries.push(entry)
+    }
+  }
+  if !form.name.is_empty() {
+    match
+      @tanikun-domain.Override::new(
+        @tanikun-domain.OverrideTarget::Course(form.course_id),
+        @tanikun-domain.OverrideAttribute::DisplayName,
+        @tanikun-domain.OverrideValue::Text(form.name),
+      ) {
+      Ok(value) => entries.push(value)
+      Err(error) =>
+        return override_form_error(
+          state,
+          form,
+          Name,
+          UiError::from_domain(
+            error,
+            UiErrorTarget::Course(course_id=form.course_id),
+          ).message,
+        )
+    }
+  }
+  if !form.credits.is_empty() {
+    let half_units = match option_int(form.credits, 1, 20) {
+      Some(value) => value
+      None =>
+        return override_form_error(
+          state,
+          form,
+          Credits,
+          "単位数が正しくありません",
+        )
+    }
+    let credits = match @tanikun-domain.Credits::new(half_units) {
+      Ok(value) => value
+      Err(_) =>
+        return override_form_error(
+          state,
+          form,
+          Credits,
+          "単位数が正しくありません",
+        )
+    }
+    match
+      @tanikun-domain.Override::new(
+        @tanikun-domain.OverrideTarget::Course(form.course_id),
+        @tanikun-domain.OverrideAttribute::Credits,
+        @tanikun-domain.OverrideValue::Credits(credits),
+      ) {
+      Ok(value) => entries.push(value)
+      Err(error) =>
+        return override_form_error(
+          state,
+          form,
+          Credits,
+          UiError::from_domain(
+            error,
+            UiErrorTarget::Course(course_id=form.course_id),
+          ).message,
+        )
+    }
+  }
+  if form.slots_enabled {
+    if !form.supports_slots {
+      return override_form_error(
+        state,
+        form,
+        Slots,
+        "この開講では曜限を変更できません",
+      )
+    }
+    let day = match custom_day(form.day) {
+      Some(value) => value
+      None =>
+        return override_form_error(
+          state,
+          form,
+          Slots,
+          "曜日を選択してください",
+        )
+    }
+    let period = match option_int(form.period, 1, 10) {
+      Some(value) => value
+      None =>
+        return override_form_error(
+          state,
+          form,
+          Slots,
+          "時限を選択してください",
+        )
+    }
+    let period = match @tanikun-domain.Period::new(period) {
+      Ok(value) => value
+      Err(_) =>
+        return override_form_error(
+          state,
+          form,
+          Slots,
+          "時限を選択してください",
+        )
+    }
+    match
+      @tanikun-domain.Override::new(
+        @tanikun-domain.OverrideTarget::Offering(form.offering_id),
+        @tanikun-domain.OverrideAttribute::Slots,
+        @tanikun-domain.OverrideValue::Slots([
+          @tanikun-domain.Slot::new(day, period),
+        ]),
+      ) {
+      Ok(value) => entries.push(value)
+      Err(error) =>
+        return override_form_error(
+          state,
+          form,
+          Slots,
+          UiError::from_domain(
+            error,
+            UiErrorTarget::Offering(offering_id=form.offering_id),
+          ).message,
+        )
+    }
+  }
+  let overrides = match @tanikun-domain.Overrides::new(entries) {
+    Ok(value) => value
+    Err(error) =>
+      return override_form_error(
+        state,
+        form,
+        General,
+        UiError::from_domain(
+          error,
+          UiErrorTarget::Offering(offering_id=form.offering_id),
+        ).message,
+      )
+  }
+  match @tanikun-domain.effective_slots(offering, overrides) {
+    Ok(_) => ()
+    Err(error) =>
+      return override_form_error(
+        state,
+        form,
+        Slots,
+        UiError::from_domain(
+          error,
+          UiErrorTarget::Offering(offering_id=form.offering_id),
+        ).message,
+      )
+  }
+  if has_enrollment(state.enrollments, form.offering_id) {
+    match
+      find_slot_conflict_with_overrides(
+        state,
+        offering,
+        overrides,
+        Some(form.offering_id),
+      ) {
+      Some(_) =>
+        return override_form_error(
+          state,
+          form,
+          Slots,
+          "他の履修と曜限が重複しています",
+        )
+      None => ()
+    }
+  }
+  bump({
+    ..state,
+    overrides,
+    override_form: None,
+    selected_offering: Some(form.offering_id),
+    error: None,
+  })
 }
 
 ///|
@@ -1386,29 +1960,12 @@ fn find_slot_conflict_excluding(
   offering : @tanikun-domain.CourseOffering,
   excluded_offering : @tanikun-domain.OfferingId,
 ) -> @tanikun-domain.Slot? {
-  let slots = offering.slots()
-  for planner_term in PlannerTerm::values() {
-    if offering_occupies_term(offering, planner_term) {
-      for enrollment in state.enrollments {
-        if enrollment.offering_id != excluded_offering {
-          match find_offering(state.offerings, enrollment.offering_id) {
-            Some(other) =>
-              if offering_occupies_term(other, planner_term) {
-                for slot in slots {
-                  for other_slot in other.slots() {
-                    if slot == other_slot {
-                      return Some(slot)
-                    }
-                  }
-                }
-              }
-            None => ()
-          }
-        }
-      }
-    }
-  }
-  None
+  find_slot_conflict_with_overrides(
+    state,
+    offering,
+    state.overrides,
+    Some(excluded_offering),
+  )
 }
 
 ///|
@@ -1518,6 +2075,42 @@ pub fn find_course(
 }
 
 ///|
+/// Effective values for the course detail popup.
+pub struct OfferingDisplay {
+  name : String
+  credits : @tanikun-domain.Credits
+  slots : Array[@tanikun-domain.Slot]
+}
+
+///|
+pub fn PlannerState::offering_display(
+  self : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+) -> OfferingDisplay? {
+  let offering = match find_offering(self.offerings, offering_id) {
+    Some(value) => value
+    None => return None
+  }
+  let course = match find_course(self.catalogue, offering.course_id) {
+    Some(value) => value
+    None => return None
+  }
+  let (name, credits) = match self.enrollment_for(offering_id) {
+    Some(enrollment) =>
+      (
+        @tanikun-domain.effective_name(enrollment, course, self.overrides),
+        @tanikun-domain.effective_credits(enrollment, course, self.overrides),
+      )
+    None =>
+      (
+        @tanikun-domain.effective_course_name(course, self.overrides),
+        @tanikun-domain.effective_course_credits(course, self.overrides),
+      )
+  }
+  Some({ name, credits, slots: effective_slots_or(offering, self.overrides), })
+}
+
+///|
 pub fn PlannerState::catalogue_entries(
   self : PlannerState,
   term : PlannerTerm,
@@ -1527,20 +2120,28 @@ pub fn PlannerState::catalogue_entries(
     if offering_occupies_term(offering, term) &&
       offering.status == @tanikun-domain.OfferingStatus::Offered {
       match find_course(self.catalogue, offering.course_id) {
-        Some(course) =>
+        Some(course) => {
+          let name = @tanikun-domain.effective_course_name(
+            course,
+            self.overrides,
+          )
           if self.catalogue_query.is_empty() ||
-            course.name.contains(self.catalogue_query) {
+            name.contains(self.catalogue_query) {
             entries.push({
               offering_id: offering.id,
               course_id: course.id,
-              course_name: course.name,
-              credits: course.credits,
+              course_name: name,
+              credits: @tanikun-domain.effective_course_credits(
+                course,
+                self.overrides,
+              ),
               schedule: offering.schedule(),
-              slots: offering.slots(),
+              slots: effective_slots_or(offering, self.overrides),
               enrolled: has_enrollment(self.enrollments, offering.id),
               custom: self.is_custom_course(course.id),
             })
           }
+        }
         None => ()
       }
     }
@@ -1592,10 +2193,14 @@ pub fn PlannerState::scheduled_blocks(
         if offering_occupies_term(offering, term) {
           match find_course(self.catalogue, offering.course_id) {
             Some(course) =>
-              for slot in offering.slots() {
+              for slot in effective_slots_or(offering, self.overrides) {
                 blocks.push({
                   offering_id: offering.id,
-                  course_name: course.name,
+                  course_name: @tanikun-domain.effective_name(
+                    enrollment,
+                    course,
+                    self.overrides,
+                  ),
                   day: slot.day,
                   period: slot.period,
                   status: enrollment.status,
@@ -1626,8 +2231,16 @@ pub fn PlannerState::off_grid_entries(
                 Some(course) =>
                   entries.push({
                     offering_id: offering.id,
-                    course_name: course.name,
-                    credits: course.credits,
+                    course_name: @tanikun-domain.effective_name(
+                      enrollment,
+                      course,
+                      self.overrides,
+                    ),
+                    credits: @tanikun-domain.effective_credits(
+                      enrollment,
+                      course,
+                      self.overrides,
+                    ),
                     status: enrollment.status,
                   })
                 None => ()
