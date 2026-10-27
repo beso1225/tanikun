@@ -1294,6 +1294,12 @@ test "a slots override moves the scheduled block" {
   assert_true(block.day == @tanikun-domain.DayOfWeek::Tuesday)
   assert_eq(block.period.value(), 4)
   assert_eq(state.overrides.len(), 1)
+  let display = match state.offering_display(id) {
+    Some(value) => value
+    None => fail("expected an offering display")
+  }
+  assert_true(display.slots[0].day == @tanikun-domain.DayOfWeek::Tuesday)
+  assert_eq(display.slots[0].period.value(), 4)
   let state = open_override_form(state, id)
   let state = @app.update_planner(state, @app.PlannerMsg::ToggleOverrideSlots)
   let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
@@ -1395,4 +1401,19 @@ test "a later override does not change a frozen pass display" {
     Err(_) => fail("expected credit totals")
   }
   assert_eq(totals.confirmed.half_units(), 4)
+}
+
+///|
+test "offering display exposes master values before an override" {
+  let state = planner_state()
+  let display = match
+    state.offering_display(planner_offering_id("offering-1")) {
+    Some(value) => value
+    None => fail("expected an offering display")
+  }
+  assert_eq(display.name, "Physics")
+  assert_eq(display.credits.half_units(), 4)
+  assert_eq(display.slots.length(), 1)
+  assert_true(display.slots[0].day == @tanikun-domain.DayOfWeek::Monday)
+  assert_eq(display.slots[0].period.value(), 1)
 }
