@@ -17,7 +17,7 @@ assert.ok(core, "run this test in `nix develop` so PLAYWRIGHT_CORE is set");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
 
 test(
-  "built page renders the five-term planner and resizes",
+  "built page renders the semester planner and resizes",
   { timeout: 60_000 },
   async (t) => {
     const { server, origin } = await startStaticServer(dist);
@@ -133,7 +133,7 @@ test(
     await page.waitForFunction(
       () =>
         document.querySelector("#requirement-summary")?.textContent ===
-        "要件（確定＋履修中＋履修予定）: あと少し",
+        "要件（確定＋履修中＋履修予定）: 不足",
     );
     assert.equal(
       await page.locator("#program-select").inputValue(),
@@ -163,7 +163,7 @@ test(
       () =>
         document.querySelector("#year-select")?.value === "2025" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件（確定＋履修中＋履修予定）: あと少し",
+          "要件（確定＋履修中＋履修予定）: 不足",
     );
     await page.locator("#year-select").selectOption("2026");
     await page.waitForFunction(
@@ -189,7 +189,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /2単位 · S1 · 月1/,
+      /2単位 · 区分 基礎物理 · S1 · 月1/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -471,7 +471,7 @@ test(
     assert.deepEqual(await auditAccessibility(page), []);
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /2単位 · S2 · 火2/,
+      /2単位 · 区分 基礎物理 · S2 · 火2/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -544,7 +544,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /1単位 · 集中 W · 曜限なし/,
+      /1単位 · 区分 演習 · 集中 W · 曜限なし/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -569,7 +569,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /2単位 · S1 · 月1/,
+      /2単位 · 区分 基礎物理 · S1 · 月1/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -1063,6 +1063,7 @@ test(
       await page.locator("#open-custom-course").click();
       await page.locator("#custom-course").waitFor();
       await page.locator("#custom-name").fill("Linearity");
+      await page.locator("#custom-category").selectOption("lab");
       await page.locator("#custom-submit").click();
       await page.locator("#picker").waitFor();
       await page.locator("#add-offering-user-offering-1").click();
@@ -1073,6 +1074,19 @@ test(
         .getByText("Linearity", { exact: true })
         .waitFor();
       await assertSummaryTotals(page, "2単位", "2単位", "9単位");
+      await page
+        .locator("#timetable")
+        .getByText("Linearity", { exact: true })
+        .click();
+      await page.locator("#course-detail-dialog").waitFor();
+      assert.match(
+        await page.locator("#course-detail-dialog").innerText(),
+        /区分 実験/,
+      );
+      await page.locator("#close-detail").click();
+      await page
+        .locator("#course-detail-dialog")
+        .waitFor({ state: "detached" });
 
       await page
         .locator("#timetable")

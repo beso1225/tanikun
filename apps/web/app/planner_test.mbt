@@ -114,6 +114,7 @@ fn planner_state() -> @app.PlannerState raise Error {
     @tanikun-domain.Overrides::empty(),
     @tanikun-domain.AcademicProfile::new(program, year),
     requirement_sets,
+    [],
   )
 }
 
@@ -818,6 +819,7 @@ test "a later override does not change a frozen pass snapshot" {
     overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let snapshot = match state.enrollments[0].snapshot() {
     Some(snapshot) => snapshot
@@ -1583,6 +1585,7 @@ test "a program switch keeps the current year when the target program has it" {
     base.overrides,
     base.profile,
     sets,
+    [],
   )
   let state = @app.update_planner(
     state,
@@ -1786,6 +1789,7 @@ test "slot conflicts ignore enrollments from another academic year" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let state = @app.update_planner(
     state,
@@ -1834,6 +1838,9 @@ test "planner summary exposes credits, categories, and requirement status" {
     @tanikun-requirements.Satisfaction::Satisfied,
   )
   assert_eq(summary.requirement_root.label, "すべての要件")
+  assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
+  assert_eq(summary.requirement_root.standard.status_label(), "不足")
+  assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
   assert_eq(
     summary.requirement_root.optimistic.progress,
     "子要件 2 / 2件（部分 0）",
@@ -1880,6 +1887,7 @@ test "planner summary reports invalid input" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   match state.planner_summary() {
     Err(_) => ()
@@ -2057,6 +2065,7 @@ test "frozen passed slots drive conflict checks in both directions" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let frozen_state = @app.update_planner(
     frozen_state,
@@ -2084,6 +2093,7 @@ test "frozen passed slots drive conflict checks in both directions" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let ghost_state = @app.update_planner(
     ghost_state,
@@ -2096,4 +2106,46 @@ test "frozen passed slots drive conflict checks in both directions" {
     Some(_) => fail("overridden ghost slot should remain free")
   }
   assert_eq(ghost_state.enrollments.length(), 2)
+}
+
+///|
+test "a custom course can be assigned to a requirement category" {
+  let state = @app.sample_state()
+  let before = match state.planner_summary() {
+    Ok(value) => {
+      let mut total = 0
+      for category in value.categories {
+        if category.name == "実験" {
+          total = category.optimistic.half_units()
+        }
+      }
+      total
+    }
+    Err(_) => fail("expected a summary")
+  }
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, "Lab Custom")
+  let state = update_custom(state, @app.CustomCourseField::Category, "lab")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_eq(state.custom_categories.length(), 1)
+  let course_id = state.catalogue[state.catalogue.length() - 1].id
+  assert_eq(state.category_name_for(course_id), Some("実験"))
+  let offering_id = state.offerings[state.offerings.length() - 1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  let after = match state.planner_summary() {
+    Ok(value) => {
+      let mut total = 0
+      for category in value.categories {
+        if category.name == "実験" {
+          total = category.optimistic.half_units()
+        }
+      }
+      total
+    }
+    Err(_) => fail("expected a summary")
+  }
+  assert_eq(after, before + 4)
 }

@@ -225,6 +225,7 @@ pub fn TimetableError::to_ui(self : TimetableError) -> UiError {
 pub(all) enum CustomCourseField {
   Name
   Credits
+  Category
   Year
   Schedule
   Term
@@ -252,6 +253,7 @@ pub extend CustomCourseSchedule with Eq::{not_equal, equal}
 pub struct CustomCourseDraft {
   name : String
   credits : String
+  category : String
   academic_year : String
   schedule : CustomCourseSchedule
   term : String
@@ -359,6 +361,9 @@ pub struct PlannerState {
   override_form : OverrideDraft?
   custom_form : CustomCourseDraft?
   custom_course_ids : Array[@tanikun-domain.CourseId]
+  custom_categories : Array[
+    (@tanikun-domain.CourseId, @tanikun-domain.CategoryId),
+  ]
   next_custom_course_number : Int
   visible_days : Int
   visible_periods : Int
@@ -385,6 +390,9 @@ pub fn PlannerState::new(
   requirement_sets : @tanikun-requirements.RequirementSets[
     @tanikun-requirements.Rule,
   ],
+  custom_categories : Array[
+    (@tanikun-domain.CourseId, @tanikun-domain.CategoryId),
+  ],
 ) -> PlannerState {
   {
     catalogue: catalogue.copy(),
@@ -404,6 +412,7 @@ pub fn PlannerState::new(
     override_form: None,
     custom_form: None,
     custom_course_ids: [],
+    custom_categories,
     next_custom_course_number: 1,
     visible_days: 5,
     visible_periods: 6,
@@ -426,6 +435,7 @@ pub struct RequirementMode {
   satisfaction : @tanikun-requirements.Satisfaction
   progress : String
   remaining : String
+  unit : String
   done : Int
   total : Int
 }
@@ -434,8 +444,8 @@ pub struct RequirementMode {
 pub fn RequirementMode::status_label(self : RequirementMode) -> String {
   match self.satisfaction {
     @tanikun-requirements.Satisfaction::Satisfied => "達成"
-    @tanikun-requirements.Satisfaction::Partial => "あと少し"
-    @tanikun-requirements.Satisfaction::Unsatisfied => "未達"
+    @tanikun-requirements.Satisfaction::Partial => "不足"
+    @tanikun-requirements.Satisfaction::Unsatisfied => "不足"
   }
 }
 
@@ -528,6 +538,11 @@ fn requirement_mode(
     satisfaction: result.satisfaction,
     progress: progress_label(result.progress),
     remaining: remaining_label(result.progress),
+    unit: match result.progress {
+      @tanikun-requirements.Progress::Credits(..) => "単位"
+      @tanikun-requirements.Progress::Courses(..) => "科目"
+      @tanikun-requirements.Progress::Children(..) => "件"
+    },
     done,
     total,
   }
@@ -608,7 +623,7 @@ pub struct PlannerSummary {
 pub fn PlannerState::planner_summary(
   self : PlannerState,
 ) -> Result[PlannerSummary, @tanikun-domain.DomainError] {
-  let requirement_set = match self.active_requirement_set() {
+  let requirement_set = match self.effective_requirement_set() {
     Some(value) => value
     None =>
       return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
@@ -663,13 +678,90 @@ pub fn PlannerState::active_requirement_set(
 }
 
 ///|
+/// The active set with custom course category assignments merged in.
+pub fn PlannerState::effective_requirement_set(
+  self : PlannerState,
+) -> @tanikun-requirements.RequirementSet[@tanikun-requirements.Rule]? {
+  let base = match self.active_requirement_set() {
+    Some(value) => value
+    None => return None
+  }
+  let categories = base.categories()
+  let assignments = []
+  for assignment in base.assignments() {
+    let mut replaced = false
+    for custom in self.custom_categories {
+      if assignment.0 == custom.0 {
+        replaced = true
+      }
+    }
+    if !replaced {
+      assignments.push(assignment)
+    }
+  }
+  for custom in self.custom_categories {
+    let mut known = false
+    for category in categories {
+      if category.id == custom.1 {
+        known = true
+      }
+    }
+    if known {
+      assignments.push(custom)
+    }
+  }
+  match
+    @tanikun-requirements.RequirementSet::new(
+      base.key,
+      categories,
+      assignments,
+      base.rule(),
+    ) {
+    Ok(value) => Some(value)
+    Err(_) => None
+  }
+}
+
+///|
+pub fn PlannerState::category_id_for_course(
+  self : PlannerState,
+  course_id : @tanikun-domain.CourseId,
+) -> @tanikun-domain.CategoryId? {
+  match self.effective_requirement_set() {
+    Some(value) => value.category_for(course_id)
+    None => None
+  }
+}
+
+///|
+pub fn PlannerState::category_name_for(
+  self : PlannerState,
+  course_id : @tanikun-domain.CourseId,
+) -> String? {
+  let set = match self.effective_requirement_set() {
+    Some(value) => value
+    None => return None
+  }
+  let category_id = match set.category_for(course_id) {
+    Some(value) => value
+    None => return None
+  }
+  for category in set.categories() {
+    if category.id == category_id {
+      return Some(category.name)
+    }
+  }
+  None
+}
+
+///|
 fn PlannerState::evaluation_input(
   self : PlannerState,
 ) -> Result[
   @tanikun-requirements.EvaluationInput[@tanikun-requirements.Rule],
   @tanikun-domain.DomainError,
 ] {
-  let requirement_set = match self.active_requirement_set() {
+  let requirement_set = match self.effective_requirement_set() {
     Some(value) => value
     None =>
       return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
@@ -1899,6 +1991,7 @@ fn new_custom_course_draft(state : PlannerState) -> CustomCourseDraft {
   let base : CustomCourseDraft = {
     name: "",
     credits: "4",
+    category: "",
     academic_year: "\{year}",
     schedule: CustomCourseSchedule::Regular,
     term: term_label,
@@ -1948,6 +2041,7 @@ fn update_custom_course_field(
       let next = match field {
         Name => { ..form, name: value, }
         Credits => { ..form, credits: value, }
+        Category => { ..form, category: value, }
         Year => { ..form, academic_year: value, }
         Schedule => {
           let schedule = match value {
@@ -2150,6 +2244,32 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
       "開講が見つかりません",
     )
   }
+  let category = if form.category.is_empty() {
+    None
+  } else {
+    let found = match state.active_requirement_set() {
+      Some(set) => {
+        let mut value = None
+        for item in set.categories() {
+          if item.id.value == form.category {
+            value = Some(item.id)
+          }
+        }
+        value
+      }
+      None => None
+    }
+    match found {
+      Some(value) => Some(value)
+      None =>
+        return custom_course_error(
+          state,
+          form,
+          Category,
+          "区分が正しくありません",
+        )
+    }
+  }
   let course = match
     @tanikun-domain.Course::new(
       course_id,
@@ -2318,6 +2438,16 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     offerings.push(offering)
     custom_course_ids.push(course.id)
   }
+  let custom_categories = []
+  for item in state.custom_categories {
+    if item.0 != course_id {
+      custom_categories.push(item)
+    }
+  }
+  match category {
+    Some(value) => custom_categories.push((course_id, value))
+    None => ()
+  }
   bump({
     ..state,
     catalogue,
@@ -2326,6 +2456,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     selected_offering: None,
     custom_form: None,
     custom_course_ids,
+    custom_categories,
     next_custom_course_number: if editing {
       state.next_custom_course_number
     } else {
@@ -2447,6 +2578,10 @@ fn open_edit_custom_course(
   let form : CustomCourseDraft = {
     name: course.name,
     credits: "\{course.credits.half_units()}",
+    category: match state.category_id_for_course(course.id) {
+      Some(value) => value.value
+      None => ""
+    },
     academic_year: "\{offering.academic_year.year()}",
     schedule,
     term,
@@ -2516,6 +2651,12 @@ fn delete_custom_course(
       custom_course_ids.push(id)
     }
   }
+  let custom_categories = []
+  for item in state.custom_categories {
+    if item.0 != course_id {
+      custom_categories.push(item)
+    }
+  }
   let picker = match state.custom_form {
     Some(form) => form.return_picker
     None => None
@@ -2525,6 +2666,7 @@ fn delete_custom_course(
     catalogue,
     offerings,
     custom_course_ids,
+    custom_categories,
     selected_offering: None,
     custom_form: None,
     picker,
@@ -2658,6 +2800,7 @@ pub fn PlannerState::undo_available(self : PlannerState) -> Bool {
 pub struct ScheduledBlock {
   offering_id : @tanikun-domain.OfferingId
   course_name : String
+  category_name : String
   day : @tanikun-domain.DayOfWeek
   period : @tanikun-domain.Period
   status : @tanikun-domain.EnrollmentStatus
@@ -2669,6 +2812,7 @@ pub struct CatalogueEntry {
   offering_id : @tanikun-domain.OfferingId
   course_id : @tanikun-domain.CourseId
   course_name : String
+  category_name : String
   credits : @tanikun-domain.Credits
   schedule : @tanikun-domain.OfferingSchedule
   slots : Array[@tanikun-domain.Slot]
@@ -2681,6 +2825,7 @@ pub struct CatalogueEntry {
 pub struct OffGridEntry {
   offering_id : @tanikun-domain.OfferingId
   course_name : String
+  category_name : String
   credits : @tanikun-domain.Credits
   status : @tanikun-domain.EnrollmentStatus
   winter : Bool
@@ -2704,6 +2849,7 @@ pub fn find_course(
 pub struct OfferingDisplay {
   name : String
   credits : @tanikun-domain.Credits
+  category_name : String
   slots : Array[@tanikun-domain.Slot]
 }
 
@@ -2741,7 +2887,14 @@ pub fn PlannerState::offering_display(
       }
     None => effective_slots_or(offering, self.overrides)
   }
-  Some({ name, credits, slots, })
+  Some({
+    name,
+    credits,
+    category_name: self
+    .category_name_for(offering.course_id)
+    .unwrap_or("未分類"),
+    slots,
+  })
 }
 
 ///|
@@ -2792,6 +2945,9 @@ pub fn PlannerState::catalogue_entries(
               offering_id: offering.id,
               course_id: course.id,
               course_name: name,
+              category_name: self
+              .category_name_for(course.id)
+              .unwrap_or("未分類"),
               credits,
               schedule: offering.schedule(),
               slots,
@@ -2865,6 +3021,9 @@ pub fn PlannerState::scheduled_blocks(
                     course,
                     self.overrides,
                   ),
+                  category_name: self
+                  .category_name_for(course.id)
+                  .unwrap_or("未分類"),
                   day: slot.day,
                   period: slot.period,
                   status: enrollment.status,
@@ -2902,6 +3061,9 @@ pub fn PlannerState::off_grid_entries(
                       course,
                       self.overrides,
                     ),
+                    category_name: self
+                    .category_name_for(course.id)
+                    .unwrap_or("未分類"),
                     credits: @tanikun-domain.effective_credits(
                       enrollment,
                       course,

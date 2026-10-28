@@ -2,7 +2,7 @@
 
 ## Sub-features
 
-- three projection labels: 確定, 確定＋履修中, 確定＋履修中＋履修予定
+- three cumulative projection labels: 確定, 確定＋履修中, 確定＋履修中＋履修予定
 - category credits and a requirement tree with all three projections
 - program and advancement-year selectors in the settings dialog
 - grade and timetable-year selector through the grade mapping
@@ -21,10 +21,10 @@ one stacked bar with `確定`, `確定＋履修中`, and `確定＋履修中＋�
 - read `#summary-total-confirmed`, `#summary-total-standard`,
   `#summary-total-optimistic`
 - read `#summary-categories` and `#summary-requirements`
-- assert one `[data-requirement-bar]` per requirement node and the labels
-  `確定`, `確定＋履修中`, and `確定＋履修中＋履修予定`
+- assert one `[data-requirement-bar]` per requirement node and the legend labels
+  `確定`, `履修中`, and `履修予定`
 - open `#open-settings`; select `#program-select` = `applied-chemistry` and
-  wait for `要件（確定＋履修中＋履修予定）: あと少し`
+  wait for `要件（確定＋履修中＋履修予定）: 不足`
 - select `#year-select` = `2025`, then restore `2026`
 - close with `#close-settings`
 - select `#grade-select` = `4` and wait for `#term-context` to include `2027年度`

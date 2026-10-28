@@ -720,7 +720,13 @@ fn timetable_grid(
                     class="block break-words text-[0.6875rem] font-medium leading-tight tracking-tight text-ink sm:text-sm",
                     block.course_name,
                   ),
-                  enrollment_status_badge(block.status),
+                  div(class="flex items-end justify-between gap-1", [
+                    span(
+                      class="truncate text-[0.625rem] leading-tight text-muted",
+                      block.category_name,
+                    ),
+                    enrollment_status_badge(block.status),
+                  ]),
                 ]),
               ),
             ],
@@ -783,10 +789,14 @@ fn off_grid_item(
     [
       div(class="min-w-0", [
         p(class="truncate text-sm font-medium text-ink", entry.course_name),
-        div(class="mt-0.5 flex items-center gap-2 text-xs text-muted", [
-          span("\{credits_label(entry.credits)}単位"),
-          enrollment_status_badge(entry.status),
-        ]),
+        div(
+          class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted",
+          [
+            span("\{credits_label(entry.credits)}単位"),
+            span("区分 \{entry.category_name}"),
+            enrollment_status_badge(entry.status),
+          ],
+        ),
       ]),
     ],
   )
@@ -919,7 +929,7 @@ fn picker_panel(
       let entries = state.picker_entries()
       let items : Array[Html] = []
       for entry in entries {
-        let detail = "\{credits_label(entry.credits)}単位 · \{schedule_label(entry.schedule)} · \{slots_label(entry.slots)}"
+        let detail = "\{credits_label(entry.credits)}単位 · 区分 \{entry.category_name} · \{schedule_label(entry.schedule)} · \{slots_label(entry.slots)}"
         let name_line : Array[Html] = [
           p(class="min-w-0 text-sm font-medium", entry.course_name),
         ]
@@ -1294,12 +1304,23 @@ fn course_detail(
           match @app.find_course(state.catalogue, offering.course_id) {
             None => div(([] : Array[Html]))
             Some(course) => {
-              let (display_name, display_credits, display_slots) = match
-                state.offering_display(offering_id) {
-                Some(value) => (value.name, value.credits, value.slots)
-                None => (course.name, course.credits, offering.slots())
+              let (
+                display_name,
+                display_credits,
+                display_category,
+                display_slots,
+              ) = match state.offering_display(offering_id) {
+                Some(value) =>
+                  (value.name, value.credits, value.category_name, value.slots)
+                None =>
+                  (
+                    course.name,
+                    course.credits,
+                    state.category_name_for(course.id).unwrap_or("未分類"),
+                    offering.slots(),
+                  )
               }
-              let detail = "\{credits_label(display_credits)}単位 · \{schedule_label(offering.schedule())} · \{slots_label(display_slots)}"
+              let detail = "\{credits_label(display_credits)}単位 · 区分 \{display_category} · \{schedule_label(offering.schedule())} · \{slots_label(display_slots)}"
               let current = state.enrollment_status(offering_id)
               let body : Array[Html] = [
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
@@ -1367,7 +1388,9 @@ fn summary_total_card(
 }
 
 ///|
-fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
+fn requirement_segment_values(
+  node : @app.RequirementNode,
+) -> (Int, Int, Int, Int) {
   let total = if node.optimistic.total > 0 { node.optimistic.total } else { 1 }
   let confirmed = if node.confirmed.done < 0 {
     0
@@ -1390,6 +1413,14 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
   } else {
     node.optimistic.done
   }
+  (total, confirmed, standard, optimistic)
+}
+
+///|
+fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
+  let (total, confirmed, standard, optimistic) = requirement_segment_values(
+    node,
+  )
   let confirmed_width = confirmed * 100 / total
   let standard_width = (standard - confirmed) * 100 / total
   let optimistic_width = (optimistic - standard) * 100 / total
@@ -1421,25 +1452,61 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
 }
 
 ///|
-fn summary_mode_info(
+fn requirement_segment_chip(
   label : String,
-  mode : @app.RequirementMode,
+  amount : Int,
+  unit : String,
   color_class : String,
 ) -> Html {
-  div(class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5", [
+  div(class="flex items-center gap-1 text-xs text-muted", [
     span(
       class="inline-block h-2 w-2 shrink-0 rounded-sm \{color_class}",
       ([] : Array[Html]),
     ),
-    span(class="text-xs font-medium text-muted", label),
-    span(class="text-xs font-medium", mode.status_label()),
-    span(class="text-xs text-muted", mode.progress),
-    if mode.remaining.is_empty() {
-      span(([] : Array[Html]))
-    } else {
-      span(class="text-xs text-muted", "・\{mode.remaining}")
-    },
+    span("\{label} \{amount}\{unit}"),
   ])
+}
+
+///|
+fn requirement_segment_legend(node : @app.RequirementNode) -> Html {
+  let (_, confirmed, standard, optimistic) = requirement_segment_values(node)
+  div(class="flex flex-wrap gap-x-3 gap-y-1", [
+    requirement_segment_chip(
+      "確定",
+      confirmed,
+      node.confirmed.unit,
+      "bg-primary",
+    ),
+    requirement_segment_chip(
+      "履修中",
+      standard - confirmed,
+      node.standard.unit,
+      "bg-primary/55",
+    ),
+    requirement_segment_chip(
+      "履修予定",
+      optimistic - standard,
+      node.optimistic.unit,
+      "bg-primary/25",
+    ),
+  ])
+}
+
+///|
+fn summary_mode_info(label : String, mode : @app.RequirementMode) -> Html {
+  div(
+    class="grid grid-cols-[minmax(0,1.3fr)_3.5rem_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-2 text-xs",
+    [
+      span(class="font-medium text-muted", label),
+      span(class="font-medium", mode.status_label()),
+      span(class="text-right text-muted", mode.progress),
+      if mode.remaining.is_empty() {
+        span(([] : Array[Html]))
+      } else {
+        span(class="text-right text-muted", mode.remaining)
+      },
+    ],
+  )
 }
 
 ///|
@@ -1451,14 +1518,11 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
   div(class="space-y-2 border-l border-rule/60 pl-3", [
     p(class="text-sm font-medium", node.label),
     requirement_stacked_bar(node),
+    requirement_segment_legend(node),
     div(class="space-y-1", [
-      summary_mode_info("確定", node.confirmed, "bg-primary"),
-      summary_mode_info("確定＋履修中", node.standard, "bg-primary/55"),
-      summary_mode_info(
-        "確定＋履修中＋履修予定",
-        node.optimistic,
-        "bg-primary/25",
-      ),
+      summary_mode_info("確定", node.confirmed),
+      summary_mode_info("確定＋履修中", node.standard),
+      summary_mode_info("確定＋履修中＋履修予定", node.optimistic),
     ]),
     if children.is_empty() {
       div(([] : Array[Html]))
@@ -1747,6 +1811,22 @@ fn custom_form_panel(
           ),
         )
       }
+      let category_options : Array[Html] = [
+        option(value="", selected=form.category.is_empty(), "未分類"),
+      ]
+      match state.active_requirement_set() {
+        Some(set) =>
+          for category in set.categories() {
+            category_options.push(
+              option(
+                value=category.id.value,
+                selected=form.category == category.id.value,
+                category.name,
+              ),
+            )
+          }
+        None => ()
+      }
       let term_options : Array[Html] = []
       if is_intensive {
         let semesters = [("S", "S"), ("A", "A"), ("W", "W")]
@@ -1921,6 +2001,31 @@ fn custom_form_panel(
                 year_options,
               ),
             ]),
+          ]),
+          div([
+            label(
+              for_="custom-category",
+              class="mb-1 block text-xs font-medium text-muted",
+              "区分",
+            ),
+            select(
+              id="custom-category",
+              class=custom_field_class(
+                form,
+                @app.CustomCourseField::Category,
+                "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
+              ),
+              attrs=custom_field_attrs(form, @app.CustomCourseField::Category),
+              on_change=fn(value) {
+                emit(
+                  @app.PlannerMsg::UpdateCustomCourseField(
+                    field=@app.CustomCourseField::Category,
+                    value~,
+                  ),
+                )
+              },
+              category_options,
+            ),
           ]),
           div([
             label(

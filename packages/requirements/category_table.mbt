@@ -73,6 +73,14 @@ fn contains_category(
 }
 
 ///|
+/// Returns a copy of the course-to-category assignments.
+pub fn CategoryTable::assignments(
+  self : CategoryTable,
+) -> Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)] {
+  self.assignments.copy()
+}
+
+///|
 /// Returns a copy of the assigned course IDs.
 pub fn CategoryTable::course_ids(
   self : CategoryTable,

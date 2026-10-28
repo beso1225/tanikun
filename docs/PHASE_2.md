@@ -120,6 +120,8 @@ These methods return fresh values:
 
 Effective display rules:
 
+- A course's category name comes from the effective requirement set, including
+  custom course assignments.
 - A non-passed enrollment uses current course and offering overrides.
 - A passed enrollment uses the frozen name and credits from its snapshot.
 - A passed enrollment's timetable and catalogue slots use the offering's stored
@@ -268,6 +270,11 @@ reused. Editing preserves ids. Deleting is allowed only when none of the
 course's offerings are enrolled. The next number is session-local; Phase 3
 persistence must replace it with a collision-safe allocator.
 
+The custom form may assign the course to one of the active requirement set's
+categories. The assignment is merged into the effective category table, so it
+affects category credits and display. `未分類` is the default. Deleting the
+custom course removes the assignment.
+
 ## Requirement profile and summary
 
 Available program and advancement-year choices come from
@@ -288,10 +295,11 @@ It shows:
 - the three totals and category credits;
 - one requirement tree with all three cumulative projections at every node;
 - rule labels, status labels, progress text, remaining text, and one stacked bar
-  with confirmed, in-progress, and planned segments.
+  with confirmed, in-progress, and planned segments;
+- a legend that labels the three bar segments `確定`, `履修中`, and `履修予定`.
 
-Requirement status labels are `達成`, `あと少し`, and `未達`; the rule labels do
-not repeat a status word. The optimistic result supplies the one-line
+Requirement status labels are `達成` and `不足`; the rule labels do not repeat a
+status word. The optimistic result supplies the one-line
 `要件（確定＋履修中＋履修予定）: ...` status in the summary header.
 
 Status and override changes are reflected on the next render because the summary
