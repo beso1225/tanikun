@@ -468,13 +468,17 @@ pub fn RequirementNode::status_label(self : RequirementNode) -> String {
 
 ///|
 fn requirement_label(rule : @tanikun-requirements.Rule) -> String {
-  if rule.children() is Some(_) {
+  if rule.is_all() {
+    "すべての要件を充足"
+  } else if rule.is_any() {
+    "いずれか1つ以上の要件"
+  } else if rule.children() is Some(_) {
     match rule.at_least_count() {
-      Some(count) => "\{count}科目以上の要件"
+      Some(count) => "子要件のうち\{count}件以上"
       None => "複合要件"
     }
   } else if rule.category_ids() is Some(_) {
-    "カテゴリ単位数"
+    "区分単位数"
   } else if rule.course_ids() is Some(_) {
     if rule.min_credits() is Some(_) {
       "科目群の単位数"

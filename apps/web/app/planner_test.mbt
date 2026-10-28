@@ -1824,11 +1824,11 @@ test "planner summary exposes credits, categories, and requirement status" {
     summary.requirement_root.satisfaction ==
     @tanikun-requirements.Satisfaction::Satisfied,
   )
-  assert_eq(summary.requirement_root.label, "複合要件")
+  assert_eq(summary.requirement_root.label, "すべての要件を充足")
   assert_eq(summary.requirement_root.progress, "充足 2 / 部分 0 / 全 2")
   assert_eq(summary.requirement_root.children.length(), 2)
   assert_eq(summary.requirement_root.children[0].label, "合計単位数")
-  assert_eq(summary.requirement_root.children[1].label, "カテゴリ単位数")
+  assert_eq(summary.requirement_root.children[1].label, "区分単位数")
 }
 
 ///|
@@ -1874,4 +1874,21 @@ test "planner summary reports invalid input" {
     Err(_) => ()
     Ok(_) => fail("expected invalid credit totals")
   }
+}
+
+///|
+test "a credits override updates the summary" {
+  let state = @app.sample_state()
+  let offering_id = planner_offering_id("phy101-s1")
+  let state = open_override_form(state, offering_id)
+  let state = update_override(state, @app.OverrideField::Credits, "6")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 0)
+  assert_eq(summary.standard.half_units(), 0)
+  assert_eq(summary.optimistic.half_units(), 14)
+  assert_eq(summary.categories[0].optimistic.half_units(), 6)
 }

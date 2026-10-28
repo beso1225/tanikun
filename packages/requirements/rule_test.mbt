@@ -307,3 +307,19 @@ test "rule reference errors sort by entity kind and id" {
     _ => fail("expected the high course error last")
   }
 }
+
+///|
+test "rule shape distinguishes all and any nodes" {
+  let total = expect_ok(
+    @tanikun-requirements.Rule::total_minimum(rule_threshold(2)),
+  )
+  let all = expect_ok(@tanikun-requirements.Rule::all([total, total]))
+  let any = expect_ok(@tanikun-requirements.Rule::any([total]))
+  let at_least = expect_ok(@tanikun-requirements.Rule::at_least(1, [total]))
+  assert_true(all.is_all())
+  assert_true(!all.is_any())
+  assert_true(any.is_any())
+  assert_true(!any.is_all())
+  assert_true(!at_least.is_all())
+  assert_true(!at_least.is_any())
+}
