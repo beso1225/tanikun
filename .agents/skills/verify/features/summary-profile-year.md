@@ -2,7 +2,7 @@
 
 ## Sub-features
 
-- three projection labels: 確定, 履修中まで, 履修予定まで
+- three projection labels: 確定, 確定＋履修中, 確定＋履修中＋履修予定
 - category credits and a requirement tree with all three projections
 - program and advancement-year selectors in the settings dialog
 - grade and timetable-year selector through the grade mapping
@@ -14,17 +14,17 @@
 Read the `単位・要件` panel below the timetable. Open `設定` and use the
 `プロファイル` selects there for program and advancement year. Use the
 `時間割` grade select for the displayed year. Every requirement node shows
-`確定`, `履修中まで`, and `履修予定まで` progress bars.
+one stacked bar with `確定`, `確定＋履修中`, and `確定＋履修中＋履修予定` segments.
 
 ## Driving it with Playwright
 
 - read `#summary-total-confirmed`, `#summary-total-standard`,
   `#summary-total-optimistic`
 - read `#summary-categories` and `#summary-requirements`
-- assert three `progress` bars per requirement node and the labels
-  `確定`, `履修中まで`, and `履修予定まで`
+- assert one `[data-requirement-bar]` per requirement node and the labels
+  `確定`, `確定＋履修中`, and `確定＋履修中＋履修予定`
 - open `#open-settings`; select `#program-select` = `applied-chemistry` and
-  wait for `要件: あと少し`
+  wait for `要件（確定＋履修中＋履修予定）: あと少し`
 - select `#year-select` = `2025`, then restore `2026`
 - close with `#close-settings`
 - select `#grade-select` = `4` and wait for `#term-context` to include `2027年度`

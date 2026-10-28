@@ -432,8 +432,11 @@ test "S and A intensives stay off-grid in their semester terms" {
   )
   assert_eq(state.off_grid_entries(@app.PlannerTerm::S1).length(), 1)
   assert_eq(state.off_grid_entries(@app.PlannerTerm::S2).length(), 1)
-  assert_eq(state.off_grid_entries(@app.PlannerTerm::A1).length(), 1)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::A1).length(), 2)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::A2).length(), 2)
   assert_eq(state.off_grid_entries(@app.PlannerTerm::W).length(), 1)
+  let winter = state.off_grid_entries(@app.PlannerTerm::A1)[1]
+  assert_true(winter.winter)
   assert_eq(state.scheduled_blocks(@app.PlannerTerm::S1).length(), 1)
 }
 

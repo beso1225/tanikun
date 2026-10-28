@@ -17,6 +17,13 @@ pub fn PlannerTerm::values() -> Array[PlannerTerm] {
 }
 
 ///|
+/// Terms exposed as sidebar tabs. W is shown inside the A semester's intensive
+/// section instead of as its own tab.
+pub fn PlannerTerm::display_values() -> Array[PlannerTerm] {
+  [S1, S2, A1, A2]
+}
+
+///|
 pub fn PlannerTerm::semester(self : PlannerTerm) -> @tanikun-domain.Semester {
   match self {
     S1 | S2 => @tanikun-domain.Semester::S
@@ -1031,6 +1038,22 @@ fn term_in_terms(
     }
   }
   false
+}
+
+///|
+fn offering_displayed_in_term(
+  offering : @tanikun-domain.CourseOffering,
+  planner_term : PlannerTerm,
+) -> Bool {
+  match offering.schedule() {
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      semester == planner_term.semester() ||
+      (
+        (planner_term == A1 || planner_term == A2) &&
+        semester == @tanikun-domain.Semester::W
+      )
+    _ => offering_occupies_term(offering, planner_term)
+  }
 }
 
 ///|
@@ -2551,7 +2574,7 @@ fn add_offering(
       ),
     )
   }
-  if !offering_occupies_term(offering, state.selected_term) {
+  if !offering_displayed_in_term(offering, state.selected_term) {
     return with_error(
       state,
       TimetableError::NotOfferedInTerm(offering_id=id).to_ui(),
@@ -2660,6 +2683,7 @@ pub struct OffGridEntry {
   course_name : String
   credits : @tanikun-domain.Credits
   status : @tanikun-domain.EnrollmentStatus
+  winter : Bool
 }
 
 ///|
@@ -2728,7 +2752,7 @@ pub fn PlannerState::catalogue_entries(
   let entries : Array[CatalogueEntry] = []
   for offering in self.offerings {
     if offering.academic_year == self.timetable_year.academic_year &&
-      offering_occupies_term(offering, term) &&
+      offering_displayed_in_term(offering, term) &&
       offering.status == @tanikun-domain.OfferingStatus::Offered {
       match find_course(self.catalogue, offering.course_id) {
         Some(course) => {
@@ -2866,9 +2890,9 @@ pub fn PlannerState::off_grid_entries(
     match find_offering(self.offerings, enrollment.offering_id) {
       Some(offering) =>
         if offering.academic_year == self.timetable_year.academic_year &&
-          offering_occupies_term(offering, term) {
+          offering_displayed_in_term(offering, term) {
           match offering.schedule() {
-            @tanikun-domain.OfferingSchedule::Intensive(_) =>
+            @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
               match find_course(self.catalogue, offering.course_id) {
                 Some(course) =>
                   entries.push({
@@ -2884,6 +2908,7 @@ pub fn PlannerState::off_grid_entries(
                       self.overrides,
                     ),
                     status: enrollment.status,
+                    winter: semester == @tanikun-domain.Semester::W,
                   })
                 None => ()
               }

@@ -2,7 +2,8 @@
 
 ## Sub-features
 
-- five term tabs: S1, S2, A1, A2, W
+- four sidebar term tabs: S1, S2, A1, A2
+- W intensives grouped under A1 and A2
 - five-to-seven weekday columns and six-to-ten period rows
 - scheduled course blocks with status badges
 - off-grid intensive entries
@@ -19,7 +20,7 @@ change visible days or periods.
 ## Driving it with Playwright
 
 - wait for `heading 応物単位くん`
-- assert `nav button` count is 5
+- assert `nav button` count is 4
 - click `#term-S2`, wait for `heading S2`, then click `#term-S1`
 - read `#timetable` and `#off-grid`
 - open `#open-settings`, change `#add-day` or `#add-period`, close with
@@ -29,7 +30,8 @@ change visible days or periods.
 
 ## Gotchas
 
-- W has no grid; `#timetable` is absent and the W message replaces it.
+- W has no sidebar tab and no weekday grid; its intensives appear under the
+  A1/A2 `W（冬期）` subsection.
 - The visible year is derived from the grade mapping; changes clear the selected
   offering and picker.
 - The initial sample has enrolled 2026 entries but no 2027 enrollments.

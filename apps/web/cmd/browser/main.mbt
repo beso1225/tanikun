@@ -17,7 +17,6 @@ using @html {
   nav,
   option,
   p,
-  progress,
   section,
   select,
   span,
@@ -291,7 +290,7 @@ fn term_section(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   let tabs : Array[Html] = []
-  for term in @app.PlannerTerm::values() {
+  for term in @app.PlannerTerm::display_values() {
     let selected = state.selected_term == term
     let class_name = if selected {
       "flex min-h-9 w-full items-center justify-center rounded-md bg-primary px-3 text-center text-sm font-medium text-white md:justify-start"
@@ -771,46 +770,80 @@ fn timetable_grid(
 }
 
 ///|
+fn off_grid_item(
+  entry : @app.OffGridEntry,
+  emit : Emit[@app.PlannerMsg],
+) -> Html {
+  button(
+    id="open-detail-\{entry.offering_id.value}",
+    class="flex min-h-12 w-full items-start justify-start rounded-lg bg-primary-soft px-3 py-2 text-left hover:bg-primary-soft/80",
+    on_click=emit(
+      @app.PlannerMsg::SelectOffering(offering_id=entry.offering_id),
+    ),
+    [
+      div(class="min-w-0", [
+        p(class="truncate text-sm font-medium text-ink", entry.course_name),
+        div(class="mt-0.5 flex items-center gap-2 text-xs text-muted", [
+          span("\{credits_label(entry.credits)}単位"),
+          enrollment_status_badge(entry.status),
+        ]),
+      ]),
+    ],
+  )
+}
+
+///|
 fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
   let entries = state.off_grid_entries(state.selected_term)
-  let items : Array[Html] = []
+  let regular_items : Array[Html] = []
+  let winter_items : Array[Html] = []
   for entry in entries {
-    items.push(
-      button(
-        id="open-detail-\{entry.offering_id.value}",
-        class="flex min-h-12 w-full items-start justify-start rounded-lg bg-primary-soft px-3 py-2 text-left hover:bg-primary-soft/80",
-        on_click=emit(
-          @app.PlannerMsg::SelectOffering(offering_id=entry.offering_id),
-        ),
-        [
-          div(class="min-w-0", [
-            p(class="truncate text-sm font-medium text-ink", entry.course_name),
-            div(class="mt-0.5 flex items-center gap-2 text-xs text-muted", [
-              span("\{credits_label(entry.credits)}単位"),
-              enrollment_status_badge(entry.status),
-            ]),
-          ]),
-        ],
-      ),
-    )
+    if entry.winter {
+      winter_items.push(off_grid_item(entry, emit))
+    } else {
+      regular_items.push(off_grid_item(entry, emit))
+    }
   }
-  if entries.is_empty() {
-    items.push(
+  if regular_items.is_empty() {
+    regular_items.push(
       p(class="px-3 py-4 text-sm text-muted", "集中講義はありません"),
     )
   }
-  section(id="off-grid", class="mt-5", [
-    div(class="mb-2 flex items-center justify-between", [
-      h2(class="text-sm font-semibold", "集中講義"),
-      button(
-        id="open-intensive-picker",
-        class="min-h-8 rounded-md px-2 text-xs text-primary-text hover:bg-primary-soft",
-        on_click=emit(@app.PlannerMsg::OpenIntensivePicker),
-        "追加",
-      ),
-    ]),
-    div(class="flex flex-col gap-2", items),
-  ])
+  let winter_block : Array[Html] = []
+  if state.selected_term is (@app.PlannerTerm::A1 | @app.PlannerTerm::A2) {
+    let items = if winter_items.is_empty() {
+      [
+        p(
+          class="px-3 py-4 text-sm text-muted",
+          "Wの集中講義はありません",
+        ),
+      ]
+    } else {
+      winter_items
+    }
+    winter_block.push(h3(class="mt-4 text-sm font-semibold", "W（冬期）"))
+    winter_block.push(div(class="mt-2 flex flex-col gap-2", items))
+  }
+  let body : Array[Html] = [div(class="flex flex-col gap-2", regular_items)]
+  for item in winter_block {
+    body.push(item)
+  }
+  section(
+    id="off-grid",
+    class="mt-5",
+    [
+      div(class="mb-2 flex items-center justify-between", [
+        h2(class="text-sm font-semibold", "集中講義"),
+        button(
+          id="open-intensive-picker",
+          class="min-h-8 rounded-md px-2 text-xs text-primary-text hover:bg-primary-soft",
+          on_click=emit(@app.PlannerMsg::OpenIntensivePicker),
+          "追加",
+        ),
+      ]),
+    ] +
+    body,
+  )
 }
 
 ///|
@@ -1268,18 +1301,8 @@ fn course_detail(
               }
               let detail = "\{credits_label(display_credits)}単位 · \{schedule_label(offering.schedule())} · \{slots_label(display_slots)}"
               let current = state.enrollment_status(offering_id)
-              let passed = state.enrollment_is_passed(offering_id)
               let body : Array[Html] = [
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
-                if passed {
-                  p(
-                    id="passed-snapshot-note",
-                    class="mx-4 mb-3 rounded-md bg-primary-soft px-3 py-2 text-xs text-primary-text",
-                    "合格済みの履修は、科目名・単位数を合格時の値で表示し、曜限も元の開講情報を表示します。上書きはこの表示に反映されません。",
-                  )
-                } else {
-                  div(([] : Array[Html]))
-                },
                 match current {
                   Some(_) => status_controls(offering_id, current, emit)
                   None => div(([] : Array[Html]))
@@ -1344,37 +1367,78 @@ fn summary_total_card(
 }
 
 ///|
-fn summary_mode_row(
-  node_label : String,
+fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
+  let total = if node.optimistic.total > 0 { node.optimistic.total } else { 1 }
+  let confirmed = if node.confirmed.done < 0 {
+    0
+  } else if node.confirmed.done > total {
+    total
+  } else {
+    node.confirmed.done
+  }
+  let standard = if node.standard.done < confirmed {
+    confirmed
+  } else if node.standard.done > total {
+    total
+  } else {
+    node.standard.done
+  }
+  let optimistic = if node.optimistic.done < standard {
+    standard
+  } else if node.optimistic.done > total {
+    total
+  } else {
+    node.optimistic.done
+  }
+  let confirmed_width = confirmed * 100 / total
+  let standard_width = (standard - confirmed) * 100 / total
+  let optimistic_width = (optimistic - standard) * 100 / total
+  let label = "\{node.label}: 確定 \{node.confirmed.progress}, 確定＋履修中 \{node.standard.progress}, 確定＋履修中＋履修予定 \{node.optimistic.progress}"
+  div(
+    class="flex h-2 w-full overflow-hidden rounded-full bg-rule",
+    attrs=@html.Attrs::build()
+      .role("img")
+      .aria_label(label)
+      .data_set("requirement-bar", "true"),
+    [
+      div(
+        style=["width: \{confirmed_width}%"],
+        class="h-full bg-primary",
+        ([] : Array[Html]),
+      ),
+      div(
+        style=["width: \{standard_width}%"],
+        class="h-full bg-primary/55",
+        ([] : Array[Html]),
+      ),
+      div(
+        style=["width: \{optimistic_width}%"],
+        class="h-full bg-primary/25",
+        ([] : Array[Html]),
+      ),
+    ],
+  )
+}
+
+///|
+fn summary_mode_info(
   label : String,
   mode : @app.RequirementMode,
   color_class : String,
 ) -> Html {
-  let max = if mode.total > 0 { mode.total } else { 1 }
-  div(class="space-y-0.5", [
-    div(class="flex flex-wrap items-baseline gap-x-2", [
-      span(class="text-xs font-medium text-muted", label),
-      span(class="text-xs font-medium", mode.status_label()),
-      span(class="text-xs text-muted", mode.progress),
-      if mode.remaining.is_empty() {
-        span(([] : Array[Html]))
-      } else {
-        span(class="text-xs text-muted", "・\{mode.remaining}")
-      },
-    ]),
-    progress(
-      class="requirement-progress \{color_class}",
-      value=if mode.done < 0 {
-        0
-      } else if mode.done > max {
-        max
-      } else {
-        mode.done
-      },
-      max~,
-      attrs=@html.Attrs::build().aria_label("\{node_label} \{label}の進捗"),
+  div(class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5", [
+    span(
+      class="inline-block h-2 w-2 shrink-0 rounded-sm \{color_class}",
       ([] : Array[Html]),
     ),
+    span(class="text-xs font-medium text-muted", label),
+    span(class="text-xs font-medium", mode.status_label()),
+    span(class="text-xs text-muted", mode.progress),
+    if mode.remaining.is_empty() {
+      span(([] : Array[Html]))
+    } else {
+      span(class="text-xs text-muted", "・\{mode.remaining}")
+    },
   ])
 }
 
@@ -1386,24 +1450,14 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
   }
   div(class="space-y-2 border-l border-rule/60 pl-3", [
     p(class="text-sm font-medium", node.label),
+    requirement_stacked_bar(node),
     div(class="space-y-1", [
-      summary_mode_row(
-        node.label,
-        "確定",
-        node.confirmed,
-        "requirement-progress-confirmed",
-      ),
-      summary_mode_row(
-        node.label,
-        "履修中まで",
-        node.standard,
-        "requirement-progress-standard",
-      ),
-      summary_mode_row(
-        node.label,
-        "履修予定まで",
+      summary_mode_info("確定", node.confirmed, "bg-primary"),
+      summary_mode_info("確定＋履修中", node.standard, "bg-primary/55"),
+      summary_mode_info(
+        "確定＋履修中＋履修予定",
         node.optimistic,
-        "requirement-progress-optimistic",
+        "bg-primary/25",
       ),
     ]),
     if children.is_empty() {
@@ -1476,7 +1530,7 @@ fn summary_panel(
               id="requirement-summary",
               class="text-xs text-muted",
               attrs=@html.Attrs::build().role("status"),
-              "要件（履修予定まで）: \{summary.requirement_root.optimistic.status_label()}",
+              "要件（確定＋履修中＋履修予定）: \{summary.requirement_root.optimistic.status_label()}",
             ),
           ]),
           div(class="mt-2 grid grid-cols-3 gap-2", [
@@ -1487,12 +1541,12 @@ fn summary_panel(
             ),
             summary_total_card(
               "summary-total-standard",
-              "履修中まで",
+              "確定＋履修中",
               summary.standard,
             ),
             summary_total_card(
               "summary-total-optimistic",
-              "履修予定まで",
+              "確定＋履修中＋履修予定",
               summary.optimistic,
             ),
           ]),
@@ -1518,12 +1572,12 @@ fn summary_panel(
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 px-2 text-right text-xs text-muted",
-                      "履修中まで",
+                      "確定＋履修中",
                     ),
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 pl-2 text-right text-xs text-muted",
-                      "履修予定まで",
+                      "確定＋履修中＋履修予定",
                     ),
                   ]),
                 ]),
@@ -1555,7 +1609,7 @@ fn credit_total_view(
         [
           span(
             class="hidden whitespace-nowrap sm:inline",
-            "合計 確定 \{confirmed} / 履修予定まで \{projected}単位",
+            "合計 確定 \{confirmed} / 確定＋履修中＋履修予定 \{projected}単位",
           ),
           span(class="whitespace-nowrap sm:hidden", "合計 \{projected}単位"),
         ],

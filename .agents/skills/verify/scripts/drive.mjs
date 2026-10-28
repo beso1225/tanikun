@@ -39,11 +39,15 @@ try {
     waitUntil: "load",
   });
   await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
-  assert.equal(await page.locator("nav button").count(), 5);
+  assert.equal(await page.locator("nav button").count(), 4);
   assert.deepEqual(await auditAccessibility(page), []);
   await assertSummaryTotals(page, "0単位", "0単位", "6単位");
   await page.locator("#term-S2").click();
   await page.getByRole("heading", { name: "S2" }).waitFor();
+  await page.locator("#term-S1").click();
+  await page.getByRole("heading", { name: "S1" }).waitFor();
+  await page.locator("#term-A1").click();
+  await page.locator("#off-grid").getByText("W（冬期）").waitFor();
   await page.locator("#term-S1").click();
   await page.getByRole("heading", { name: "S1" }).waitFor();
   await page.screenshot({
