@@ -17,6 +17,7 @@ using @html {
   nav,
   option,
   p,
+  progress,
   section,
   select,
   span,
@@ -176,10 +177,9 @@ fn program_label(value : String) -> String {
 }
 
 ///|
-fn profile_panel(
+fn profile_controls(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
-  summary_result : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
 ) -> Html {
   let program_options : Array[Html] = []
   for program in state.program_ids() {
@@ -203,34 +203,12 @@ fn profile_panel(
       ),
     )
   }
-  let summary = match summary_result {
-    Ok(value) =>
-      p(
-        id="requirement-summary",
-        class="text-xs text-muted",
-        attrs=@html.Attrs::build().role("status"),
-        "要件: \{value.requirement_root.status_label()}",
-      )
-    Err(_) => {
-      let message = match state.active_requirement_set() {
-        None => "要件: 要件セットが見つかりません"
-        Some(_) => "要件: 要件を評価できません"
-      }
-      p(
-        id="requirement-summary",
-        class="text-xs text-danger-text",
-        attrs=@html.Attrs::build().role("status"),
-        message,
-      )
-    }
-  }
   div(
     attrs=@html.Attrs::build()
       .role("group")
       .aria_label("要件プロファイル"),
-    class="mt-1 space-y-2 border-t border-rule/60 pt-3",
+    class="space-y-2",
     [
-      p(class="text-xs font-semibold text-muted", "プロファイル"),
       div([
         label(
           for_="program-select",
@@ -261,7 +239,6 @@ fn profile_panel(
           year_options,
         ),
       ]),
-      summary,
     ],
   )
 }
@@ -312,7 +289,6 @@ fn timetable_year_panel(
 fn term_section(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
-  summary : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
 ) -> Html {
   let tabs : Array[Html] = []
   for term in @app.PlannerTerm::values() {
@@ -340,7 +316,6 @@ fn term_section(
       ]),
       timetable_year_panel(state, emit),
       nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
-      profile_panel(state, emit, summary),
     ],
   )
 }
@@ -679,6 +654,11 @@ fn settings_panel(
           ],
         ),
       ]),
+      h3(
+        class="border-t border-rule/60 pt-4 text-sm font-semibold",
+        "プロファイル",
+      ),
+      profile_controls(state, emit),
     ]),
   ]
   modal_shell(
@@ -884,7 +864,7 @@ fn modal_shell(
       ),
       section(
         id~,
-        class="relative z-10 w-full \{width_class} overflow-hidden rounded-xl bg-paper shadow-2xl",
+        class="relative z-10 max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-xl bg-paper shadow-2xl \{width_class}",
         attrs=@html.Attrs::build()
           .role("dialog")
           .aria_modal("true")
@@ -1364,21 +1344,72 @@ fn summary_total_card(
 }
 
 ///|
+fn summary_mode_row(
+  node_label : String,
+  label : String,
+  mode : @app.RequirementMode,
+  color_class : String,
+) -> Html {
+  let max = if mode.total > 0 { mode.total } else { 1 }
+  div(class="space-y-0.5", [
+    div(class="flex flex-wrap items-baseline gap-x-2", [
+      span(class="text-xs font-medium text-muted", label),
+      span(class="text-xs font-medium", mode.status_label()),
+      span(class="text-xs text-muted", mode.progress),
+      if mode.remaining.is_empty() {
+        span(([] : Array[Html]))
+      } else {
+        span(class="text-xs text-muted", "・\{mode.remaining}")
+      },
+    ]),
+    progress(
+      class="requirement-progress \{color_class}",
+      value=if mode.done < 0 {
+        0
+      } else if mode.done > max {
+        max
+      } else {
+        mode.done
+      },
+      max~,
+      attrs=@html.Attrs::build().aria_label("\{node_label} \{label}の進捗"),
+      ([] : Array[Html]),
+    ),
+  ])
+}
+
+///|
 fn requirement_tree_node(node : @app.RequirementNode) -> Html {
   let children : Array[Html] = []
   for child in node.children {
     children.push(requirement_tree_node(child))
   }
-  div(class="border-l border-rule/60 pl-3", [
-    div(class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5", [
-      span(class="text-sm font-medium", node.label),
-      span(class="text-xs font-medium", node.status_label()),
-      span(class="text-xs text-muted", node.progress),
+  div(class="space-y-2 border-l border-rule/60 pl-3", [
+    p(class="text-sm font-medium", node.label),
+    div(class="space-y-1", [
+      summary_mode_row(
+        node.label,
+        "確定",
+        node.confirmed,
+        "requirement-progress-confirmed",
+      ),
+      summary_mode_row(
+        node.label,
+        "履修中まで",
+        node.standard,
+        "requirement-progress-standard",
+      ),
+      summary_mode_row(
+        node.label,
+        "履修予定まで",
+        node.optimistic,
+        "requirement-progress-optimistic",
+      ),
     ]),
     if children.is_empty() {
       div(([] : Array[Html]))
     } else {
-      div(class="mt-1 space-y-1", children)
+      div(class="space-y-2", children)
     },
   ])
 }
@@ -1388,12 +1419,23 @@ fn summary_panel(
   summary : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
 ) -> Html {
   match summary {
-    Err(_) =>
+    Err(error) => {
+      let message = match error {
+        @tanikun-domain.DomainError::ProfileRequirementSetMismatch =>
+          "要件: 要件セットが見つかりません"
+        _ => "要件: 要件を評価できません"
+      }
       div(
         id="summary",
         class="mt-6 rounded-lg border border-rule bg-paper p-4",
         [
           h2(class="text-sm font-semibold", "単位・要件"),
+          p(
+            id="requirement-summary",
+            class="text-xs text-danger-text",
+            attrs=@html.Attrs::build().role("status"),
+            message,
+          ),
           p(
             id="summary-error",
             class="mt-2 text-sm text-danger-text",
@@ -1402,6 +1444,7 @@ fn summary_panel(
           ),
         ],
       )
+    }
     Ok(summary) => {
       let category_rows : Array[Html] = []
       for category in summary.categories {
@@ -1427,7 +1470,15 @@ fn summary_panel(
         id="summary",
         class="mt-6 rounded-lg border border-rule bg-paper p-4",
         [
-          h2(class="text-sm font-semibold", "単位・要件"),
+          div(class="flex items-baseline justify-between gap-2", [
+            h2(class="text-sm font-semibold", "単位・要件"),
+            p(
+              id="requirement-summary",
+              class="text-xs text-muted",
+              attrs=@html.Attrs::build().role("status"),
+              "要件（履修予定まで）: \{summary.requirement_root.optimistic.status_label()}",
+            ),
+          ]),
           div(class="mt-2 grid grid-cols-3 gap-2", [
             summary_total_card(
               "summary-total-confirmed",
@@ -1436,12 +1487,12 @@ fn summary_panel(
             ),
             summary_total_card(
               "summary-total-standard",
-              "標準見込",
+              "履修中まで",
               summary.standard,
             ),
             summary_total_card(
               "summary-total-optimistic",
-              "楽観見込",
+              "履修予定まで",
               summary.optimistic,
             ),
           ]),
@@ -1467,12 +1518,12 @@ fn summary_panel(
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 px-2 text-right text-xs text-muted",
-                      "標準見込",
+                      "履修中まで",
                     ),
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 pl-2 text-right text-xs text-muted",
-                      "楽観見込",
+                      "履修予定まで",
                     ),
                   ]),
                 ]),
@@ -1480,10 +1531,7 @@ fn summary_panel(
               ],
             )
           },
-          h3(
-            class="mt-4 text-xs font-semibold text-muted",
-            "要件ツリー（楽観見込）",
-          ),
+          h3(class="mt-4 text-xs font-semibold text-muted", "要件の状況"),
           div(id="summary-requirements", class="mt-2", [
             requirement_tree_node(summary.requirement_root),
           ]),
@@ -1507,7 +1555,7 @@ fn credit_total_view(
         [
           span(
             class="hidden whitespace-nowrap sm:inline",
-            "合計 確定 \{confirmed} / 見込 \{projected}単位",
+            "合計 確定 \{confirmed} / 履修予定まで \{projected}単位",
           ),
           span(class="whitespace-nowrap sm:hidden", "合計 \{projected}単位"),
         ],
@@ -2011,12 +2059,6 @@ fn planner_view(
       class="mt-4 text-sm text-muted",
       "Wでは時間割のグリッドを使いません",
     )
-  } else if !state.has_offerings_for_timetable_year() {
-    p(
-      id="empty-year",
-      class="mt-4 text-sm text-muted",
-      "この年度の開講科目はありません",
-    )
   } else {
     timetable_grid(state, emit)
   }
@@ -2056,7 +2098,7 @@ fn planner_view(
       ],
     ),
     div(class="flex min-h-0 flex-1 flex-col md:flex-row", [
-      term_section(state, emit, summary),
+      term_section(state, emit),
       main_(id="main-content", class="min-w-0 flex-1 p-4 md:p-5", [
         grid,
         off_grid(state, emit),

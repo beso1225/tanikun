@@ -36,8 +36,9 @@ Use the advancement year as grade 3:
 - Credit and requirement evaluation remain whole-plan; the timetable filter does
   not remove enrollments from credit totals.
 - The selected term is preserved when the grade or academic year changes.
-- A timetable year with no offerings shows an empty state instead of an empty
-  grid.
+- A timetable year with no offerings still shows the timetable grid. The empty
+  cells allow the user to add a custom course for that year.
+- Only W replaces the grid, because W has no weekday grid.
 - A newly created custom offering defaults to the selected timetable year.
 - The custom course form lists the four timetable years. A course created for a
   year other than the displayed one is intentionally omitted from the current

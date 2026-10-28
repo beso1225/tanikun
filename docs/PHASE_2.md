@@ -22,7 +22,7 @@ Phase 2 turns the pure Phase 1 model into one local, in-memory planner:
 - name, credit, and slot overrides;
 - program and advancement-year selection for requirements;
 - grade and academic-year navigation for the timetable;
-- confirmed, standard projected, and optimistic projected summaries.
+- confirmed, in-progress-inclusive, and planned-inclusive summaries.
 
 Phase 2 has no persistence, Workers requests, network API, D1, Automerge, or
 multi-device sync. Reloading the page discards the planner.
@@ -98,8 +98,8 @@ The selected term is preserved when the grade, year, or profile changes.
 Scheduled blocks, off-grid entries, catalogue rows, and placement are filtered
 by `timetable_year.academic_year`.
 
-A year with no offered courses shows the empty-year message instead of a grid.
-A year with offerings but no enrollments still shows the grid cells.
+A year with no offered courses still shows the grid cells. Only W replaces the
+grid, because W has no weekday grid.
 
 ## Derived projections
 
@@ -140,7 +140,9 @@ Visible range bounds are:
 - periods: 6 through 10.
 
 The settings dialog changes those bounds immediately and keeps changes after
-closing. The selected term and year are not changed by the settings dialog.
+closing. It also owns the program and advancement-year selectors; the timetable
+grade selector stays in the sidebar. The selected term and timetable year are
+not changed by the settings dialog.
 
 ## Message catalog
 
@@ -196,11 +198,13 @@ picker's own create action replaces it with the custom form.
 
 - No enrollments or blocks in a term: the visible cells render empty.
 - No intensive entries in the current year/term: `集中講義はありません`.
-- No offered courses in the selected academic year: `この年度の開講科目はありません`.
+- No offered courses in the selected academic year: the grid still renders empty
+  cells, so a custom course can be added for that year.
 - All scheduled blocks are inside the visible range: the outside-range note is
   absent.
 - No picker matches: `該当する科目がありません`.
 - W: `Wでは時間割のグリッドを使いません`; off-grid entries and summary remain.
+  W is the only term without a grid.
 - Missing requirement set: summary shows `要件: 要件セットが見つかりません`;
   invalid evaluation shows `要件: 要件を評価できません`.
 
@@ -230,7 +234,8 @@ unknown offering; it converts to `UiError`.
   connect `aria-invalid` and `aria-describedby` to the offending control.
 - A rejected status or delete action keeps state unchanged and reports a
   planner error.
-- `#requirement-summary` uses `role="status"`; `#summary-error` is also a status.
+- `#requirement-summary` uses `role="status"` in the summary header; `#summary-error`
+  is also a status.
 - The undo toast is a `role="status"` surface and keyboard-reachable.
 
 ## Passed enrollments, overrides, and removal
@@ -265,17 +270,28 @@ persistence must replace it with a collision-safe allocator.
 ## Requirement profile and summary
 
 Available program and advancement-year choices come from
-`RequirementSets::keys()`. The active set is always derived from the profile;
-`PlannerState` stores no active requirement set. Selecting a profile is one
-atomic state transition. A missing set keeps the profile, reports
+`RequirementSets::keys()`. They live in the settings dialog; the timetable grade
+selector remains in the sidebar. The active set is always derived from the
+profile; `PlannerState` stores no active requirement set. Selecting a profile is
+one atomic state transition. A missing set keeps the profile, reports
 `MissingRequirementSet`, and can be recovered by selecting a valid profile.
 
-The summary shows:
+The summary uses these user-facing labels:
 
-- confirmed, standard projected, and optimistic projected totals;
-- category credits for all three modes;
-- the requirement tree for the optimistic mode, with rule labels, satisfaction,
-  progress, and children.
+- `確定` for confirmed credits;
+- `履修中まで` for confirmed plus in-progress credits;
+- `履修予定まで` for confirmed, in-progress, and planned credits.
+
+It shows:
+
+- the three totals and category credits;
+- one requirement tree with all three projections at every node;
+- rule labels, status labels, progress text, remaining text, and a color-coded
+  progress bar for each projection.
+
+Requirement status labels are `達成`, `あと少し`, and `未達`; the rule labels do
+not repeat a status word. The optimistic result supplies the one-line
+`要件（履修予定まで）: ...` status in the summary header.
 
 Status and override changes are reflected on the next render because the summary
 is derived, not cached.

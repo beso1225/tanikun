@@ -1462,7 +1462,7 @@ test "switching programs keeps planner data and recomputes the summary" {
   let visible_days = state.visible_days
   let visible_periods = state.visible_periods
   let before = match state.planner_summary() {
-    Ok(summary) => summary.requirement_root.satisfaction
+    Ok(summary) => summary.requirement_root.optimistic.satisfaction
     Err(_) => fail("expected the initial requirement summary")
   }
   let state = @app.update_planner(
@@ -1480,7 +1480,7 @@ test "switching programs keeps planner data and recomputes the summary" {
   assert_eq(state.visible_periods, visible_periods)
   assert_eq(state.overrides.len(), 1)
   let after = match state.planner_summary() {
-    Ok(summary) => summary.requirement_root.satisfaction
+    Ok(summary) => summary.requirement_root.optimistic.satisfaction
     Err(_) => fail("expected the switched requirement summary")
   }
   assert_true(before == @tanikun-requirements.Satisfaction::Satisfied)
@@ -1649,7 +1649,6 @@ test "timetable projections and placement follow the selected year" {
     state,
     @app.PlannerMsg::SelectGrade(grade="4"),
   )
-  assert_true(state.has_offerings_for_timetable_year())
   let entries = state.catalogue_entries(@app.PlannerTerm::S1)
   assert_eq(entries.length(), 1)
   assert_eq(entries[0].course_name, "Advanced Physics")
@@ -1680,22 +1679,6 @@ test "timetable projections and placement follow the selected year" {
     }
   }
   assert_true(!advanced_block)
-}
-
-///|
-test "a year without offerings reports the empty state" {
-  let state = @app.sample_state()
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::SelectGrade(grade="1"),
-  )
-  assert_eq(state.timetable_year.academic_year.year(), 2024)
-  assert_true(!state.has_offerings_for_timetable_year())
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::SelectGrade(grade="4"),
-  )
-  assert_true(state.has_offerings_for_timetable_year())
 }
 
 ///|
@@ -1747,6 +1730,25 @@ test "a custom course uses the selected timetable year" {
   let state = create_named_custom_course(state, "Year Four Custom")
   let offering = state.offerings[state.offerings.length() - 1]
   assert_eq(offering.academic_year.year(), 2027)
+}
+
+///|
+test "a custom course can be added to a year with no offerings" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::SelectGrade(grade="1"),
+  )
+  let before = state.enrollments.length()
+  let state = create_named_custom_course(state, "Empty Year Custom")
+  let offering = state.offerings[state.offerings.length() - 1]
+  assert_eq(offering.academic_year.year(), 2024)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=offering.id),
+  )
+  assert_eq(state.enrollments.length(), before + 1)
+  let block = state.scheduled_blocks(@app.PlannerTerm::S1)[0]
+  assert_eq(block.course_name, "Empty Year Custom")
 }
 
 ///|
@@ -1825,11 +1827,14 @@ test "planner summary exposes credits, categories, and requirement status" {
   assert_eq(summary.categories[2].name, "演習")
   assert_eq(summary.categories[2].optimistic.half_units(), 6)
   assert_true(
-    summary.requirement_root.satisfaction ==
+    summary.requirement_root.optimistic.satisfaction ==
     @tanikun-requirements.Satisfaction::Satisfied,
   )
-  assert_eq(summary.requirement_root.label, "すべての要件を充足")
-  assert_eq(summary.requirement_root.progress, "充足 2 / 部分 0 / 全 2")
+  assert_eq(summary.requirement_root.label, "すべての要件")
+  assert_eq(
+    summary.requirement_root.optimistic.progress,
+    "子要件 2 / 2件（部分 0）",
+  )
   assert_eq(summary.requirement_root.children.length(), 2)
   assert_eq(summary.requirement_root.children[0].label, "合計単位数")
   assert_eq(summary.requirement_root.children[1].label, "区分単位数")
@@ -1853,6 +1858,9 @@ test "planner summary recomputes after a status change" {
   }
   assert_eq(summary.confirmed.half_units(), 4)
   assert_eq(summary.categories[0].confirmed.half_units(), 4)
+  assert_eq(summary.requirement_root.confirmed.status_label(), "達成")
+  assert_eq(summary.requirement_root.standard.status_label(), "達成")
+  assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
 }
 
 ///|

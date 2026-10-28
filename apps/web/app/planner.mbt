@@ -414,27 +414,38 @@ pub struct SummaryCategory {
 }
 
 ///|
-/// One node in the requirement result tree.
-pub struct RequirementNode {
-  label : String
+/// One projection of a requirement tree node.
+pub struct RequirementMode {
   satisfaction : @tanikun-requirements.Satisfaction
   progress : String
-  children : Array[RequirementNode]
+  remaining : String
+  done : Int
+  total : Int
 }
 
 ///|
-pub fn RequirementNode::status_label(self : RequirementNode) -> String {
+pub fn RequirementMode::status_label(self : RequirementMode) -> String {
   match self.satisfaction {
-    @tanikun-requirements.Satisfaction::Satisfied => "充足"
-    @tanikun-requirements.Satisfaction::Partial => "部分充足"
-    @tanikun-requirements.Satisfaction::Unsatisfied => "未充足"
+    @tanikun-requirements.Satisfaction::Satisfied => "達成"
+    @tanikun-requirements.Satisfaction::Partial => "あと少し"
+    @tanikun-requirements.Satisfaction::Unsatisfied => "未達"
   }
+}
+
+///|
+/// One node in the requirement result tree with all three projections.
+pub struct RequirementNode {
+  label : String
+  confirmed : RequirementMode
+  standard : RequirementMode
+  optimistic : RequirementMode
+  children : Array[RequirementNode]
 }
 
 ///|
 fn requirement_label(rule : @tanikun-requirements.Rule) -> String {
   if rule.is_all() {
-    "すべての要件を充足"
+    "すべての要件"
   } else if rule.is_any() {
     "いずれか1つ以上の要件"
   } else if rule.children() is Some(_) {
@@ -460,16 +471,33 @@ fn requirement_label(rule : @tanikun-requirements.Rule) -> String {
 ///|
 fn requirement_node(
   rule : @tanikun-requirements.Rule,
-  result : @tanikun-requirements.RuleResult,
+  confirmed : @tanikun-requirements.RuleResult,
+  standard : @tanikun-requirements.RuleResult,
+  optimistic : @tanikun-requirements.RuleResult,
 ) -> RequirementNode {
   let children : Array[RequirementNode] = []
-  let child_results = result.children()
+  let confirmed_children = confirmed.children()
+  let standard_children = standard.children()
+  let optimistic_children = optimistic.children()
   match rule.children() {
     Some(child_rules) =>
       for index in 0..<child_rules.length() {
-        if index < child_results.length() {
+        if index < confirmed_children.length() {
           children.push(
-            requirement_node(child_rules[index], child_results[index]),
+            requirement_node(
+              child_rules[index],
+              confirmed_children[index],
+              if index < standard_children.length() {
+                standard_children[index]
+              } else {
+                confirmed_children[index]
+              },
+              if index < optimistic_children.length() {
+                optimistic_children[index]
+              } else {
+                confirmed_children[index]
+              },
+            ),
           )
         }
       }
@@ -477,19 +505,74 @@ fn requirement_node(
   }
   {
     label: requirement_label(rule),
-    satisfaction: result.satisfaction,
-    progress: progress_label(result.progress),
+    confirmed: requirement_mode(confirmed),
+    standard: requirement_mode(standard),
+    optimistic: requirement_mode(optimistic),
     children,
   }
 }
 
 ///|
-fn credits_text(credits : @tanikun-domain.Credits) -> String {
-  if credits.half_units() % 2 == 0 {
-    "\{credits.half_units() / 2}"
-  } else {
-    "\{credits.half_units() / 2}.5"
+fn requirement_mode(
+  result : @tanikun-requirements.RuleResult,
+) -> RequirementMode {
+  let (done, total) = progress_counts(result.progress)
+  {
+    satisfaction: result.satisfaction,
+    progress: progress_label(result.progress),
+    remaining: remaining_label(result.progress),
+    done,
+    total,
   }
+}
+
+///|
+fn remaining_label(progress : @tanikun-requirements.Progress) -> String {
+  match progress {
+    @tanikun-requirements.Progress::Credits(achieved~, required~) =>
+      if achieved.half_units() < required.half_units() {
+        "あと \{half_units_text(required.half_units() - achieved.half_units())}単位"
+      } else {
+        ""
+      }
+    @tanikun-requirements.Progress::Courses(passed~, total~) =>
+      if passed < total {
+        "あと \{total - passed}科目"
+      } else {
+        ""
+      }
+    @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
+      if satisfied + partial < total {
+        "あと \{total - satisfied - partial}件"
+      } else {
+        ""
+      }
+  }
+}
+
+///|
+fn progress_counts(progress : @tanikun-requirements.Progress) -> (Int, Int) {
+  match progress {
+    @tanikun-requirements.Progress::Credits(achieved~, required~) =>
+      (achieved.half_units(), required.half_units())
+    @tanikun-requirements.Progress::Courses(passed~, total~) => (passed, total)
+    @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
+      (satisfied + partial, total)
+  }
+}
+
+///|
+fn half_units_text(half_units : Int) -> String {
+  if half_units % 2 == 0 {
+    "\{half_units / 2}"
+  } else {
+    "\{half_units / 2}.5"
+  }
+}
+
+///|
+fn credits_text(credits : @tanikun-domain.Credits) -> String {
+  half_units_text(credits.half_units())
 }
 
 ///|
@@ -500,7 +583,7 @@ fn progress_label(progress : @tanikun-requirements.Progress) -> String {
     @tanikun-requirements.Progress::Courses(passed~, total~) =>
       "合格 \{passed} / \{total}科目"
     @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
-      "充足 \{satisfied} / 部分 \{partial} / 全 \{total}"
+      "子要件 \{satisfied} / \{total}件（部分 \{partial}）"
   }
 }
 
@@ -557,6 +640,8 @@ pub fn PlannerState::planner_summary(
     categories,
     requirement_root: requirement_node(
       requirement_set.rule(),
+      evaluation.requirements.confirmed,
+      evaluation.requirements.standard,
       evaluation.requirements.optimistic,
     ),
   })
@@ -2436,19 +2521,6 @@ fn find_slot_conflict_excluding(
     state.overrides,
     Some(excluded_offering),
   )
-}
-
-///|
-pub fn PlannerState::has_offerings_for_timetable_year(
-  self : PlannerState,
-) -> Bool {
-  for offering in self.offerings {
-    if offering.academic_year == self.timetable_year.academic_year &&
-      offering.status == @tanikun-domain.OfferingStatus::Offered {
-      return true
-    }
-  }
-  false
 }
 
 ///|

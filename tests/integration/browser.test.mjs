@@ -54,7 +54,7 @@ test(
         ),
       "0px",
     );
-    await assertCreditTotal(page, "見込 6単位");
+    await assertCreditTotal(page, "履修予定まで 6単位");
     assert.equal(
       await page.locator("#summary-total-confirmed").innerText(),
       "0単位",
@@ -73,14 +73,57 @@ test(
     );
     assert.match(
       await page.locator("#summary-requirements").innerText(),
-      /充足/,
+      /達成/,
     );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /履修中まで/,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /履修予定まで/,
+    );
+    assert.equal(
+      await page.locator("#summary-requirements progress").count(),
+      9,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /あと 2件/,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /あと 2単位/,
+    );
+    assert.deepEqual(
+      await page
+        .locator("#summary-requirements progress")
+        .evaluateAll((nodes) => nodes.map((node) => [node.value, node.max])),
+      [
+        [0, 2],
+        [0, 2],
+        [2, 2],
+        [0, 4],
+        [0, 4],
+        [4, 4],
+        [0, 2],
+        [0, 2],
+        [2, 2],
+      ],
+    );
+    assert.equal(
+      await page.getByLabel("プログラム", { exact: true }).count(),
+      0,
+    );
+    assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 0);
+    assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
+    await page.locator("#open-settings").click();
+    await page.locator("#settings").waitFor();
     assert.equal(
       await page.getByLabel("プログラム", { exact: true }).count(),
       1,
     );
     assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 1);
-    assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
     assert.equal(await page.locator("#grade-select").inputValue(), "3");
     assert.equal(
       await page.locator("#grade-select option").nth(2).innerText(),
@@ -97,14 +140,14 @@ test(
     );
     assert.equal(
       await page.locator("#requirement-summary").innerText(),
-      "要件: 充足",
+      "要件（履修予定まで）: 達成",
     );
 
     await page.locator("#program-select").selectOption("applied-chemistry");
     await page.waitForFunction(
       () =>
         document.querySelector("#requirement-summary")?.textContent ===
-        "要件: 部分充足",
+        "要件（履修予定まで）: あと少し",
     );
     assert.equal(
       await page.locator("#program-select").inputValue(),
@@ -119,14 +162,14 @@ test(
         .count(),
       1,
     );
-    await assertCreditTotal(page, "見込 6単位");
+    await assertCreditTotal(page, "履修予定まで 6単位");
 
     await page.locator("#program-select").selectOption("applied-physics");
     await page.waitForFunction(
       () =>
         document.querySelector("#year-select")?.value === "2026" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件: 充足",
+          "要件（履修予定まで）: 達成",
     );
     assert.equal(await page.locator("#year-select option").count(), 2);
     await page.locator("#year-select").selectOption("2025");
@@ -134,12 +177,14 @@ test(
       () =>
         document.querySelector("#year-select")?.value === "2025" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件: 部分充足",
+          "要件（履修予定まで）: あと少し",
     );
     await page.locator("#year-select").selectOption("2026");
     await page.waitForFunction(
       () => document.querySelector("#year-select")?.value === "2026",
     );
+    await page.locator("#close-settings").click();
+    await page.locator("#settings").waitFor({ state: "detached" });
 
     await page.getByRole("link", { name: "時間割へスキップ" }).focus();
     let tileReached = false;
@@ -315,7 +360,7 @@ test(
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
-    await assertCreditTotal(page, "見込 7単位");
+    await assertCreditTotal(page, "履修予定まで 7単位");
 
     await page.locator("#open-settings").click();
     await page.locator("#settings").waitFor();
@@ -435,7 +480,7 @@ test(
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "見込 9単位");
+    await assertCreditTotal(page, "履修予定まで 9単位");
     await page
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
@@ -481,7 +526,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await assertCreditTotal(page, "見込 7単位");
+    await assertCreditTotal(page, "履修予定まで 7単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -494,7 +539,7 @@ test(
     );
     await addButton.waitFor({ state: "detached" });
     assert.equal(await addButton.count(), 0);
-    await assertCreditTotal(page, "見込 9単位");
+    await assertCreditTotal(page, "履修予定まで 9単位");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
@@ -596,7 +641,7 @@ test(
       .locator("#timetable")
       .getByText("Calculus", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定 2 / 見込 11単位");
+    await assertCreditTotal(page, "確定 2 / 履修予定まで 11単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -638,7 +683,7 @@ test(
       .locator("#timetable")
       .getByText("Linear Algebra", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定 2 / 見込 13単位");
+    await assertCreditTotal(page, "確定 2 / 履修予定まで 13単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -661,7 +706,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await assertCreditTotal(page, "確定 2 / 見込 11単位");
+    await assertCreditTotal(page, "確定 2 / 履修予定まで 11単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -832,9 +877,9 @@ test(
     );
     assert.equal(await page.locator("#grade-select").inputValue(), "4");
     await page.locator("#grade-select").selectOption("1");
-    await page.locator("#empty-year").waitFor();
-    assert.equal(await page.locator("#timetable").count(), 0);
-    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#timetable").waitFor();
+    assert.equal(await page.locator("#timetable").count(), 1);
+    await page.locator("#slot-0-3").click();
     await page.locator("#picker").waitFor();
     await page.locator("#open-custom-course").click();
     await page.locator("#custom-course").waitFor();
@@ -1082,7 +1127,7 @@ test(
 
       assert.match(
         await page.locator("#summary-requirements").innerText(),
-        /充足/,
+        /達成/,
       );
       assert.deepEqual(errors, []);
     });

@@ -6,7 +6,8 @@
 - five-to-seven weekday columns and six-to-ten period rows
 - scheduled course blocks with status badges
 - off-grid intensive entries
-- empty-year state when the selected timetable year has no offerings
+- an always-rendered grid when the selected timetable year has no offerings
+- W without a weekday grid
 - settings dialog for visible range
 
 ## How to get to it (user POV)
@@ -23,7 +24,8 @@ change visible days or periods.
 - read `#timetable` and `#off-grid`
 - open `#open-settings`, change `#add-day` or `#add-period`, close with
   `#close-settings`
-- select `#grade-select` option `1` and wait for `#empty-year`
+- select `#grade-select` option `1`; `#timetable` remains and an empty cell can
+  open the slot picker
 
 ## Gotchas
 
