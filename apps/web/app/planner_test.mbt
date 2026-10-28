@@ -1631,7 +1631,7 @@ test "grade and academic-year selection stay synchronized" {
   assert_true(state.selected_term == @app.PlannerTerm::S2)
   let state = @app.update_planner(
     state,
-    @app.PlannerMsg::SelectTimetableYear(year="2024"),
+    @app.PlannerMsg::SelectGrade(grade="1"),
   )
   assert_eq(state.timetable_year.grade, 1)
   assert_eq(state.timetable_year.academic_year.year(), 2024)

@@ -155,11 +155,10 @@ test(
     );
     assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 1);
     assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
-    assert.equal(await page.getByLabel("表示年度", { exact: true }).count(), 1);
     assert.equal(await page.locator("#grade-select").inputValue(), "3");
     assert.equal(
-      await page.locator("#timetable-year-select").inputValue(),
-      "2026",
+      await page.locator("#grade-select option").nth(2).innerText(),
+      "3年（2026年度）",
     );
     assert.equal(
       await page.locator("#program-select").inputValue(),
@@ -892,14 +891,13 @@ test(
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.locator("#grade-select").selectOption("4");
     await page.waitForFunction(
-      () => document.querySelector("#timetable-year-select")?.value === "2027",
+      () =>
+        document
+          .querySelector("#term-context")
+          ?.textContent?.includes("2027年度") ?? false,
     );
     assert.equal(await page.locator("#grade-select").inputValue(), "4");
-    assert.match(await page.locator("#term-context").innerText(), /2027年度/);
-    await page.locator("#timetable-year-select").selectOption("2024");
-    await page.waitForFunction(
-      () => document.querySelector("#grade-select")?.value === "1",
-    );
+    await page.locator("#grade-select").selectOption("1");
     await page.locator("#empty-year").waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
     await page.locator("#open-catalogue-picker").click();
@@ -911,9 +909,12 @@ test(
     await page.locator("#picker").waitFor();
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
-    await page.locator("#timetable-year-select").selectOption("2027");
+    await page.locator("#grade-select").selectOption("4");
     await page.waitForFunction(
-      () => document.querySelector("#grade-select")?.value === "4",
+      () =>
+        document
+          .querySelector("#term-context")
+          ?.textContent?.includes("2027年度") ?? false,
     );
     await page.locator("#term-S1").click();
     await page.locator("#timetable").waitFor();
@@ -929,7 +930,10 @@ test(
       .waitFor();
     await page.locator("#grade-select").selectOption("3");
     await page.waitForFunction(
-      () => document.querySelector("#timetable-year-select")?.value === "2026",
+      () =>
+        document
+          .querySelector("#term-context")
+          ?.textContent?.includes("2026年度") ?? false,
     );
     assert.equal(
       await page

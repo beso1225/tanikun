@@ -312,19 +312,6 @@ fn year_for_grade(
 }
 
 ///|
-fn grade_for_year(
-  profile : @tanikun-domain.AcademicProfile,
-  year : @tanikun-domain.AcademicYear,
-) -> Int? {
-  let grade = year.year() - profile.advancement_year.year() + 3
-  if grade < 1 || grade > 4 {
-    None
-  } else {
-    Some(grade)
-  }
-}
-
-///|
 fn timetable_year_for_grade(
   profile : @tanikun-domain.AcademicProfile,
   grade : Int,
@@ -634,7 +621,6 @@ pub(all) enum PlannerMsg {
   SelectProgram(program_id~ : String)
   SelectAdvancementYear(year~ : String)
   SelectGrade(grade~ : String)
-  SelectTimetableYear(year~ : String)
   OpenSettings
   CloseSettings
   OpenOverrideEditor(offering_id~ : @tanikun-domain.OfferingId)
@@ -695,7 +681,6 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
     SelectProgram(program_id~) => select_program(state, program_id)
     SelectAdvancementYear(year~) => select_advancement_year(state, year)
     SelectGrade(grade~) => select_grade(state, grade)
-    SelectTimetableYear(year~) => select_timetable_year(state, year)
     OpenSettings =>
       bump({
         ..state,
@@ -1570,48 +1555,6 @@ fn select_grade(state : PlannerState, grade : String) -> PlannerState {
         ),
       )
   }
-  bump(clear_timetable_selection({ ..state, timetable_year, }))
-}
-
-///|
-fn select_timetable_year(state : PlannerState, value : String) -> PlannerState {
-  let year = match option_int(value, 2000, 2100) {
-    Some(value) => value
-    None =>
-      return with_error(
-        state,
-        UiError::new(
-          UiErrorTarget::General,
-          UiErrorKind::General,
-          "年度が正しくありません",
-        ),
-      )
-  }
-  let academic_year = match @tanikun-domain.AcademicYear::new(year) {
-    Ok(value) => value
-    Err(_) =>
-      return with_error(
-        state,
-        UiError::new(
-          UiErrorTarget::General,
-          UiErrorKind::General,
-          "年度が正しくありません",
-        ),
-      )
-  }
-  let grade = match grade_for_year(state.profile, academic_year) {
-    Some(value) => value
-    None =>
-      return with_error(
-        state,
-        UiError::new(
-          UiErrorTarget::General,
-          UiErrorKind::General,
-          "この年度は選択できません",
-        ),
-      )
-  }
-  let timetable_year : TimetableYear = { grade, academic_year, }
   bump(clear_timetable_selection({ ..state, timetable_year, }))
 }
 

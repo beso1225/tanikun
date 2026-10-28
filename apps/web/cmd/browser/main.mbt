@@ -271,24 +271,13 @@ fn timetable_year_panel(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   let grade_options : Array[Html] = []
-  for grade in 1..<=4 {
-    let value = "\{grade}"
+  for year in state.timetable_years() {
+    let value = "\{year.grade}"
     grade_options.push(
       option(
         value~,
-        selected=state.timetable_year.grade == grade,
-        "\{grade}年",
-      ),
-    )
-  }
-  let year_options : Array[Html] = []
-  for year in state.timetable_years() {
-    let value = "\{year.academic_year.year()}"
-    year_options.push(
-      option(
-        value~,
-        selected=state.timetable_year.academic_year == year.academic_year,
-        "\{year.academic_year.year()}年度",
+        selected=state.timetable_year.grade == year.grade,
+        "\{year.grade}年（\{year.academic_year.year()}年度）",
       ),
     )
   }
@@ -299,37 +288,20 @@ fn timetable_year_panel(
     class="space-y-2",
     [
       p(class="text-xs font-semibold text-muted", "時間割"),
-      div(class="grid grid-cols-2 gap-2", [
-        div([
-          label(
-            for_="grade-select",
-            class="mb-1 block text-xs text-muted",
-            "学年",
-          ),
-          select(
-            id="grade-select",
-            class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
-            on_change=fn(value) {
-              emit(@app.PlannerMsg::SelectGrade(grade=value))
-            },
-            grade_options,
-          ),
-        ]),
-        div([
-          label(
-            for_="timetable-year-select",
-            class="mb-1 block text-xs text-muted",
-            "表示年度",
-          ),
-          select(
-            id="timetable-year-select",
-            class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
-            on_change=fn(value) {
-              emit(@app.PlannerMsg::SelectTimetableYear(year=value))
-            },
-            year_options,
-          ),
-        ]),
+      div([
+        label(
+          for_="grade-select",
+          class="mb-1 block text-xs text-muted",
+          "学年",
+        ),
+        select(
+          id="grade-select",
+          class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+          on_change=fn(value) {
+            emit(@app.PlannerMsg::SelectGrade(grade=value))
+          },
+          grade_options,
+        ),
       ]),
     ],
   )
