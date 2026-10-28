@@ -54,7 +54,7 @@ test(
         ),
       "0px",
     );
-    await assertCreditTotal(page, "確定＋履修中＋履修予定 6単位");
+    await assertCreditTotal(page, "履修予定込 6単位");
     assert.equal(
       await page.locator("#summary-total-confirmed").innerText(),
       "0単位",
@@ -73,15 +73,15 @@ test(
     );
     assert.match(
       await page.locator("#summary-requirements").innerText(),
-      /達成/,
+      /計画上充足/,
     );
     assert.match(
       await page.locator("#summary-requirements").innerText(),
-      /確定＋履修中/,
+      /履修中込/,
     );
     assert.match(
       await page.locator("#summary-requirements").innerText(),
-      /確定＋履修中＋履修予定/,
+      /履修予定込/,
     );
     assert.equal(
       await page
@@ -126,14 +126,14 @@ test(
     );
     assert.equal(
       await page.locator("#requirement-summary").innerText(),
-      "要件（確定＋履修中＋履修予定）: 達成",
+      "要件（履修予定込）: 計画上充足",
     );
 
     await page.locator("#program-select").selectOption("applied-chemistry");
     await page.waitForFunction(
       () =>
         document.querySelector("#requirement-summary")?.textContent ===
-        "要件（確定＋履修中＋履修予定）: 不足",
+        "要件（履修予定込）: 不足",
     );
     assert.equal(
       await page.locator("#program-select").inputValue(),
@@ -148,14 +148,14 @@ test(
         .count(),
       1,
     );
-    await assertCreditTotal(page, "確定＋履修中＋履修予定 6単位");
+    await assertCreditTotal(page, "履修予定込 6単位");
 
     await page.locator("#program-select").selectOption("applied-physics");
     await page.waitForFunction(
       () =>
         document.querySelector("#year-select")?.value === "2026" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件（確定＋履修中＋履修予定）: 達成",
+          "要件（履修予定込）: 計画上充足",
     );
     assert.equal(await page.locator("#year-select option").count(), 2);
     await page.locator("#year-select").selectOption("2025");
@@ -163,7 +163,7 @@ test(
       () =>
         document.querySelector("#year-select")?.value === "2025" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件（確定＋履修中＋履修予定）: 不足",
+          "要件（履修予定込）: 不足",
     );
     await page.locator("#year-select").selectOption("2026");
     await page.waitForFunction(
@@ -342,7 +342,7 @@ test(
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
-    await assertCreditTotal(page, "確定＋履修中＋履修予定 7単位");
+    await assertCreditTotal(page, "履修予定込 7単位");
 
     await page.locator("#open-settings").click();
     await page.locator("#settings").waitFor();
@@ -462,7 +462,7 @@ test(
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定＋履修中＋履修予定 9単位");
+    await assertCreditTotal(page, "履修予定込 9単位");
     await page
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
@@ -508,7 +508,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await assertCreditTotal(page, "確定＋履修中＋履修予定 7単位");
+    await assertCreditTotal(page, "履修予定込 7単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -521,7 +521,7 @@ test(
     );
     await addButton.waitFor({ state: "detached" });
     assert.equal(await addButton.count(), 0);
-    await assertCreditTotal(page, "確定＋履修中＋履修予定 9単位");
+    await assertCreditTotal(page, "履修予定込 9単位");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
@@ -618,7 +618,7 @@ test(
       .locator("#timetable")
       .getByText("Calculus", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定 2 / 確定＋履修中＋履修予定 11単位");
+    await assertCreditTotal(page, "修得済 2 ・ 履修予定込 11単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -660,7 +660,7 @@ test(
       .locator("#timetable")
       .getByText("Linear Algebra", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定 2 / 確定＋履修中＋履修予定 13単位");
+    await assertCreditTotal(page, "修得済 2 ・ 履修予定込 13単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -683,7 +683,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await assertCreditTotal(page, "確定 2 / 確定＋履修中＋履修予定 11単位");
+    await assertCreditTotal(page, "修得済 2 ・ 履修予定込 11単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();

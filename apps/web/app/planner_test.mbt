@@ -1840,7 +1840,10 @@ test "planner summary exposes credits, categories, and requirement status" {
   assert_eq(summary.requirement_root.label, "全体")
   assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
   assert_eq(summary.requirement_root.standard.status_label(), "不足")
-  assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
+  assert_eq(
+    summary.requirement_root.optimistic.status_label(),
+    "計画上充足",
+  )
   assert_eq(
     summary.requirement_root.optimistic.progress,
     "要件 2 / 2件（部分 0）",
@@ -2170,6 +2173,9 @@ test "a partially satisfied root does not fill the confirmed bar" {
   assert_eq(summary.requirement_root.confirmed.done, 0)
   assert_eq(summary.requirement_root.confirmed.total, 2)
   assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
-  assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
+  assert_eq(
+    summary.requirement_root.optimistic.status_label(),
+    "計画上充足",
+  )
   assert_eq(summary.requirement_root.confirmed.remaining, "あと 2件")
 }

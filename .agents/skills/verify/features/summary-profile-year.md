@@ -2,7 +2,7 @@
 
 ## Sub-features
 
-- three cumulative projection labels: 確定, 確定＋履修中, 確定＋履修中＋履修予定
+- three cumulative projection labels: 修得済, 履修中込, 履修予定込
 - category credits and a requirement tree with all three projections
 - program and advancement-year selectors in the settings dialog
 - grade and timetable-year selector through the grade mapping
@@ -11,10 +11,10 @@
 
 ## How to get to it (user POV)
 
-Read the `単位・要件` panel below the timetable. Open `設定` and use the
+Read the `累計単位・要件` panel below the timetable. Open `設定` and use the
 `プロファイル` selects there for program and advancement year. Use the
 `時間割` grade select for the displayed year. Every requirement node shows
-one stacked bar with `確定`, `確定＋履修中`, and `確定＋履修中＋履修予定` segments.
+one stacked bar with `合格済`, `履修中`, and `履修予定` segments.
 
 ## Driving it with Playwright
 
@@ -22,9 +22,9 @@ one stacked bar with `確定`, `確定＋履修中`, and `確定＋履修中＋�
   `#summary-total-optimistic`
 - read `#summary-categories` and `#summary-requirements`
 - assert one `[data-requirement-bar]` per requirement node and the legend labels
-  `確定`, `履修中`, and `履修予定`
+  `合格済`, `履修中`, and `履修予定`
 - open `#open-settings`; select `#program-select` = `applied-chemistry` and
-  wait for `要件（確定＋履修中＋履修予定）: 不足`
+  wait for `要件（履修予定込）: 不足`
 - select `#year-select` = `2025`, then restore `2026`
 - close with `#close-settings`
 - select `#grade-select` = `4` and wait for `#term-context` to include `2027年度`
@@ -36,6 +36,7 @@ one stacked bar with `確定`, `確定＋履修中`, and `確定＋履修中＋�
   controls timetable navigation. They are separate.
 - Missing profiles keep the selection and show `要件: 要件セットが見つかりません`.
 - The requirement tree shows all three modes and uses 区分 vocabulary.
+- Status labels distinguish `達成`, `不足`, `履修中で充足見込`, and `計画上充足`.
 - Profile controls are only in the settings dialog; grade remains in the
   sidebar.
 - `#requirement-summary` is the optimistic one-line status in the summary

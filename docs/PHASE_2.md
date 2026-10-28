@@ -286,21 +286,28 @@ one atomic state transition. A missing set keeps the profile, reports
 
 The summary uses these user-facing labels:
 
-- `確定` for confirmed credits;
-- `確定＋履修中` for confirmed plus in-progress credits;
-- `確定＋履修中＋履修予定` for confirmed, in-progress, and planned credits.
+- `修得済` for passed credits;
+- `履修中込` for passed plus in-progress credits;
+- `履修予定込` for passed, in-progress, and planned credits.
 
 It shows:
 
 - the three totals and category credits;
 - one requirement tree with all three cumulative projections at every node;
 - rule labels, status labels, progress text, remaining text, and one stacked bar
-  with confirmed, in-progress, and planned segments;
-- a legend that labels the three bar segments `確定`, `履修中`, and `履修予定`.
+  with `合格済`, `履修中`, and `履修予定` segments;
+- a legend that labels those three segments, plus a note that each cumulative
+  stage includes the earlier stages.
 
-Requirement status labels are `達成` and `不足`; the rule labels do not repeat a
-status word. The optimistic result supplies the one-line
-`要件（確定＋履修中＋履修予定）: ...` status in the summary header.
+Requirement status labels distinguish when the result is actually achieved:
+
+- `達成` when the passed credits alone satisfy the requirement;
+- `不足` when no projection satisfies it;
+- `履修中で充足見込` when in-progress credits would satisfy it;
+- `計画上充足` when planned credits would satisfy it.
+
+The rule labels do not repeat a status word. The optimistic result supplies the
+one-line `要件（履修予定込）: ...` status in the summary header.
 
 Status and override changes are reflected on the next render because the summary
 is derived, not cached.

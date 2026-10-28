@@ -433,6 +433,7 @@ pub struct SummaryCategory {
 /// One projection of a requirement tree node.
 pub struct RequirementMode {
   satisfaction : @tanikun-requirements.Satisfaction
+  status : String
   progress : String
   remaining : String
   unit : String
@@ -442,11 +443,7 @@ pub struct RequirementMode {
 
 ///|
 pub fn RequirementMode::status_label(self : RequirementMode) -> String {
-  match self.satisfaction {
-    @tanikun-requirements.Satisfaction::Satisfied => "達成"
-    @tanikun-requirements.Satisfaction::Partial => "不足"
-    @tanikun-requirements.Satisfaction::Unsatisfied => "不足"
-  }
+  self.status
 }
 
 ///|
@@ -520,11 +517,34 @@ fn requirement_node(
       }
     None => ()
   }
+  let confirmed_satisfied = confirmed.satisfaction ==
+    @tanikun-requirements.Satisfaction::Satisfied
+  let standard_satisfied = standard.satisfaction ==
+    @tanikun-requirements.Satisfaction::Satisfied
+  let optimistic_satisfied = optimistic.satisfaction ==
+    @tanikun-requirements.Satisfaction::Satisfied
+  let confirmed_status = if confirmed_satisfied { "達成" } else { "不足" }
+  let standard_status = if confirmed_satisfied {
+    "達成"
+  } else if standard_satisfied {
+    "履修中で充足見込"
+  } else {
+    "不足"
+  }
+  let optimistic_status = if confirmed_satisfied {
+    "達成"
+  } else if standard_satisfied {
+    "履修中で充足見込"
+  } else if optimistic_satisfied {
+    "計画上充足"
+  } else {
+    "不足"
+  }
   {
     label: requirement_label(rule),
-    confirmed: requirement_mode(confirmed),
-    standard: requirement_mode(standard),
-    optimistic: requirement_mode(optimistic),
+    confirmed: requirement_mode(confirmed, confirmed_status),
+    standard: requirement_mode(standard, standard_status),
+    optimistic: requirement_mode(optimistic, optimistic_status),
     children,
   }
 }
@@ -532,10 +552,12 @@ fn requirement_node(
 ///|
 fn requirement_mode(
   result : @tanikun-requirements.RuleResult,
+  status : String,
 ) -> RequirementMode {
   let (done, total) = progress_counts(result.progress)
   {
     satisfaction: result.satisfaction,
+    status,
     progress: progress_label(result.progress),
     remaining: remaining_label(result.progress),
     unit: match result.progress {

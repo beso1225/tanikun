@@ -1424,7 +1424,7 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
   let confirmed_width = confirmed * 100 / total
   let standard_width = (standard - confirmed) * 100 / total
   let optimistic_width = (optimistic - standard) * 100 / total
-  let label = "\{node.label}: 確定 \{node.confirmed.progress}, 確定＋履修中 \{node.standard.progress}, 確定＋履修中＋履修予定 \{node.optimistic.progress}"
+  let label = "\{node.label}: 合格済 \{node.confirmed.progress}, 履修中まで \{node.standard.progress}, 履修予定まで \{node.optimistic.progress}"
   div(
     class="flex h-2 w-full overflow-hidden rounded-full bg-rule",
     attrs=@html.Attrs::build()
@@ -1472,7 +1472,7 @@ fn requirement_segment_legend(node : @app.RequirementNode) -> Html {
   let (_, confirmed, standard, optimistic) = requirement_segment_values(node)
   div(class="flex flex-wrap gap-x-3 gap-y-1", [
     requirement_segment_chip(
-      "確定",
+      "合格済",
       confirmed,
       node.confirmed.unit,
       "bg-primary",
@@ -1493,12 +1493,26 @@ fn requirement_segment_legend(node : @app.RequirementNode) -> Html {
 }
 
 ///|
+fn requirement_status_class(status : String) -> String {
+  if status == "達成" {
+    "text-success-text"
+  } else if status == "不足" {
+    "text-muted"
+  } else {
+    "text-primary-text"
+  }
+}
+
+///|
 fn summary_mode_info(label : String, mode : @app.RequirementMode) -> Html {
   div(
-    class="grid grid-cols-[minmax(0,1.3fr)_3.5rem_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-2 text-xs",
+    class="grid grid-cols-[minmax(0,1.1fr)_7.5rem_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-2 text-xs",
     [
       span(class="font-medium text-muted", label),
-      span(class="font-medium", mode.status_label()),
+      span(
+        class="font-medium \{requirement_status_class(mode.status_label())}",
+        mode.status_label(),
+      ),
       span(class="text-left text-muted", mode.progress),
       if mode.remaining.is_empty() {
         span(([] : Array[Html]))
@@ -1520,9 +1534,9 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
     requirement_stacked_bar(node),
     requirement_segment_legend(node),
     div(class="space-y-1", [
-      summary_mode_info("確定", node.confirmed),
-      summary_mode_info("確定＋履修中", node.standard),
-      summary_mode_info("確定＋履修中＋履修予定", node.optimistic),
+      summary_mode_info("修得済", node.confirmed),
+      summary_mode_info("履修中込", node.standard),
+      summary_mode_info("履修予定込", node.optimistic),
     ]),
     if children.is_empty() {
       div(([] : Array[Html]))
@@ -1547,7 +1561,7 @@ fn summary_panel(
         id="summary",
         class="mt-6 rounded-lg border border-rule bg-paper p-4",
         [
-          h2(class="text-sm font-semibold", "単位・要件"),
+          h2(class="text-sm font-semibold", "累計単位・要件"),
           p(
             id="requirement-summary",
             class="text-xs text-danger-text",
@@ -1594,26 +1608,31 @@ fn summary_panel(
               id="requirement-summary",
               class="text-xs text-muted",
               attrs=@html.Attrs::build().role("status"),
-              "要件（確定＋履修中＋履修予定）: \{summary.requirement_root.optimistic.status_label()}",
+              "要件（履修予定込）: \{summary.requirement_root.optimistic.status_label()}",
             ),
           ]),
           div(class="mt-2 grid grid-cols-3 gap-2", [
             summary_total_card(
               "summary-total-confirmed",
-              "確定",
+              "修得済",
               summary.confirmed,
             ),
             summary_total_card(
               "summary-total-standard",
-              "確定＋履修中",
+              "履修中込",
               summary.standard,
             ),
             summary_total_card(
               "summary-total-optimistic",
-              "確定＋履修中＋履修予定",
+              "履修予定込",
               summary.optimistic,
             ),
           ]),
+          p(
+            id="summary-note",
+            class="mt-2 text-xs text-muted",
+            "各段階はそれ以前の単位を含む累計です。履修中・履修予定は合格した場合の試算です。",
+          ),
           if category_rows.is_empty() {
             p(class="mt-4 text-xs text-muted", "区分はありません")
           } else {
@@ -1631,17 +1650,17 @@ fn summary_panel(
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 px-2 text-right text-xs text-muted",
-                      "確定",
+                      "修得済",
                     ),
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 px-2 text-right text-xs text-muted",
-                      "確定＋履修中",
+                      "履修中込",
                     ),
                     th(
                       scope=@html.Scope::Col,
                       class="pb-1 pl-2 text-right text-xs text-muted",
-                      "確定＋履修中＋履修予定",
+                      "履修予定込",
                     ),
                   ]),
                 ]),
@@ -1673,7 +1692,7 @@ fn credit_total_view(
         [
           span(
             class="hidden whitespace-nowrap sm:inline",
-            "合計 確定 \{confirmed} / 確定＋履修中＋履修予定 \{projected}単位",
+            "合計 修得済 \{confirmed} ・ 履修予定込 \{projected}単位",
           ),
           span(class="whitespace-nowrap sm:hidden", "合計 \{projected}単位"),
         ],
