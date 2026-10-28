@@ -1999,3 +1999,90 @@ test "a slot override does not move a passed block" {
   assert_true(display.slots[0].day == @tanikun-domain.DayOfWeek::Monday)
   assert_eq(display.slots[0].period.value(), 1)
 }
+
+///|
+test "frozen passed slots drive conflict checks in both directions" {
+  let id = planner_offering_id("offering-1")
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=id),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=id,
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let state = open_override_form(state, id)
+  let state = @app.update_planner(state, @app.PlannerMsg::ToggleOverrideSlots)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateOverrideDay(value="1"),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateOverridePeriod(value="4"),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  let course = planner_course("PHY102", "Other Physics", 4)
+  let catalogue = state.catalogue.copy()
+  catalogue.push(course)
+
+  let frozen = planner_offering(
+    "offering-frozen",
+    course,
+    @tanikun-domain.Term::S1,
+    [planner_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
+  )
+  let offerings = state.offerings.copy()
+  offerings.push(frozen)
+  let frozen_state = @app.PlannerState::new(
+    catalogue,
+    offerings,
+    state.enrollments,
+    state.overrides,
+    state.profile,
+    state.requirement_sets,
+  )
+  let frozen_state = @app.update_planner(
+    frozen_state,
+    @app.PlannerMsg::AddOffering(
+      offering_id=planner_offering_id("offering-frozen"),
+    ),
+  )
+  match frozen_state.error {
+    Some(error) => assert_true(error.kind == @app.UiErrorKind::SlotConflict)
+    None => fail("frozen passed slot should reject placement")
+  }
+
+  let ghost = planner_offering(
+    "offering-ghost",
+    course,
+    @tanikun-domain.Term::S1,
+    [planner_slot(@tanikun-domain.DayOfWeek::Tuesday, 4)],
+  )
+  let offerings = state.offerings.copy()
+  offerings.push(ghost)
+  let ghost_state = @app.PlannerState::new(
+    catalogue,
+    offerings,
+    state.enrollments,
+    state.overrides,
+    state.profile,
+    state.requirement_sets,
+  )
+  let ghost_state = @app.update_planner(
+    ghost_state,
+    @app.PlannerMsg::AddOffering(
+      offering_id=planner_offering_id("offering-ghost"),
+    ),
+  )
+  match ghost_state.error {
+    None => ()
+    Some(_) => fail("overridden ghost slot should remain free")
+  }
+  assert_eq(ghost_state.enrollments.length(), 2)
+}

@@ -537,8 +537,7 @@ fn override_form_panel(
               "集中講義では曜限を変更できません",
             )
           },
-          if state.enrollment_for(form.offering_id) is Some(enrollment) &&
-            enrollment.is_passed() {
+          if state.enrollment_is_passed(form.offering_id) {
             p(
               id="override-passed-note",
               class="rounded-md bg-primary-soft px-3 py-2 text-xs text-primary-text",
@@ -1289,10 +1288,7 @@ fn course_detail(
               }
               let detail = "\{credits_label(display_credits)}単位 · \{schedule_label(offering.schedule())} · \{slots_label(display_slots)}"
               let current = state.enrollment_status(offering_id)
-              let passed = match state.enrollment_for(offering_id) {
-                Some(enrollment) => enrollment.is_passed()
-                None => false
-              }
+              let passed = state.enrollment_is_passed(offering_id)
               let body : Array[Html] = [
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
                 if passed {
