@@ -877,7 +877,8 @@ fn find_slot_conflict_with_overrides(
         if !excluded {
           match find_offering(state.offerings, enrollment.offering_id) {
             Some(other) =>
-              if offering_occupies_term(other, planner_term) {
+              if other.academic_year == offering.academic_year &&
+                offering_occupies_term(other, planner_term) {
                 for slot in slots {
                   for other_slot in effective_slots_or(other, overrides) {
                     if slot == other_slot {

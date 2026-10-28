@@ -155,7 +155,7 @@ test(
     );
     assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 1);
     assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
-    assert.equal(await page.getByLabel("年度", { exact: true }).count(), 1);
+    assert.equal(await page.getByLabel("表示年度", { exact: true }).count(), 1);
     assert.equal(await page.locator("#grade-select").inputValue(), "3");
     assert.equal(
       await page.locator("#timetable-year-select").inputValue(),
@@ -895,12 +895,22 @@ test(
       () => document.querySelector("#timetable-year-select")?.value === "2027",
     );
     assert.equal(await page.locator("#grade-select").inputValue(), "4");
+    assert.match(await page.locator("#term-context").innerText(), /2027年度/);
     await page.locator("#timetable-year-select").selectOption("2024");
     await page.waitForFunction(
       () => document.querySelector("#grade-select")?.value === "1",
     );
     await page.locator("#empty-year").waitFor();
     assert.equal(await page.locator("#timetable").count(), 0);
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    assert.equal(await page.locator("#custom-year").inputValue(), "2024");
+    await page.locator("#close-custom-course").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#timetable-year-select").selectOption("2027");
     await page.waitForFunction(
       () => document.querySelector("#grade-select")?.value === "4",

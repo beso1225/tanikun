@@ -223,39 +223,46 @@ fn profile_panel(
       )
     }
   }
-  div(class="mt-1 space-y-2 border-t border-rule/60 pt-3", [
-    div([
-      label(
-        for_="program-select",
-        class="mb-1 block text-xs text-muted",
-        "プログラム",
-      ),
-      select(
-        id="program-select",
-        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
-        on_change=fn(value) {
-          emit(@app.PlannerMsg::SelectProgram(program_id=value))
-        },
-        program_options,
-      ),
-    ]),
-    div([
-      label(
-        for_="year-select",
-        class="mb-1 block text-xs text-muted",
-        "進級年度",
-      ),
-      select(
-        id="year-select",
-        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
-        on_change=fn(value) {
-          emit(@app.PlannerMsg::SelectAdvancementYear(year=value))
-        },
-        year_options,
-      ),
-    ]),
-    summary,
-  ])
+  div(
+    attrs=@html.Attrs::build()
+      .role("group")
+      .aria_label("要件プロファイル"),
+    class="mt-1 space-y-2 border-t border-rule/60 pt-3",
+    [
+      p(class="text-xs font-semibold text-muted", "プロファイル"),
+      div([
+        label(
+          for_="program-select",
+          class="mb-1 block text-xs text-muted",
+          "プログラム",
+        ),
+        select(
+          id="program-select",
+          class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+          on_change=fn(value) {
+            emit(@app.PlannerMsg::SelectProgram(program_id=value))
+          },
+          program_options,
+        ),
+      ]),
+      div([
+        label(
+          for_="year-select",
+          class="mb-1 block text-xs text-muted",
+          "進級年度",
+        ),
+        select(
+          id="year-select",
+          class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+          on_change=fn(value) {
+            emit(@app.PlannerMsg::SelectAdvancementYear(year=value))
+          },
+          year_options,
+        ),
+      ]),
+      summary,
+    ],
+  )
 }
 
 ///|
@@ -285,36 +292,47 @@ fn timetable_year_panel(
       ),
     )
   }
-  div(class="grid grid-cols-2 gap-2", [
-    div([
-      label(
-        for_="grade-select",
-        class="mb-1 block text-xs text-muted",
-        "学年",
-      ),
-      select(
-        id="grade-select",
-        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
-        on_change=fn(value) { emit(@app.PlannerMsg::SelectGrade(grade=value)) },
-        grade_options,
-      ),
-    ]),
-    div([
-      label(
-        for_="timetable-year-select",
-        class="mb-1 block text-xs text-muted",
-        "年度",
-      ),
-      select(
-        id="timetable-year-select",
-        class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
-        on_change=fn(value) {
-          emit(@app.PlannerMsg::SelectTimetableYear(year=value))
-        },
-        year_options,
-      ),
-    ]),
-  ])
+  div(
+    attrs=@html.Attrs::build()
+      .role("group")
+      .aria_label("時間割の表示対象"),
+    class="space-y-2",
+    [
+      p(class="text-xs font-semibold text-muted", "時間割"),
+      div(class="grid grid-cols-2 gap-2", [
+        div([
+          label(
+            for_="grade-select",
+            class="mb-1 block text-xs text-muted",
+            "学年",
+          ),
+          select(
+            id="grade-select",
+            class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+            on_change=fn(value) {
+              emit(@app.PlannerMsg::SelectGrade(grade=value))
+            },
+            grade_options,
+          ),
+        ]),
+        div([
+          label(
+            for_="timetable-year-select",
+            class="mb-1 block text-xs text-muted",
+            "表示年度",
+          ),
+          select(
+            id="timetable-year-select",
+            class="min-h-9 w-full rounded-md border border-rule bg-paper px-2 text-sm",
+            on_change=fn(value) {
+              emit(@app.PlannerMsg::SelectTimetableYear(year=value))
+            },
+            year_options,
+          ),
+        ]),
+      ]),
+    ],
+  )
 }
 
 ///|
@@ -1455,13 +1473,28 @@ fn custom_form_panel(
       let is_intensive = form.schedule == @app.CustomCourseSchedule::Intensive
       let is_regular = form.schedule == @app.CustomCourseSchedule::Regular
       let editing = form.editing_course_id is Some(_)
-      let current_year = state.profile.advancement_year.year()
       let year_options : Array[Html] = []
-      for offset in 0..<=2 {
-        let year = current_year + offset
-        let value = "\{year}"
+      let mut form_year_present = false
+      for year in state.timetable_years() {
+        let value = "\{year.academic_year.year()}"
+        if form.academic_year == value {
+          form_year_present = true
+        }
         year_options.push(
-          option(value~, selected=form.academic_year == value, "\{year}年度"),
+          option(
+            value~,
+            selected=form.academic_year == value,
+            "\{year.academic_year.year()}年度",
+          ),
+        )
+      }
+      if !form_year_present {
+        year_options.push(
+          option(
+            value=form.academic_year,
+            selected=true,
+            "\{form.academic_year}年度",
+          ),
         )
       }
       let credit_options : Array[Html] = []
@@ -1840,7 +1873,7 @@ fn planner_view(
           span(
             id="term-context",
             class="hidden text-xs text-muted lg:inline",
-            "\{state.profile.advancement_year.year()}年度 \{program_label(state.profile.program_id.value)}",
+            "\{state.timetable_year.academic_year.year()}年度 \{program_label(state.profile.program_id.value)}",
           ),
         ]),
         div(

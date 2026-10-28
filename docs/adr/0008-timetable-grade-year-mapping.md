@@ -1,8 +1,8 @@
-# Map timetable grades to academic years
+# Timetable grades map to academic years from the advancement year
 
 ## Status
 
-Accepted.
+accepted
 
 ## Context
 
@@ -38,6 +38,9 @@ Use the advancement year as grade 3:
 - A timetable year with no offerings shows an empty state instead of an empty
   grid.
 - A newly created custom offering defaults to the selected timetable year.
+- The custom course form lists the four timetable years. A course created for a
+  year other than the displayed one is intentionally omitted from the current
+  grid and appears in that year's picker.
 
 ## Consequences
 
