@@ -677,6 +677,18 @@ pub fn PlannerState::enrollment_for(
 }
 
 ///|
+/// Whether the offering's enrollment is passed.
+pub fn PlannerState::enrollment_is_passed(
+  self : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+) -> Bool {
+  match find_enrollment(self.enrollments, offering_id) {
+    Some(enrollment) => enrollment.is_passed()
+    None => false
+  }
+}
+
+///|
 /// Returns the current status for an offering, if it is enrolled.
 pub fn PlannerState::enrollment_status(
   self : PlannerState,
@@ -960,7 +972,16 @@ fn find_slot_conflict_with_overrides(
   overrides : @tanikun-domain.Overrides,
   excluded_offering : @tanikun-domain.OfferingId?,
 ) -> @tanikun-domain.Slot? {
-  let slots = effective_slots_or(offering, overrides)
+  let target_enrollment = find_enrollment(state.enrollments, offering.id)
+  let slots = match target_enrollment {
+    Some(enrollment) =>
+      if enrollment.is_passed() {
+        offering.slots()
+      } else {
+        effective_slots_or(offering, overrides)
+      }
+    None => effective_slots_or(offering, overrides)
+  }
   for planner_term in PlannerTerm::values() {
     if offering_occupies_term(offering, planner_term) {
       for enrollment in state.enrollments {
@@ -973,8 +994,13 @@ fn find_slot_conflict_with_overrides(
             Some(other) =>
               if other.academic_year == offering.academic_year &&
                 offering_occupies_term(other, planner_term) {
+                let other_slots = if enrollment.is_passed() {
+                  other.slots()
+                } else {
+                  effective_slots_or(other, overrides)
+                }
                 for slot in slots {
-                  for other_slot in effective_slots_or(other, overrides) {
+                  for other_slot in other_slots {
                     if slot == other_slot {
                       return Some(slot)
                     }
@@ -1561,7 +1587,8 @@ fn submit_override(state : PlannerState) -> PlannerState {
         ).message,
       )
   }
-  if has_enrollment(state.enrollments, form.offering_id) {
+  let passed = state.enrollment_is_passed(form.offering_id)
+  if !passed && has_enrollment(state.enrollments, form.offering_id) {
     match
       find_slot_conflict_with_overrides(
         state,
@@ -2609,7 +2636,16 @@ pub fn PlannerState::offering_display(
         @tanikun-domain.effective_course_credits(course, self.overrides),
       )
   }
-  Some({ name, credits, slots: effective_slots_or(offering, self.overrides), })
+  let slots = match self.enrollment_for(offering_id) {
+    Some(enrollment) =>
+      if enrollment.is_passed() {
+        offering.slots()
+      } else {
+        effective_slots_or(offering, self.overrides)
+      }
+    None => effective_slots_or(offering, self.overrides)
+  }
+  Some({ name, credits, slots, })
 }
 
 ///|
@@ -2624,23 +2660,46 @@ pub fn PlannerState::catalogue_entries(
       offering.status == @tanikun-domain.OfferingStatus::Offered {
       match find_course(self.catalogue, offering.course_id) {
         Some(course) => {
-          let name = @tanikun-domain.effective_course_name(
-            course,
-            self.overrides,
-          )
+          let enrollment = self.enrollment_for(offering.id)
+          let (name, credits, slots) = match enrollment {
+            Some(value) =>
+              if value.is_passed() {
+                (
+                  @tanikun-domain.effective_name(value, course, self.overrides),
+                  @tanikun-domain.effective_credits(
+                    value,
+                    course,
+                    self.overrides,
+                  ),
+                  offering.slots(),
+                )
+              } else {
+                (
+                  @tanikun-domain.effective_course_name(course, self.overrides),
+                  @tanikun-domain.effective_course_credits(
+                    course,
+                    self.overrides,
+                  ),
+                  effective_slots_or(offering, self.overrides),
+                )
+              }
+            None =>
+              (
+                @tanikun-domain.effective_course_name(course, self.overrides),
+                @tanikun-domain.effective_course_credits(course, self.overrides),
+                effective_slots_or(offering, self.overrides),
+              )
+          }
           if self.catalogue_query.is_empty() ||
             name.contains(self.catalogue_query) {
             entries.push({
               offering_id: offering.id,
               course_id: course.id,
               course_name: name,
-              credits: @tanikun-domain.effective_course_credits(
-                course,
-                self.overrides,
-              ),
+              credits,
               schedule: offering.schedule(),
-              slots: effective_slots_or(offering, self.overrides),
-              enrolled: has_enrollment(self.enrollments, offering.id),
+              slots,
+              enrolled: enrollment is Some(_),
               custom: self.is_custom_course(course.id),
             })
           }
@@ -2696,8 +2755,13 @@ pub fn PlannerState::scheduled_blocks(
         if offering.academic_year == self.timetable_year.academic_year &&
           offering_occupies_term(offering, term) {
           match find_course(self.catalogue, offering.course_id) {
-            Some(course) =>
-              for slot in effective_slots_or(offering, self.overrides) {
+            Some(course) => {
+              let slots = if enrollment.is_passed() {
+                offering.slots()
+              } else {
+                effective_slots_or(offering, self.overrides)
+              }
+              for slot in slots {
                 blocks.push({
                   offering_id: offering.id,
                   course_name: @tanikun-domain.effective_name(
@@ -2710,6 +2774,7 @@ pub fn PlannerState::scheduled_blocks(
                   status: enrollment.status,
                 })
               }
+            }
             None => ()
           }
         }
