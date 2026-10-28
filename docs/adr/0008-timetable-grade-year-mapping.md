@@ -38,7 +38,8 @@ Use the advancement year as grade 3:
 - The selected term is preserved when the grade or academic year changes.
 - A timetable year with no offerings still shows the timetable grid. The empty
   cells allow the user to add a custom course for that year.
-- Only W replaces the grid, because W has no weekday grid.
+- The sidebar never selects W. W has no weekday grid; its intensives are grouped
+  under A1 and A2.
 - A newly created custom offering defaults to the selected timetable year.
 - The custom course form lists the four timetable years. A course created for a
   year other than the displayed one is intentionally omitted from the current

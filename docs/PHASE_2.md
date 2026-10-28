@@ -35,29 +35,30 @@ packages own validation and evaluation; they do not import the planner.
 
 `PlannerState` contains:
 
-| Field                       | Meaning                                                    |
-| --------------------------- | ---------------------------------------------------------- |
-| `catalogue`                 | In-memory courses, including custom courses                |
-| `offerings`                 | In-memory offerings for all sample and custom years        |
-| `enrollments`               | One enrollment per offering id                             |
-| `undo_removal`              | At most one previous enrollment list and its revision      |
-| `overrides`                 | Sparse course and offering overrides                       |
-| `profile`                   | Program and advancement year used for requirements         |
-| `timetable_year`            | Selected grade and mapped academic year                    |
-| `requirement_sets`          | Available requirement sets keyed by program/year           |
-| `selected_term`             | S1, S2, A1, A2, or W; the sidebar exposes only S1/S2/A1/A2 |
-| `selected_offering`         | Offering shown in the detail dialog                        |
-| `error`                     | Current planner-level `UiError`                            |
-| `catalogue_query`           | Picker search text                                         |
-| `picker`                    | Slot, intensive, or all-catalogue picker, or none          |
-| `settings_open`             | Whether the settings dialog is open                        |
-| `override_form`             | Draft override editor, or none                             |
-| `custom_form`               | Draft custom-course editor, or none                        |
-| `custom_course_ids`         | Courses created in the `user` namespace                    |
-| `next_custom_course_number` | Session-local custom id counter                            |
-| `visible_days`              | 5 through 7                                                |
-| `visible_periods`           | 6 through 10                                               |
-| `revision`                  | Monotonic UI refresh marker                                |
+| Field                       | Meaning                                                                  |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `catalogue`                 | In-memory courses, including custom courses                              |
+| `offerings`                 | In-memory offerings for all sample and custom years                      |
+| `enrollments`               | One enrollment per offering id                                           |
+| `undo_removal`              | At most one previous enrollment list and its revision                    |
+| `overrides`                 | Sparse course and offering overrides                                     |
+| `profile`                   | Program and advancement year used for requirements                       |
+| `timetable_year`            | Selected grade and mapped academic year                                  |
+| `requirement_sets`          | Available requirement sets keyed by program/year                         |
+| `selected_term`             | S1, S2, A1, A2, or W; W is model-level and never selected by the sidebar |
+| `selected_offering`         | Offering shown in the detail dialog                                      |
+| `error`                     | Current planner-level `UiError`                                          |
+| `catalogue_query`           | Picker search text                                                       |
+| `picker`                    | Slot, intensive, or all-catalogue picker, or none                        |
+| `settings_open`             | Whether the settings dialog is open                                      |
+| `override_form`             | Draft override editor, or none                                           |
+| `custom_form`               | Draft custom-course editor, or none                                      |
+| `custom_course_ids`         | Courses created in the `user` namespace                                  |
+| `custom_categories`         | Category assignments for custom courses                                  |
+| `next_custom_course_number` | Session-local custom id counter                                          |
+| `visible_days`              | 5 through 7                                                              |
+| `visible_periods`           | 6 through 10                                                             |
+| `revision`                  | Monotonic UI refresh marker                                              |
 
 No derived credit, category, requirement, catalogue row, scheduled block, or
 effective display value is stored in `PlannerState`. The view calls the pure

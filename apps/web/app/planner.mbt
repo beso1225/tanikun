@@ -457,9 +457,16 @@ pub struct RequirementNode {
 }
 
 ///|
-fn requirement_label(rule : @tanikun-requirements.Rule) -> String {
+fn requirement_label(
+  rule : @tanikun-requirements.Rule,
+  is_root : Bool,
+) -> String {
   if rule.is_all() {
-    "全体"
+    if is_root {
+      "全体"
+    } else {
+      "すべての要件"
+    }
   } else if rule.is_any() {
     "いずれか1つ以上の要件"
   } else if rule.children() is Some(_) {
@@ -488,6 +495,7 @@ fn requirement_node(
   confirmed : @tanikun-requirements.RuleResult,
   standard : @tanikun-requirements.RuleResult,
   optimistic : @tanikun-requirements.RuleResult,
+  is_root : Bool,
 ) -> RequirementNode {
   let children : Array[RequirementNode] = []
   let confirmed_children = confirmed.children()
@@ -511,6 +519,7 @@ fn requirement_node(
               } else {
                 confirmed_children[index]
               },
+              false,
             ),
           )
         }
@@ -541,7 +550,7 @@ fn requirement_node(
     "不足"
   }
   {
-    label: requirement_label(rule),
+    label: requirement_label(rule, is_root),
     confirmed: requirement_mode(confirmed, confirmed_status),
     standard: requirement_mode(standard, standard_status),
     optimistic: requirement_mode(optimistic, optimistic_status),
@@ -687,6 +696,7 @@ pub fn PlannerState::planner_summary(
       evaluation.requirements.confirmed,
       evaluation.requirements.standard,
       evaluation.requirements.optimistic,
+      true,
     ),
   })
 }
@@ -753,6 +763,46 @@ pub fn PlannerState::category_id_for_course(
     Some(value) => value.category_for(course_id)
     None => None
   }
+}
+
+///|
+/// One render-scoped course-to-category-name lookup.
+pub struct CategoryNames {
+  entries : Array[(@tanikun-domain.CourseId, String)]
+}
+
+///|
+pub fn CategoryNames::name_for(
+  self : CategoryNames,
+  course_id : @tanikun-domain.CourseId,
+) -> String {
+  for entry in self.entries {
+    if entry.0 == course_id {
+      return entry.1
+    }
+  }
+  "未分類"
+}
+
+///|
+pub fn PlannerState::category_names(self : PlannerState) -> CategoryNames {
+  let entries = []
+  match self.effective_requirement_set() {
+    Some(set) => {
+      let categories = set.categories()
+      for assignment in set.assignments() {
+        let mut name = "未分類"
+        for category in categories {
+          if category.id == assignment.1 {
+            name = category.name
+          }
+        }
+        entries.push((assignment.0, name))
+      }
+    }
+    None => ()
+  }
+  { entries, }
 }
 
 ///|
@@ -2881,6 +2931,15 @@ pub fn PlannerState::offering_display(
   self : PlannerState,
   offering_id : @tanikun-domain.OfferingId,
 ) -> OfferingDisplay? {
+  self.offering_display_with(offering_id, self.category_names())
+}
+
+///|
+pub fn PlannerState::offering_display_with(
+  self : PlannerState,
+  offering_id : @tanikun-domain.OfferingId,
+  categories : CategoryNames,
+) -> OfferingDisplay? {
   let offering = match find_offering(self.offerings, offering_id) {
     Some(value) => value
     None => return None
@@ -2913,9 +2972,7 @@ pub fn PlannerState::offering_display(
   Some({
     name,
     credits,
-    category_name: self
-    .category_name_for(offering.course_id)
-    .unwrap_or("未分類"),
+    category_name: categories.name_for(offering.course_id),
     slots,
   })
 }
@@ -2924,6 +2981,15 @@ pub fn PlannerState::offering_display(
 pub fn PlannerState::catalogue_entries(
   self : PlannerState,
   term : PlannerTerm,
+) -> Array[CatalogueEntry] {
+  self.catalogue_entries_with(term, self.category_names())
+}
+
+///|
+pub fn PlannerState::catalogue_entries_with(
+  self : PlannerState,
+  term : PlannerTerm,
+  categories : CategoryNames,
 ) -> Array[CatalogueEntry] {
   let entries : Array[CatalogueEntry] = []
   for offering in self.offerings {
@@ -2968,9 +3034,7 @@ pub fn PlannerState::catalogue_entries(
               offering_id: offering.id,
               course_id: course.id,
               course_name: name,
-              category_name: self
-              .category_name_for(course.id)
-              .unwrap_or("未分類"),
+              category_name: categories.name_for(course.id),
               credits,
               schedule: offering.schedule(),
               slots,
@@ -2990,8 +3054,16 @@ pub fn PlannerState::catalogue_entries(
 pub fn PlannerState::picker_entries(
   self : PlannerState,
 ) -> Array[CatalogueEntry] {
+  self.picker_entries_with(self.category_names())
+}
+
+///|
+pub fn PlannerState::picker_entries_with(
+  self : PlannerState,
+  categories : CategoryNames,
+) -> Array[CatalogueEntry] {
   let entries : Array[CatalogueEntry] = []
-  let base = self.catalogue_entries(self.selected_term)
+  let base = self.catalogue_entries_with(self.selected_term, categories)
   for entry in base {
     let matches = match self.picker {
       Some(PickerTarget::Slot(day~, period~)) => {
@@ -3023,6 +3095,15 @@ pub fn PlannerState::scheduled_blocks(
   self : PlannerState,
   term : PlannerTerm,
 ) -> Array[ScheduledBlock] {
+  self.scheduled_blocks_with(term, self.category_names())
+}
+
+///|
+pub fn PlannerState::scheduled_blocks_with(
+  self : PlannerState,
+  term : PlannerTerm,
+  categories : CategoryNames,
+) -> Array[ScheduledBlock] {
   let blocks : Array[ScheduledBlock] = []
   for enrollment in self.enrollments {
     match find_offering(self.offerings, enrollment.offering_id) {
@@ -3044,9 +3125,7 @@ pub fn PlannerState::scheduled_blocks(
                     course,
                     self.overrides,
                   ),
-                  category_name: self
-                  .category_name_for(course.id)
-                  .unwrap_or("未分類"),
+                  category_name: categories.name_for(course.id),
                   credits: @tanikun-domain.effective_credits(
                     enrollment,
                     course,
@@ -3072,6 +3151,15 @@ pub fn PlannerState::off_grid_entries(
   self : PlannerState,
   term : PlannerTerm,
 ) -> Array[OffGridEntry] {
+  self.off_grid_entries_with(term, self.category_names())
+}
+
+///|
+pub fn PlannerState::off_grid_entries_with(
+  self : PlannerState,
+  term : PlannerTerm,
+  categories : CategoryNames,
+) -> Array[OffGridEntry] {
   let entries : Array[OffGridEntry] = []
   for enrollment in self.enrollments {
     match find_offering(self.offerings, enrollment.offering_id) {
@@ -3089,9 +3177,7 @@ pub fn PlannerState::off_grid_entries(
                       course,
                       self.overrides,
                     ),
-                    category_name: self
-                    .category_name_for(course.id)
-                    .unwrap_or("未分類"),
+                    category_name: categories.name_for(course.id),
                     credits: @tanikun-domain.effective_credits(
                       enrollment,
                       course,

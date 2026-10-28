@@ -675,8 +675,9 @@ fn settings_panel(
 fn timetable_grid(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
+  categories : @app.CategoryNames,
 ) -> Html {
-  let blocks = state.scheduled_blocks(state.selected_term)
+  let blocks = state.scheduled_blocks_with(state.selected_term, categories)
   let days = state.visible_day_values()
   let header : Array[Html] = [
     th(
@@ -803,8 +804,12 @@ fn off_grid_item(
 }
 
 ///|
-fn off_grid(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
-  let entries = state.off_grid_entries(state.selected_term)
+fn off_grid(
+  state : @app.PlannerState,
+  emit : Emit[@app.PlannerMsg],
+  categories : @app.CategoryNames,
+) -> Html {
+  let entries = state.off_grid_entries_with(state.selected_term, categories)
   let regular_items : Array[Html] = []
   let winter_items : Array[Html] = []
   for entry in entries {
@@ -922,11 +927,12 @@ fn modal_shell(
 fn picker_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
+  categories : @app.CategoryNames,
 ) -> Html {
   match state.picker {
     None => div(([] : Array[Html]))
     Some(target) => {
-      let entries = state.picker_entries()
+      let entries = state.picker_entries_with(categories)
       let items : Array[Html] = []
       for entry in entries {
         let detail = "\{credits_label(entry.credits)}単位 · 区分 \{entry.category_name} · \{schedule_label(entry.schedule)} · \{slots_label(entry.slots)}"
@@ -1294,6 +1300,7 @@ fn status_controls(
 fn course_detail(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
+  categories : @app.CategoryNames,
 ) -> Html {
   match state.selected_offering {
     None => div(([] : Array[Html]))
@@ -1309,14 +1316,14 @@ fn course_detail(
                 display_credits,
                 display_category,
                 display_slots,
-              ) = match state.offering_display(offering_id) {
+              ) = match state.offering_display_with(offering_id, categories) {
                 Some(value) =>
                   (value.name, value.credits, value.category_name, value.slots)
                 None =>
                   (
                     course.name,
                     course.credits,
-                    state.category_name_for(course.id).unwrap_or("未分類"),
+                    categories.name_for(course.id),
                     offering.slots(),
                   )
               }
@@ -1423,8 +1430,13 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
   )
   let confirmed_width = confirmed * 100 / total
   let standard_width = (standard - confirmed) * 100 / total
-  let optimistic_width = (optimistic - standard) * 100 / total
-  let label = "\{node.label}: 合格済 \{node.confirmed.progress}, 履修中まで \{node.standard.progress}, 履修予定まで \{node.optimistic.progress}"
+  let optimistic_width = if optimistic == total {
+    100 - confirmed_width - standard_width
+  } else {
+    (optimistic - standard) * 100 / total
+  }
+  let unit = node.confirmed.unit
+  let label = "\{node.label}: 合格済 \{node.confirmed.done}/\{node.confirmed.total}\{unit}, 履修中 \{node.standard.done}/\{node.standard.total}\{unit}, 履修予定 \{node.optimistic.done}/\{node.optimistic.total}\{unit}"
   div(
     class="flex h-2 w-full overflow-hidden rounded-full bg-rule",
     attrs=@html.Attrs::build()
@@ -2232,14 +2244,8 @@ fn planner_view(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   let summary = state.planner_summary()
-  let grid = if state.selected_term == @app.PlannerTerm::W {
-    p(
-      class="mt-4 text-sm text-muted",
-      "Wでは時間割のグリッドを使いません",
-    )
-  } else {
-    timetable_grid(state, emit)
-  }
+  let categories = state.category_names()
+  let grid = timetable_grid(state, emit, categories)
   let content : Array[Html] = [
     header(
       class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-rule bg-paper px-4 md:rounded-t-xl",
@@ -2279,7 +2285,7 @@ fn planner_view(
       term_section(state, emit),
       main_(id="main-content", class="min-w-0 flex-1 p-4 md:p-5", [
         grid,
-        off_grid(state, emit),
+        off_grid(state, emit, categories),
         summary_panel(summary),
       ]),
     ]),
@@ -2307,8 +2313,8 @@ fn planner_view(
       content,
     ),
     undo_banner(state, emit),
-    picker_panel(state, emit),
-    course_detail(state, emit),
+    picker_panel(state, emit, categories),
+    course_detail(state, emit, categories),
     custom_form_panel(state, emit),
     override_form_panel(state, emit),
     settings_panel(state, emit),
