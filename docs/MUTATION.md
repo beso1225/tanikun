@@ -36,7 +36,7 @@ lint checks.
 
 ## Baseline
 
-Recorded on 2026-10-27 with `--target js --jobs 2` after the #35 and #36
+Recorded on 2026-10-28 with `--target js --jobs 2` after the #35 and #36
 production refactors. #37 consolidated test files, which mutation testing
 excludes, so it does not move this baseline. The machine-readable baseline,
 including every accepted survivor, is
@@ -45,7 +45,7 @@ including every accepted survivor, is
 | Package      | Mutants | Killed | Survived | Timeout |  Score | Public | Private |
 | ------------ | ------: | -----: | -------: | ------: | -----: | -----: | ------: |
 | domain       |     139 |    138 |        0 |       1 | 99.28% | 98.04% |    100% |
-| requirements |     233 |    217 |       15 |       1 | 93.13% | 98.46% |  91.07% |
+| requirements |     237 |    221 |       15 |       1 | 93.25% | 98.55% |  91.07% |
 
 The `CourseId::compare` namespace-ordering gap found in the first trial is
 closed by `course id compares namespaces before local parts`. The whitespace

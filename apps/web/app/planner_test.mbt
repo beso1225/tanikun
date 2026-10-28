@@ -658,26 +658,26 @@ test "credit totals derive confirmed and projected values" {
     planner_state(),
     @app.PlannerMsg::AddOffering(offering_id=planner_offering_id("offering-1")),
   )
-  let totals = match state.credit_totals() {
+  let totals = match state.planner_summary() {
     Ok(totals) => totals
     Err(_) => fail("expected credit totals")
   }
   assert_eq(totals.confirmed.half_units(), 0)
   assert_eq(totals.standard.half_units(), 0)
-  assert_eq(totals.projected.half_units(), 4)
+  assert_eq(totals.optimistic.half_units(), 4)
   let state = @app.update_planner(
     state,
     @app.PlannerMsg::RemoveEnrollment(
       offering_id=planner_offering_id("offering-1"),
     ),
   )
-  let totals = match state.credit_totals() {
+  let totals = match state.planner_summary() {
     Ok(totals) => totals
     Err(_) => fail("expected empty credit totals")
   }
   assert_eq(totals.confirmed.half_units(), 0)
   assert_eq(totals.standard.half_units(), 0)
-  assert_eq(totals.projected.half_units(), 0)
+  assert_eq(totals.optimistic.half_units(), 0)
 }
 
 ///|
@@ -686,7 +686,7 @@ test "invalid planner input reports a credit total error" {
   state.enrollments.push(
     @tanikun-domain.Enrollment::planned(planner_offering_id("missing-offering")),
   )
-  match state.credit_totals() {
+  match state.planner_summary() {
     Err(_) => ()
     Ok(_) => fail("expected an invalid credit total")
   }
@@ -698,13 +698,13 @@ test "credit totals expose the standard projection" {
   state.enrollments.push(
     @tanikun-domain.Enrollment::in_progress(planner_offering_id("offering-1")),
   )
-  let totals = match state.credit_totals() {
+  let totals = match state.planner_summary() {
     Ok(totals) => totals
     Err(_) => fail("expected credit totals")
   }
   assert_eq(totals.confirmed.half_units(), 0)
   assert_eq(totals.standard.half_units(), 4)
-  assert_eq(totals.projected.half_units(), 4)
+  assert_eq(totals.optimistic.half_units(), 4)
 }
 
 ///|
@@ -1255,11 +1255,11 @@ test "a credits override changes totals and catalogue credits" {
   let state = open_override_form(state, id)
   let state = update_override(state, @app.OverrideField::Credits, "6")
   let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
-  let totals = match state.credit_totals() {
+  let totals = match state.planner_summary() {
     Ok(value) => value
     Err(_) => fail("expected credit totals")
   }
-  assert_eq(totals.projected.half_units(), 6)
+  assert_eq(totals.optimistic.half_units(), 6)
   assert_eq(
     state.catalogue_entries(@app.PlannerTerm::S1)[0].credits.half_units(),
     6,
@@ -1400,7 +1400,7 @@ test "a later override does not change a frozen pass display" {
   }
   assert_eq(display.name, "Physics")
   assert_eq(display.credits.half_units(), 4)
-  let totals = match state.credit_totals() {
+  let totals = match state.planner_summary() {
     Ok(value) => value
     Err(_) => fail("expected credit totals")
   }
@@ -1457,8 +1457,8 @@ test "switching programs keeps planner data and recomputes the summary" {
   let selected = state.selected_term
   let visible_days = state.visible_days
   let visible_periods = state.visible_periods
-  let before = match state.requirement_summary() {
-    Ok(summary) => summary.satisfaction
+  let before = match state.planner_summary() {
+    Ok(summary) => summary.requirement_root.satisfaction
     Err(_) => fail("expected the initial requirement summary")
   }
   let state = @app.update_planner(
@@ -1475,8 +1475,8 @@ test "switching programs keeps planner data and recomputes the summary" {
   assert_eq(state.visible_days, visible_days)
   assert_eq(state.visible_periods, visible_periods)
   assert_eq(state.overrides.len(), 1)
-  let after = match state.requirement_summary() {
-    Ok(summary) => summary.satisfaction
+  let after = match state.planner_summary() {
+    Ok(summary) => summary.requirement_root.satisfaction
     Err(_) => fail("expected the switched requirement summary")
   }
   assert_true(before == @tanikun-requirements.Satisfaction::Satisfied)
@@ -1510,11 +1510,11 @@ test "a missing profile requirement set is visible and recoverable" {
     None => ()
     Some(_) => fail("expected no requirement set")
   }
-  match state.requirement_summary() {
+  match state.planner_summary() {
     Err(_) => ()
     Ok(_) => fail("expected a missing requirement-set error")
   }
-  match state.credit_totals() {
+  match state.planner_summary() {
     Err(_) => ()
     Ok(_) => fail("expected totals to fail without a requirement set")
   }
@@ -1527,7 +1527,7 @@ test "a missing profile requirement set is visible and recoverable" {
     state,
     @app.PlannerMsg::SelectAdvancementYear(year="2026"),
   )
-  match state.requirement_summary() {
+  match state.planner_summary() {
     Ok(_) => ()
     Err(_) => fail("recovering to an available year should work")
   }
@@ -1547,7 +1547,7 @@ test "selecting a program without requirement sets keeps the old profile" {
       assert_true(error.kind == @app.UiErrorKind::MissingRequirementSet)
     None => fail("expected a missing-set error")
   }
-  match state.requirement_summary() {
+  match state.planner_summary() {
     Ok(_) => ()
     Err(_) => fail("the previous profile should still evaluate")
   }
@@ -1801,4 +1801,94 @@ test "slot conflicts ignore enrollments from another academic year" {
     }
   }
   assert_true(placed)
+}
+
+///|
+test "planner summary exposes credits, categories, and requirement status" {
+  let state = @app.sample_state()
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 0)
+  assert_eq(summary.standard.half_units(), 0)
+  assert_eq(summary.optimistic.half_units(), 12)
+  assert_eq(summary.categories.length(), 3)
+  assert_eq(summary.categories[0].name, "基礎物理")
+  assert_eq(summary.categories[0].optimistic.half_units(), 4)
+  assert_eq(summary.categories[1].name, "実験")
+  assert_eq(summary.categories[1].optimistic.half_units(), 2)
+  assert_eq(summary.categories[2].name, "演習")
+  assert_eq(summary.categories[2].optimistic.half_units(), 6)
+  assert_true(
+    summary.requirement_root.satisfaction ==
+    @tanikun-requirements.Satisfaction::Satisfied,
+  )
+  assert_eq(summary.requirement_root.label, "すべての要件を充足")
+  assert_eq(summary.requirement_root.progress, "充足 2 / 部分 0 / 全 2")
+  assert_eq(summary.requirement_root.children.length(), 2)
+  assert_eq(summary.requirement_root.children[0].label, "合計単位数")
+  assert_eq(summary.requirement_root.children[1].label, "区分単位数")
+}
+
+///|
+test "planner summary recomputes after a status change" {
+  let id = planner_offering_id("phy101-s1")
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=id,
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 4)
+  assert_eq(summary.categories[0].confirmed.half_units(), 4)
+}
+
+///|
+test "planner summary reports invalid input" {
+  let state = @app.sample_state()
+  let enrollments = state.enrollments.copy()
+  enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("missing-offering")),
+  )
+  let state = @app.PlannerState::new(
+    state.catalogue,
+    state.offerings,
+    enrollments,
+    state.overrides,
+    state.profile,
+    state.requirement_sets,
+  )
+  match state.planner_summary() {
+    Err(_) => ()
+    Ok(_) => fail("expected an invalid summary")
+  }
+  match state.planner_summary() {
+    Err(_) => ()
+    Ok(_) => fail("expected invalid credit totals")
+  }
+}
+
+///|
+test "a credits override updates the summary" {
+  let state = @app.sample_state()
+  let offering_id = planner_offering_id("phy101-s1")
+  let state = open_override_form(state, offering_id)
+  let state = update_override(state, @app.OverrideField::Credits, "6")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 0)
+  assert_eq(summary.standard.half_units(), 0)
+  assert_eq(summary.optimistic.half_units(), 14)
+  assert_eq(summary.categories[0].optimistic.half_units(), 6)
 }

@@ -48,35 +48,35 @@
     },
     "requirements": {
       "summary": {
-        "killed": 217,
-        "kills_by_kind": {
-          "assertion": 1419,
-          "doc_test": 0,
-          "property": 0,
-          "snapshot": 0
-        },
-        "property_only_kills": 0,
-        "reused": 0,
-        "score": 93.13304721030043,
-        "score_private": {
-          "killed": 153,
-          "mutants": 168,
-          "score": 91.07142857142857,
-          "survived": 15,
-          "timeout": 0,
-          "unviable": 0
-        },
-        "score_public": {
-          "killed": 64,
-          "mutants": 65,
-          "score": 98.46153846153847,
-          "survived": 0,
-          "timeout": 1,
-          "unviable": 0
-        },
+        "killed": 221,
         "survived": 15,
         "timeout": 1,
-        "unviable": 0
+        "unviable": 0,
+        "reused": 0,
+        "score": 93.24894514767932,
+        "kills_by_kind": {
+          "property": 0,
+          "snapshot": 0,
+          "doc_test": 0,
+          "assertion": 1427
+        },
+        "property_only_kills": 0,
+        "score_public": {
+          "mutants": 69,
+          "killed": 68,
+          "survived": 0,
+          "timeout": 1,
+          "unviable": 0,
+          "score": 98.55072463768116
+        },
+        "score_private": {
+          "mutants": 168,
+          "killed": 153,
+          "survived": 15,
+          "timeout": 0,
+          "unviable": 0,
+          "score": 91.07142857142857
+        }
       },
       "survivors": [
         {
@@ -242,7 +242,7 @@
       ]
     }
   },
-  "recorded_at": "2026-10-27",
+  "recorded_at": "2026-10-28",
   "target": "js",
   "tool": "turtles 0.4.5"
 }

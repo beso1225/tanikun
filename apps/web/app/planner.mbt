@@ -396,47 +396,161 @@ pub fn PlannerState::new(
 }
 
 ///|
-/// Derived credit totals for the planner header. This is never stored in
-/// `PlannerState`; it rebuilds the pure evaluation input on demand. The
-/// projected value uses the optimistic projection so planned enrollments count.
-pub struct PlannerCreditTotals {
+/// One category row in the planner summary.
+pub struct SummaryCategory {
+  name : String
   confirmed : @tanikun-domain.Credits
   standard : @tanikun-domain.Credits
-  projected : @tanikun-domain.Credits
+  optimistic : @tanikun-domain.Credits
 }
 
 ///|
-pub fn PlannerState::credit_totals(
-  self : PlannerState,
-) -> Result[PlannerCreditTotals, @tanikun-domain.DomainError] {
-  let input = match self.evaluation_input() {
-    Ok(value) => value
-    Err(error) => return Err(error)
-  }
-  match @tanikun-requirements.credit_summary(input) {
-    Ok(projection) =>
-      Ok({
-        confirmed: projection.confirmed.total,
-        standard: projection.standard.total,
-        projected: projection.optimistic.total,
-      })
-    Err(error) => Err(error)
-  }
-}
-
-///|
-/// A one-line requirement result for the selected profile.
-pub struct RequirementSummary {
+/// One node in the requirement result tree.
+pub struct RequirementNode {
+  label : String
   satisfaction : @tanikun-requirements.Satisfaction
+  progress : String
+  children : Array[RequirementNode]
 }
 
 ///|
-pub fn RequirementSummary::label(self : RequirementSummary) -> String {
+pub fn RequirementNode::status_label(self : RequirementNode) -> String {
   match self.satisfaction {
     @tanikun-requirements.Satisfaction::Satisfied => "充足"
     @tanikun-requirements.Satisfaction::Partial => "部分充足"
     @tanikun-requirements.Satisfaction::Unsatisfied => "未充足"
   }
+}
+
+///|
+fn requirement_label(rule : @tanikun-requirements.Rule) -> String {
+  if rule.is_all() {
+    "すべての要件を充足"
+  } else if rule.is_any() {
+    "いずれか1つ以上の要件"
+  } else if rule.children() is Some(_) {
+    match rule.at_least_count() {
+      Some(count) => "子要件のうち\{count}件以上"
+      None => "複合要件"
+    }
+  } else if rule.category_ids() is Some(_) {
+    "区分単位数"
+  } else if rule.course_ids() is Some(_) {
+    if rule.min_credits() is Some(_) {
+      "科目群の単位数"
+    } else {
+      "全科目合格"
+    }
+  } else if rule.min_credits() is Some(_) {
+    "合計単位数"
+  } else {
+    "要件"
+  }
+}
+
+///|
+fn requirement_node(
+  rule : @tanikun-requirements.Rule,
+  result : @tanikun-requirements.RuleResult,
+) -> RequirementNode {
+  let children : Array[RequirementNode] = []
+  let child_results = result.children()
+  match rule.children() {
+    Some(child_rules) =>
+      for index in 0..<child_rules.length() {
+        if index < child_results.length() {
+          children.push(
+            requirement_node(child_rules[index], child_results[index]),
+          )
+        }
+      }
+    None => ()
+  }
+  {
+    label: requirement_label(rule),
+    satisfaction: result.satisfaction,
+    progress: progress_label(result.progress),
+    children,
+  }
+}
+
+///|
+fn credits_text(credits : @tanikun-domain.Credits) -> String {
+  if credits.half_units() % 2 == 0 {
+    "\{credits.half_units() / 2}"
+  } else {
+    "\{credits.half_units() / 2}.5"
+  }
+}
+
+///|
+fn progress_label(progress : @tanikun-requirements.Progress) -> String {
+  match progress {
+    @tanikun-requirements.Progress::Credits(achieved~, required~) =>
+      "\{credits_text(achieved)} / \{credits_text(required)}単位"
+    @tanikun-requirements.Progress::Courses(passed~, total~) =>
+      "合格 \{passed} / \{total}科目"
+    @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
+      "充足 \{satisfied} / 部分 \{partial} / 全 \{total}"
+  }
+}
+
+///|
+/// A complete derived summary of credits and requirements.
+pub struct PlannerSummary {
+  confirmed : @tanikun-domain.Credits
+  standard : @tanikun-domain.Credits
+  optimistic : @tanikun-domain.Credits
+  categories : Array[SummaryCategory]
+  requirement_root : RequirementNode
+}
+
+///|
+pub fn PlannerState::planner_summary(
+  self : PlannerState,
+) -> Result[PlannerSummary, @tanikun-domain.DomainError] {
+  let requirement_set = match self.active_requirement_set() {
+    Some(value) => value
+    None =>
+      return Err(@tanikun-domain.DomainError::ProfileRequirementSetMismatch)
+  }
+  let input = match self.evaluation_input() {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
+  let evaluation = match @tanikun-requirements.evaluate(input) {
+    Ok(value) => value
+    Err(error) => return Err(error)
+  }
+  let categories : Array[SummaryCategory] = []
+  for category in requirement_set.categories() {
+    let confirmed = match
+      evaluation.credits.confirmed.category_credits(category.id) {
+      Some(value) => value
+      None => @tanikun-domain.Credits::zero()
+    }
+    let standard = match
+      evaluation.credits.standard.category_credits(category.id) {
+      Some(value) => value
+      None => @tanikun-domain.Credits::zero()
+    }
+    let optimistic = match
+      evaluation.credits.optimistic.category_credits(category.id) {
+      Some(value) => value
+      None => @tanikun-domain.Credits::zero()
+    }
+    categories.push({ name: category.name, confirmed, standard, optimistic, })
+  }
+  Ok({
+    confirmed: evaluation.credits.confirmed.total,
+    standard: evaluation.credits.standard.total,
+    optimistic: evaluation.credits.optimistic.total,
+    categories,
+    requirement_root: requirement_node(
+      requirement_set.rule(),
+      evaluation.requirements.optimistic,
+    ),
+  })
 }
 
 ///|
@@ -469,22 +583,6 @@ fn PlannerState::evaluation_input(
       self.overrides,
     ),
   )
-}
-
-///|
-/// Evaluates the current planner state against the active requirement set.
-pub fn PlannerState::requirement_summary(
-  self : PlannerState,
-) -> Result[RequirementSummary, @tanikun-domain.DomainError] {
-  let input = match self.evaluation_input() {
-    Ok(value) => value
-    Err(error) => return Err(error)
-  }
-  match @tanikun-requirements.evaluate(input) {
-    Ok(evaluation) =>
-      Ok({ satisfaction: evaluation.requirements.optimistic.satisfaction, })
-    Err(error) => Err(error)
-  }
 }
 
 ///|

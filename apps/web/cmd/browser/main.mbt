@@ -179,6 +179,7 @@ fn program_label(value : String) -> String {
 fn profile_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
+  summary_result : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
 ) -> Html {
   let program_options : Array[Html] = []
   for program in state.program_ids() {
@@ -202,13 +203,13 @@ fn profile_panel(
       ),
     )
   }
-  let summary = match state.requirement_summary() {
+  let summary = match summary_result {
     Ok(value) =>
       p(
         id="requirement-summary",
         class="text-xs text-muted",
         attrs=@html.Attrs::build().role("status"),
-        "要件: \{value.label()}",
+        "要件: \{value.requirement_root.status_label()}",
       )
     Err(_) => {
       let message = match state.active_requirement_set() {
@@ -311,6 +312,7 @@ fn timetable_year_panel(
 fn term_section(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
+  summary : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
 ) -> Html {
   let tabs : Array[Html] = []
   for term in @app.PlannerTerm::values() {
@@ -338,7 +340,7 @@ fn term_section(
       ]),
       timetable_year_panel(state, emit),
       nav(class="grid grid-cols-5 gap-1 md:flex md:flex-col md:gap-0.5", tabs),
-      profile_panel(state, emit),
+      profile_panel(state, emit, summary),
     ],
   )
 }
@@ -1331,11 +1333,155 @@ fn course_detail(
 }
 
 ///|
-fn credit_total_view(state : @app.PlannerState) -> Html {
-  match state.credit_totals() {
-    Ok(totals) => {
-      let confirmed = credits_label(totals.confirmed)
-      let projected = credits_label(totals.projected)
+fn summary_total_card(
+  id : String,
+  label : String,
+  credits : @tanikun-domain.Credits,
+) -> Html {
+  div(class="rounded-md bg-canvas px-3 py-2", [
+    p(class="text-xs text-muted", label),
+    p(id~, class="text-lg font-semibold", "\{credits_label(credits)}単位"),
+  ])
+}
+
+///|
+fn requirement_tree_node(node : @app.RequirementNode) -> Html {
+  let children : Array[Html] = []
+  for child in node.children {
+    children.push(requirement_tree_node(child))
+  }
+  div(class="border-l border-rule/60 pl-3", [
+    div(class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5", [
+      span(class="text-sm font-medium", node.label),
+      span(class="text-xs font-medium", node.status_label()),
+      span(class="text-xs text-muted", node.progress),
+    ]),
+    if children.is_empty() {
+      div(([] : Array[Html]))
+    } else {
+      div(class="mt-1 space-y-1", children)
+    },
+  ])
+}
+
+///|
+fn summary_panel(
+  summary : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
+) -> Html {
+  match summary {
+    Err(_) =>
+      div(
+        id="summary",
+        class="mt-6 rounded-lg border border-rule bg-paper p-4",
+        [
+          h2(class="text-sm font-semibold", "単位・要件"),
+          p(
+            id="summary-error",
+            class="mt-2 text-sm text-danger-text",
+            attrs=@html.Attrs::build().role("status"),
+            "単位・要件を計算できません",
+          ),
+        ],
+      )
+    Ok(summary) => {
+      let category_rows : Array[Html] = []
+      for category in summary.categories {
+        category_rows.push(
+          tr(class="border-t border-rule/60", [
+            td(class="py-1 pr-2 text-sm", category.name),
+            td(
+              class="py-1 px-2 text-right text-sm",
+              credits_label(category.confirmed),
+            ),
+            td(
+              class="py-1 px-2 text-right text-sm",
+              credits_label(category.standard),
+            ),
+            td(
+              class="py-1 pl-2 text-right text-sm",
+              credits_label(category.optimistic),
+            ),
+          ]),
+        )
+      }
+      div(
+        id="summary",
+        class="mt-6 rounded-lg border border-rule bg-paper p-4",
+        [
+          h2(class="text-sm font-semibold", "単位・要件"),
+          div(class="mt-2 grid grid-cols-3 gap-2", [
+            summary_total_card(
+              "summary-total-confirmed",
+              "確定",
+              summary.confirmed,
+            ),
+            summary_total_card(
+              "summary-total-standard",
+              "標準見込",
+              summary.standard,
+            ),
+            summary_total_card(
+              "summary-total-optimistic",
+              "楽観見込",
+              summary.optimistic,
+            ),
+          ]),
+          if category_rows.is_empty() {
+            p(class="mt-4 text-xs text-muted", "区分はありません")
+          } else {
+            table(
+              id="summary-categories",
+              class="mt-4 w-full table-fixed text-sm",
+              [
+                thead([
+                  tr([
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 text-left text-xs text-muted",
+                      "区分",
+                    ),
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 px-2 text-right text-xs text-muted",
+                      "確定",
+                    ),
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 px-2 text-right text-xs text-muted",
+                      "標準見込",
+                    ),
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 pl-2 text-right text-xs text-muted",
+                      "楽観見込",
+                    ),
+                  ]),
+                ]),
+                tbody(category_rows),
+              ],
+            )
+          },
+          h3(
+            class="mt-4 text-xs font-semibold text-muted",
+            "要件ツリー（楽観見込）",
+          ),
+          div(id="summary-requirements", class="mt-2", [
+            requirement_tree_node(summary.requirement_root),
+          ]),
+        ],
+      )
+    }
+  }
+}
+
+///|
+fn credit_total_view(
+  summary : Result[@app.PlannerSummary, @tanikun-domain.DomainError],
+) -> Html {
+  match summary {
+    Ok(value) => {
+      let confirmed = credits_label(value.confirmed)
+      let projected = credits_label(value.optimistic)
       div(
         id="credit-total",
         class="flex shrink-0 items-baseline gap-1 whitespace-nowrap text-xs text-muted",
@@ -1819,6 +1965,7 @@ fn planner_view(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
+  let summary = state.planner_summary()
   let grid = if state.selected_term == @app.PlannerTerm::W {
     p(
       class="mt-4 text-sm text-muted",
@@ -1851,7 +1998,7 @@ fn planner_view(
         div(
           class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
           [
-            credit_total_view(state),
+            credit_total_view(summary),
             button(
               id="open-catalogue-picker",
               class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
@@ -1869,10 +2016,11 @@ fn planner_view(
       ],
     ),
     div(class="flex min-h-0 flex-1 flex-col md:flex-row", [
-      term_section(state, emit),
+      term_section(state, emit, summary),
       main_(id="main-content", class="min-w-0 flex-1 p-4 md:p-5", [
         grid,
         off_grid(state, emit),
+        summary_panel(summary),
       ]),
     ]),
   ]

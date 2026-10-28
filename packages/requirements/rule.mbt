@@ -163,6 +163,24 @@ pub fn Rule::min_credits(self : Rule) -> @tanikun-domain.Credits? {
 }
 
 ///|
+/// Whether this rule requires every child to be satisfied.
+pub fn Rule::is_all(self : Rule) -> Bool {
+  match self.kind {
+    All(_) => true
+    _ => false
+  }
+}
+
+///|
+/// Whether this rule requires any child to be satisfied.
+pub fn Rule::is_any(self : Rule) -> Bool {
+  match self.kind {
+    Any(_) => true
+    _ => false
+  }
+}
+
+///|
 /// Returns a copy of the children for a node.
 pub fn Rule::children(self : Rule) -> Array[Rule]? {
   match self.kind {
