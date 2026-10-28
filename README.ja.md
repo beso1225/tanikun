@@ -4,8 +4,9 @@ Tanikun は大学の単位と卒業要件を計画するローカルファース
 MoonBit で実装しています。
 
 Phase 1 は完了し、純粋なドメインモデル、単位集計、要件評価を実装しました。
-結果は [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) にあります。
-UI、永続化、同期は後続の Phase で追加する予定です。
+Phase 2 では時間割プランナーの UI を実装しています。契約は
+[docs/PHASE_2.md](docs/PHASE_2.md) にあります。Phase 2 の結果はまだ作業中で、
+永続化と同期は後続の Phase で対応します。
 
 **English:** [README.md](README.md)
 
@@ -15,7 +16,9 @@ UI、永続化、同期は後続の Phase で追加する予定です。
   [docs/PHASE_0.md](docs/PHASE_0.md) にあり、これは履歴です。
 - Phase 1: 完了。契約は [docs/PHASE_1.md](docs/PHASE_1.md)、
   結果は [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) にあります。
-- 後の Phase: UI、永続化、同期。未着手です。
+- Phase 2: 実装中。プランナー UI の契約は
+  [docs/PHASE_2.md](docs/PHASE_2.md) にあります。結果と総括（closeout）は未完了です。
+- 後の Phase: 永続化、同期。未着手です。
 
 ## 構成
 
