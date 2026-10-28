@@ -149,8 +149,17 @@ test(
       "0px",
     );
     await assertCreditTotal(page, "見込 6単位");
-    assert.equal(await page.getByLabel("プログラム").count(), 1);
-    assert.equal(await page.getByLabel("進級年度").count(), 1);
+    assert.equal(
+      await page.getByLabel("プログラム", { exact: true }).count(),
+      1,
+    );
+    assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 1);
+    assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
+    assert.equal(await page.locator("#grade-select").inputValue(), "3");
+    assert.equal(
+      await page.locator("#grade-select option").nth(2).innerText(),
+      "3年（2026年度）",
+    );
     assert.equal(
       await page.locator("#program-select").inputValue(),
       "applied-physics",
@@ -877,6 +886,62 @@ test(
     const bottomCell = await page.locator("#slot-0-10").boundingBox();
     assert.ok(bottomCell);
     assert.ok(bottomCell.y >= stickyHeader.y + stickyHeader.height);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.locator("#grade-select").selectOption("4");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("#term-context")
+          ?.textContent?.includes("2027年度") ?? false,
+    );
+    assert.equal(await page.locator("#grade-select").inputValue(), "4");
+    await page.locator("#grade-select").selectOption("1");
+    await page.locator("#empty-year").waitFor();
+    assert.equal(await page.locator("#timetable").count(), 0);
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#open-custom-course").click();
+    await page.locator("#custom-course").waitFor();
+    assert.equal(await page.locator("#custom-year").inputValue(), "2024");
+    await page.locator("#close-custom-course").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page.locator("#grade-select").selectOption("4");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("#term-context")
+          ?.textContent?.includes("2027年度") ?? false,
+    );
+    await page.locator("#term-S1").click();
+    await page.locator("#timetable").waitFor();
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#picker").waitFor();
+    await page.locator("#catalogue-search").fill("Advanced Physics");
+    await page.locator("#add-offering-phy601-s1").click();
+    await page.locator("#close-picker").click();
+    await page.locator("#picker").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Advanced Physics", { exact: true })
+      .waitFor();
+    await page.locator("#grade-select").selectOption("3");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("#term-context")
+          ?.textContent?.includes("2026年度") ?? false,
+    );
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Advanced Physics", { exact: true })
+        .count(),
+      0,
+    );
 
     await page.evaluate(() => {
       const modal = document.createElement("section");

@@ -1599,3 +1599,206 @@ test "a program switch falls back to its only available year" {
   assert_true(state.profile.program_id.value == "applied-chemistry")
   assert_eq(state.profile.advancement_year.year(), 2026)
 }
+
+///|
+test "timetable years follow the third-year advancement mapping" {
+  let state = @app.sample_state()
+  let years = state.timetable_years()
+  assert_eq(years.length(), 4)
+  assert_eq(years[0].grade, 1)
+  assert_eq(years[0].academic_year.year(), 2024)
+  assert_eq(years[1].grade, 2)
+  assert_eq(years[1].academic_year.year(), 2025)
+  assert_eq(years[2].grade, 3)
+  assert_eq(years[2].academic_year.year(), 2026)
+  assert_eq(years[3].grade, 4)
+  assert_eq(years[3].academic_year.year(), 2027)
+}
+
+///|
+test "grade and academic-year selection stay synchronized" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="4"),
+  )
+  assert_eq(state.timetable_year.grade, 4)
+  assert_eq(state.timetable_year.academic_year.year(), 2027)
+  assert_true(state.selected_term == @app.PlannerTerm::S2)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="1"),
+  )
+  assert_eq(state.timetable_year.grade, 1)
+  assert_eq(state.timetable_year.academic_year.year(), 2024)
+  assert_true(state.selected_term == @app.PlannerTerm::S2)
+}
+
+///|
+test "timetable projections and placement follow the selected year" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="4"),
+  )
+  assert_true(state.has_offerings_for_timetable_year())
+  let entries = state.catalogue_entries(@app.PlannerTerm::S1)
+  assert_eq(entries.length(), 1)
+  assert_eq(entries[0].course_name, "Advanced Physics")
+  assert_eq(state.scheduled_blocks(@app.PlannerTerm::S1).length(), 0)
+  let offering_id = planner_offering_id("phy601-s1")
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  let blocks = state.scheduled_blocks(@app.PlannerTerm::S1)
+  assert_eq(blocks.length(), 1)
+  assert_eq(blocks[0].course_name, "Advanced Physics")
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="3"),
+  )
+  let mut advanced_visible = false
+  for entry in state.catalogue_entries(@app.PlannerTerm::S1) {
+    if entry.course_name == "Advanced Physics" {
+      advanced_visible = true
+    }
+  }
+  assert_true(!advanced_visible)
+  let mut advanced_block = false
+  for block in state.scheduled_blocks(@app.PlannerTerm::S1) {
+    if block.course_name == "Advanced Physics" {
+      advanced_block = true
+    }
+  }
+  assert_true(!advanced_block)
+}
+
+///|
+test "a year without offerings reports the empty state" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="1"),
+  )
+  assert_eq(state.timetable_year.academic_year.year(), 2024)
+  assert_true(!state.has_offerings_for_timetable_year())
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="4"),
+  )
+  assert_true(state.has_offerings_for_timetable_year())
+}
+
+///|
+test "a profile change remaps the timetable year by grade" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="4"),
+  )
+  assert_eq(state.timetable_year.grade, 4)
+  assert_eq(state.timetable_year.academic_year.year(), 2027)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectAdvancementYear(year="2025"),
+  )
+  assert_eq(state.profile.advancement_year.year(), 2025)
+  assert_eq(state.timetable_year.grade, 4)
+  assert_eq(state.timetable_year.academic_year.year(), 2026)
+}
+
+///|
+test "adding an offering from another year is rejected" {
+  let state = @app.sample_state()
+  let offering_id = planner_offering_id("phy601-s1")
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  match state.error {
+    Some(error) =>
+      assert_true(error.kind == @app.UiErrorKind::DifferentAcademicYear)
+    None => fail("expected a different-year error")
+  }
+  let mut advanced_block = false
+  for block in state.scheduled_blocks(@app.PlannerTerm::S1) {
+    if block.course_name == "Advanced Physics" {
+      advanced_block = true
+    }
+  }
+  assert_true(!advanced_block)
+}
+
+///|
+test "a custom course uses the selected timetable year" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::SelectGrade(grade="4"),
+  )
+  let state = create_named_custom_course(state, "Year Four Custom")
+  let offering = state.offerings[state.offerings.length() - 1]
+  assert_eq(offering.academic_year.year(), 2027)
+}
+
+///|
+test "slot conflicts ignore enrollments from another academic year" {
+  let state = @app.sample_state()
+  let mut advanced = None
+  for course in state.catalogue {
+    if course.name == "Advanced Physics" {
+      advanced = Some(course)
+    }
+  }
+  let course = match advanced {
+    Some(value) => value
+    None => fail("expected the 2027 sample course")
+  }
+  let offering = planner_expect_ok(
+    @tanikun-domain.CourseOffering::new(
+      planner_offering_id("phy601-collision"),
+      course.id,
+      planner_expect_ok(@tanikun-domain.AcademicYear::new(2027)),
+      @tanikun-domain.OfferingSchedule::Regular(terms=[@tanikun-domain.Term::S1]),
+      @tanikun-domain.OfferingStatus::Offered,
+      [planner_slot(@tanikun-domain.DayOfWeek::Monday, 1)],
+    ),
+  )
+  let offerings = state.offerings.copy()
+  offerings.push(offering)
+  let state = @app.PlannerState::new(
+    state.catalogue,
+    offerings,
+    state.enrollments,
+    state.overrides,
+    state.profile,
+    state.requirement_sets,
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectGrade(grade="4"),
+  )
+  let before = state.enrollments.length()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(
+      offering_id=planner_offering_id("phy601-collision"),
+    ),
+  )
+  assert_eq(state.enrollments.length(), before + 1)
+  match state.error {
+    None => ()
+    Some(_) => fail("cross-year slot collision should not block placement")
+  }
+  let mut placed = false
+  for block in state.scheduled_blocks(@app.PlannerTerm::S1) {
+    if block.course_name == "Advanced Physics" {
+      placed = true
+    }
+  }
+  assert_true(placed)
+}
