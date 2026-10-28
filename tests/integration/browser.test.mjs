@@ -36,7 +36,10 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
   const bar = page
     .locator("#summary-requirements [data-requirement-bar]")
     .nth(1);
-  assert.match(await bar.getAttribute("aria-label"), /履修予定込 6\.5\/2単位/);
+  assert.match(
+    await bar.getAttribute("aria-label"),
+    /履修予定込 6\.5 \/ 2単位/,
+  );
   assert.match(
     await page.locator("#summary-requirements").innerText(),
     /6\.5 \/ 2単位/,
@@ -46,7 +49,7 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
       .locator("#summary-requirements [data-requirement-bar]")
       .first()
       .getAttribute("aria-label"),
-    /2\/2件/,
+    /2 \/ 2件/,
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator("#open-settings").click();
@@ -83,6 +86,26 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
   assert.equal(
     await page.locator("#override-day").getAttribute("aria-describedby"),
     "override-form-error",
+  );
+  await page.locator("#close-override-editor").click();
+  await page.locator("#close-detail").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('[id^="mobile-detail-user-offering-1"]').click();
+  await page.locator("#remove-detail").click();
+  await page.locator("#undo-removal").waitFor();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.locator("#undo-removal-button").click();
+  await page.locator("#undo-removal").waitFor({ state: "detached" });
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    "open-catalogue-picker",
+  );
+  assert.equal(
+    await page
+      .locator("#timetable")
+      .getByText("Half credit with a long course name", { exact: true })
+      .count(),
+    1,
   );
 });
 
@@ -164,7 +187,7 @@ test(
         .locator("#summary-requirements [data-requirement-bar]")
         .nth(1)
         .getAttribute("aria-label"),
-      "合計単位数: 修得済 0/2単位, 履修中込 0/2単位, 履修予定込 6/2単位",
+      "合計単位数: 修得済 0 / 2単位, 履修中込 0 / 2単位, 履修予定込 6 / 2単位",
     );
     assert.match(
       await page.locator("#summary-requirements").innerText(),

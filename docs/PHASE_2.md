@@ -138,6 +138,11 @@ the range remains in state and in `scheduled_blocks()`, but is not drawn. The
 view shows `表示範囲外にN件の履修があります` when
 `hidden_scheduled_block_count(term) > 0`.
 
+The grid says `空き時間を選んで科目を追加できます。` above its cells. At
+phone widths, a list below the grid repeats visible scheduled blocks with their
+day, period, name, and status. Both the grid and the list open course details.
+The list remains empty when there are no visible scheduled blocks.
+
 Visible range bounds are:
 
 - days: 5 through 7;
@@ -236,6 +241,9 @@ unknown offering; it converts to `UiError`.
 - Form validation errors are stored on the form (`error_field`,
   `error_message`) and keep the dialog open. They render with `role="alert"` and
   connect `aria-invalid` and `aria-describedby` to the offending control.
+- A rejected form submission moves focus to the invalid control when one is
+  available. After undo, focus returns to the restored course control if it is
+  visible; otherwise it moves to the catalogue button.
 - A rejected status or delete action keeps state unchanged and reports a
   planner error.
 - `#requirement-summary` uses `role="status"` in the summary header; `#summary-error`
@@ -299,6 +307,10 @@ It shows:
   with `合格済`, `履修中`, and `履修予定` segments;
 - a legend that labels those three segments, plus a note that each cumulative
   stage includes the earlier stages.
+
+The bar and its legend stop at the required amount. The note
+`バーと凡例は必要数までの内訳です。` distinguishes those segments from
+the uncapped cumulative progress shown in the rows and bar's accessible name.
 
 Requirement status labels distinguish when the result is actually achieved:
 

@@ -1485,7 +1485,7 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
   let standard_total = requirement_amount(node.standard.total, unit)
   let optimistic_done = requirement_amount(node.optimistic.done, unit)
   let optimistic_total = requirement_amount(node.optimistic.total, unit)
-  let label = "\{node.label}: 修得済 \{confirmed_done}/\{confirmed_total}\{unit}, 履修中込 \{standard_done}/\{standard_total}\{unit}, 履修予定込 \{optimistic_done}/\{optimistic_total}\{unit}"
+  let label = "\{node.label}: 修得済 \{confirmed_done} / \{confirmed_total}\{unit}, 履修中込 \{standard_done} / \{standard_total}\{unit}, 履修予定込 \{optimistic_done} / \{optimistic_total}\{unit}"
   div(
     class="flex h-2 w-full overflow-hidden rounded-full bg-rule",
     attrs=@html.Attrs::build()
