@@ -150,6 +150,26 @@ test(
     );
     await assertCreditTotal(page, "見込 6単位");
     assert.equal(
+      await page.locator("#summary-total-confirmed").innerText(),
+      "0単位",
+    );
+    assert.equal(
+      await page.locator("#summary-total-standard").innerText(),
+      "0単位",
+    );
+    assert.equal(
+      await page.locator("#summary-total-optimistic").innerText(),
+      "6単位",
+    );
+    assert.match(
+      await page.locator("#summary-categories").innerText(),
+      /基礎物理/,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /充足/,
+    );
+    assert.equal(
       await page.getByLabel("プログラム", { exact: true }).count(),
       1,
     );
@@ -647,6 +667,14 @@ test(
         .filter({ hasText: "Physics I" })
         .innerText(),
       /合格/,
+    );
+    assert.equal(
+      await page.locator("#summary-total-confirmed").innerText(),
+      "2単位",
+    );
+    assert.match(
+      await page.locator("#summary-categories").innerText(),
+      /基礎物理/,
     );
 
     await page.locator("#term-S2").click();

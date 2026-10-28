@@ -1331,6 +1331,142 @@ fn course_detail(
 }
 
 ///|
+fn summary_total_card(
+  id : String,
+  label : String,
+  credits : @tanikun-domain.Credits,
+) -> Html {
+  div(class="rounded-md bg-canvas px-3 py-2", [
+    p(class="text-xs text-muted", label),
+    p(id~, class="text-lg font-semibold", "\{credits_label(credits)}単位"),
+  ])
+}
+
+///|
+fn requirement_tree_node(node : @app.RequirementNode) -> Html {
+  let children : Array[Html] = []
+  for child in node.children {
+    children.push(requirement_tree_node(child))
+  }
+  div(class="border-l border-rule/60 pl-3", [
+    div(class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5", [
+      span(class="text-sm font-medium", node.label),
+      span(class="text-xs font-medium", node.status_label()),
+      span(class="text-xs text-muted", node.progress),
+    ]),
+    if children.is_empty() {
+      div(([] : Array[Html]))
+    } else {
+      div(class="mt-1 space-y-1", children)
+    },
+  ])
+}
+
+///|
+fn summary_panel(state : @app.PlannerState) -> Html {
+  match state.planner_summary() {
+    Err(_) =>
+      div(
+        id="summary",
+        class="mt-6 rounded-lg border border-rule bg-paper p-4",
+        [
+          h2(class="text-sm font-semibold", "単位・要件"),
+          p(
+            id="summary-error",
+            class="mt-2 text-sm text-danger-text",
+            "単位・要件を計算できません",
+          ),
+        ],
+      )
+    Ok(summary) => {
+      let category_rows : Array[Html] = []
+      for category in summary.categories {
+        category_rows.push(
+          tr(class="border-t border-rule/60", [
+            td(class="py-1 pr-2 text-sm", category.name),
+            td(
+              class="py-1 px-2 text-right text-sm",
+              credits_label(category.confirmed),
+            ),
+            td(
+              class="py-1 px-2 text-right text-sm",
+              credits_label(category.standard),
+            ),
+            td(
+              class="py-1 pl-2 text-right text-sm",
+              credits_label(category.optimistic),
+            ),
+          ]),
+        )
+      }
+      div(
+        id="summary",
+        class="mt-6 rounded-lg border border-rule bg-paper p-4",
+        [
+          h2(class="text-sm font-semibold", "単位・要件"),
+          div(class="mt-2 grid grid-cols-3 gap-2", [
+            summary_total_card(
+              "summary-total-confirmed",
+              "確定",
+              summary.confirmed,
+            ),
+            summary_total_card(
+              "summary-total-standard",
+              "標準見込",
+              summary.standard,
+            ),
+            summary_total_card(
+              "summary-total-optimistic",
+              "楽観見込",
+              summary.optimistic,
+            ),
+          ]),
+          if category_rows.is_empty() {
+            p(class="mt-4 text-xs text-muted", "カテゴリはありません")
+          } else {
+            table(
+              id="summary-categories",
+              class="mt-4 w-full table-fixed text-sm",
+              [
+                thead([
+                  tr([
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 text-left text-xs text-muted",
+                      "カテゴリ",
+                    ),
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 px-2 text-right text-xs text-muted",
+                      "確定",
+                    ),
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 px-2 text-right text-xs text-muted",
+                      "標準見込",
+                    ),
+                    th(
+                      scope=@html.Scope::Col,
+                      class="pb-1 pl-2 text-right text-xs text-muted",
+                      "楽観見込",
+                    ),
+                  ]),
+                ]),
+                tbody(category_rows),
+              ],
+            )
+          },
+          h3(class="mt-4 text-xs font-semibold text-muted", "要件ツリー"),
+          div(id="summary-requirements", class="mt-2", [
+            requirement_tree_node(summary.requirement_root),
+          ]),
+        ],
+      )
+    }
+  }
+}
+
+///|
 fn credit_total_view(state : @app.PlannerState) -> Html {
   match state.credit_totals() {
     Ok(totals) => {
@@ -1873,6 +2009,7 @@ fn planner_view(
       main_(id="main-content", class="min-w-0 flex-1 p-4 md:p-5", [
         grid,
         off_grid(state, emit),
+        summary_panel(state),
       ]),
     ]),
   ]

@@ -1802,3 +1802,76 @@ test "slot conflicts ignore enrollments from another academic year" {
   }
   assert_true(placed)
 }
+
+///|
+test "planner summary exposes credits, categories, and requirement status" {
+  let state = @app.sample_state()
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 0)
+  assert_eq(summary.standard.half_units(), 0)
+  assert_eq(summary.optimistic.half_units(), 12)
+  assert_eq(summary.categories.length(), 3)
+  assert_eq(summary.categories[0].name, "基礎物理")
+  assert_eq(summary.categories[0].optimistic.half_units(), 4)
+  assert_eq(summary.categories[1].name, "実験")
+  assert_eq(summary.categories[1].optimistic.half_units(), 2)
+  assert_eq(summary.categories[2].name, "演習")
+  assert_eq(summary.categories[2].optimistic.half_units(), 6)
+  assert_true(
+    summary.requirement_root.satisfaction ==
+    @tanikun-requirements.Satisfaction::Satisfied,
+  )
+  assert_eq(summary.requirement_root.label, "複合要件")
+  assert_eq(summary.requirement_root.progress, "充足 2 / 部分 0 / 全 2")
+  assert_eq(summary.requirement_root.children.length(), 2)
+  assert_eq(summary.requirement_root.children[0].label, "合計単位数")
+  assert_eq(summary.requirement_root.children[1].label, "カテゴリ単位数")
+}
+
+///|
+test "planner summary recomputes after a status change" {
+  let id = planner_offering_id("phy101-s1")
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=id,
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 4)
+  assert_eq(summary.categories[0].confirmed.half_units(), 4)
+}
+
+///|
+test "planner summary reports invalid input" {
+  let state = @app.sample_state()
+  let enrollments = state.enrollments.copy()
+  enrollments.push(
+    @tanikun-domain.Enrollment::planned(planner_offering_id("missing-offering")),
+  )
+  let state = @app.PlannerState::new(
+    state.catalogue,
+    state.offerings,
+    enrollments,
+    state.overrides,
+    state.profile,
+    state.requirement_sets,
+  )
+  match state.planner_summary() {
+    Err(_) => ()
+    Ok(_) => fail("expected an invalid summary")
+  }
+  match state.credit_totals() {
+    Err(_) => ()
+    Ok(_) => fail("expected invalid credit totals")
+  }
+}

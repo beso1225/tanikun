@@ -180,10 +180,20 @@ pub fn sample_state() -> PlannerState {
       sample_ok(@tanikun-domain.OfferingId::new("phy501-w")),
     ),
   ]
-  let rule = sample_ok(
+  let foundation_id = sample_ok(@tanikun-domain.CategoryId::new("foundation"))
+  let total_rule = sample_ok(
     @tanikun-requirements.Rule::total_minimum(
       sample_ok(@tanikun-domain.Credits::new(4)),
     ),
+  )
+  let foundation_rule = sample_ok(
+    @tanikun-requirements.Rule::category_minimum(
+      [foundation_id],
+      sample_ok(@tanikun-domain.Credits::new(2)),
+    ),
+  )
+  let rule = sample_ok(
+    @tanikun-requirements.Rule::all([total_rule, foundation_rule]),
   )
   let chemistry_rule = sample_ok(
     @tanikun-requirements.Rule::total_minimum(
@@ -197,13 +207,33 @@ pub fn sample_state() -> PlannerState {
   )
   let chemistry = sample_ok(@tanikun-domain.ProgramId::new("applied-chemistry"))
   let prior_year = sample_ok(@tanikun-domain.AcademicYear::new(2025))
+  let foundation_id = sample_ok(@tanikun-domain.CategoryId::new("foundation"))
+  let lab_id = sample_ok(@tanikun-domain.CategoryId::new("lab"))
+  let seminar_id = sample_ok(@tanikun-domain.CategoryId::new("seminar"))
+  let categories = [
+    sample_ok(
+      @tanikun-requirements.Category::new(foundation_id, "基礎物理"),
+    ),
+    sample_ok(@tanikun-requirements.Category::new(lab_id, "実験")),
+    sample_ok(@tanikun-requirements.Category::new(seminar_id, "演習")),
+  ]
+  let assignments = [
+    (phy101.id, foundation_id),
+    (phy102.id, foundation_id),
+    (phy103.id, foundation_id),
+    (phy201.id, lab_id),
+    (phy301.id, seminar_id),
+    (phy302.id, seminar_id),
+    (phy401.id, seminar_id),
+    (phy501.id, seminar_id),
+  ]
   let requirement_sets = sample_ok(
     @tanikun-requirements.RequirementSets::new([
       sample_ok(
         @tanikun-requirements.RequirementSet::new(
           @tanikun-requirements.RequirementSetKey::new(program, year),
-          [],
-          [],
+          categories,
+          assignments,
           rule,
         ),
       ),
