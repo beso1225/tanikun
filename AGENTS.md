@@ -68,6 +68,9 @@ Load `tanikun-mutation-refresh` before updating the baseline.
   Nix and GitHub Actions failure triage.
 - [tanikun-toolchain-update](.agents/skills/tanikun-toolchain-update/SKILL.md):
   MoonBit, Node.js, pnpm, Warren, mooncakes, and turtles pins.
+- [verify](.agents/skills/verify/SKILL.md):
+  drive the built planner page in Chromium; doctor, journeys, and evidence
+  under `.cache/verify/`.
 
 ## Documentation
 
