@@ -16,6 +16,76 @@ const core = process.env.PLAYWRIGHT_CORE;
 assert.ok(core, "run this test in `nix develop` so PLAYWRIGHT_CORE is set");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
 
+test("half-credit requirement labels match the displayed totals", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(origin);
+  await page.locator("#open-catalogue-picker").click();
+  await page.locator("#open-custom-course").click();
+  await page
+    .locator("#custom-name")
+    .fill("Half credit with a long course name");
+  await page.locator("#custom-credits").selectOption("1");
+  await page.locator("#custom-day").selectOption("1");
+  await page.locator("#custom-submit").click();
+  await page.locator("#add-offering-user-offering-1").click();
+  await page.locator("#close-picker").click();
+  const bar = page
+    .locator("#summary-requirements [data-requirement-bar]")
+    .nth(1);
+  assert.match(await bar.getAttribute("aria-label"), /履修予定込 6\.5\/2単位/);
+  assert.match(
+    await page.locator("#summary-requirements").innerText(),
+    /6\.5 \/ 2単位/,
+  );
+  assert.match(
+    await page
+      .locator("#summary-requirements [data-requirement-bar]")
+      .first()
+      .getAttribute("aria-label"),
+    /2\/2件/,
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("#open-settings").click();
+  await page.locator("#add-day").click();
+  await page.locator("#add-day").click();
+  await page.locator("#close-settings").click();
+  assert.ok(
+    (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: /Half credit with a long course name/ })
+      .count(),
+    2,
+  );
+  assert.ok(
+    await page.locator('[id^="mobile-detail-user-offering-1"]').isVisible(),
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page
+    .locator("#timetable")
+    .getByText("Half credit with a long course name", { exact: true })
+    .click();
+  await page.locator("#open-override-editor").click();
+  await page.locator("#override-slots-enabled").click();
+  await page.locator("#override-day").selectOption("0");
+  await page.locator("#override-period").selectOption("1");
+  await page.locator("#override-submit").click();
+  await page.locator("#override-form-error").waitFor();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    "override-day",
+  );
+  assert.equal(
+    await page.locator("#override-day").getAttribute("aria-describedby"),
+    "override-form-error",
+  );
+});
+
 test(
   "built page renders the semester planner and resizes",
   { timeout: 60_000 },
@@ -89,6 +159,17 @@ test(
         .count(),
       3,
     );
+    assert.equal(
+      await page
+        .locator("#summary-requirements [data-requirement-bar]")
+        .nth(1)
+        .getAttribute("aria-label"),
+      "合計単位数: 修得済 0/2単位, 履修中込 0/2単位, 履修予定込 6/2単位",
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /履修予定 2単位/,
+    );
     assert.match(
       await page.locator("#summary-requirements").innerText(),
       /あと 2件/,
@@ -105,6 +186,12 @@ test(
     assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
     await page.locator("#open-settings").click();
     await page.locator("#settings").waitFor();
+    await page.locator("#close-settings").focus();
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "year-select",
+    );
     assert.equal(
       await page.getByLabel("プログラム", { exact: true }).count(),
       1,
@@ -625,8 +712,23 @@ test(
     await page.locator("#open-custom-course").click();
     await page.locator("#custom-course").waitFor();
     assert.deepEqual(await auditAccessibility(page), []);
+    await page.locator("#close-custom-course").focus();
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "custom-submit",
+    );
+    await page.keyboard.press("Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "close-custom-course",
+    );
     await page.locator("#custom-submit").click();
     await page.locator("#custom-form-error").waitFor();
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      "custom-name",
+    );
     assert.equal(
       await page.locator("#custom-form-error").getAttribute("role"),
       "alert",
@@ -924,6 +1026,10 @@ test(
       .locator("#timetable")
       .getByText("Physics Lab", { exact: true })
       .waitFor();
+    assert.match(
+      await page.evaluate(() => document.activeElement?.id ?? ""),
+      /^open-detail-phy201-year-/,
+    );
 
     await page
       .locator("#timetable")

@@ -136,7 +136,10 @@ fn enrollment_status_view(
 ///|
 fn enrollment_status_badge(status : @tanikun-domain.EnrollmentStatus) -> Html {
   let (label, class_name) = enrollment_status_view(status)
-  span(class="text-[0.6875rem] font-medium \{class_name}", label)
+  span(
+    class="shrink-0 whitespace-nowrap text-[0.6875rem] font-medium \{class_name}",
+    label,
+  )
 }
 
 ///|
@@ -476,6 +479,10 @@ fn override_form_panel(
                     label(for_="override-day", class="sr-only", "曜日"),
                     select(
                       id="override-day",
+                      attrs=override_field_attrs(
+                        form,
+                        @app.OverrideField::Slots,
+                      ),
                       class=override_field_class(
                         form,
                         @app.OverrideField::Slots,
@@ -489,6 +496,10 @@ fn override_form_panel(
                     label(for_="override-period", class="sr-only", "時限"),
                     select(
                       id="override-period",
+                      attrs=override_field_attrs(
+                        form,
+                        @app.OverrideField::Slots,
+                      ),
                       class=override_field_class(
                         form,
                         @app.OverrideField::Slots,
@@ -721,13 +732,16 @@ fn timetable_grid(
                     class="block break-words text-[0.6875rem] font-medium leading-tight tracking-tight text-ink sm:text-sm",
                     block.course_name,
                   ),
-                  div(class="flex items-end justify-between gap-1", [
-                    span(
-                      class="truncate text-[0.625rem] leading-tight text-muted",
-                      "\{credits_label(block.credits)}単位 · \{block.category_name}",
-                    ),
-                    enrollment_status_badge(block.status),
-                  ]),
+                  div(
+                    class="flex flex-col items-start sm:flex-row sm:items-end sm:justify-between sm:gap-1",
+                    [
+                      span(
+                        class="sr-only truncate text-[0.625rem] leading-tight text-muted sm:not-sr-only",
+                        "\{credits_label(block.credits)}単位 · \{block.category_name}",
+                      ),
+                      enrollment_status_badge(block.status),
+                    ],
+                  ),
                 ]),
               ),
             ],
@@ -751,10 +765,34 @@ fn timetable_grid(
     rows.push(tr(cells))
   }
   let hidden = state.hidden_scheduled_block_count(state.selected_term)
+  let mobile_blocks : Array[Html] = []
+  for block in blocks {
+    if state.is_visible_slot(block.day, block.period) {
+      mobile_blocks.push(
+        button(
+          id="mobile-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+          class="flex min-h-11 w-full items-center justify-between gap-2 rounded-md bg-primary-soft px-3 py-2 text-left text-sm",
+          on_click=emit(
+            @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
+          ),
+          [
+            span(
+              "\{day_label(block.day)}\{block.period.value()}限 · \{block.course_name}",
+            ),
+            enrollment_status_badge(block.status),
+          ],
+        ),
+      )
+    }
+  }
   let children : Array[Html] = [
+    p(
+      class="mt-4 text-xs text-muted",
+      "空き時間を選んで科目を追加できます。",
+    ),
     div(
       id="timetable-scroll",
-      class="mt-4 overflow-visible rounded-lg border border-rule bg-paper",
+      class="mt-2 overflow-visible rounded-lg border border-rule bg-paper",
       [
         table(
           id="timetable",
@@ -763,6 +801,11 @@ fn timetable_grid(
         ),
       ],
     ),
+    if mobile_blocks.is_empty() {
+      div(([] : Array[Html]))
+    } else {
+      div(class="mt-3 space-y-1 sm:hidden", mobile_blocks)
+    },
   ]
   if hidden > 0 {
     children.push(
@@ -1436,7 +1479,13 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
     (optimistic - standard) * 100 / total
   }
   let unit = node.confirmed.unit
-  let label = "\{node.label}: 合格済 \{node.confirmed.done}/\{node.confirmed.total}\{unit}, 履修中 \{node.standard.done}/\{node.standard.total}\{unit}, 履修予定 \{node.optimistic.done}/\{node.optimistic.total}\{unit}"
+  let confirmed_done = requirement_amount(node.confirmed.done, unit)
+  let confirmed_total = requirement_amount(node.confirmed.total, unit)
+  let standard_done = requirement_amount(node.standard.done, unit)
+  let standard_total = requirement_amount(node.standard.total, unit)
+  let optimistic_done = requirement_amount(node.optimistic.done, unit)
+  let optimistic_total = requirement_amount(node.optimistic.total, unit)
+  let label = "\{node.label}: 修得済 \{confirmed_done}/\{confirmed_total}\{unit}, 履修中込 \{standard_done}/\{standard_total}\{unit}, 履修予定込 \{optimistic_done}/\{optimistic_total}\{unit}"
   div(
     class="flex h-2 w-full overflow-hidden rounded-full bg-rule",
     attrs=@html.Attrs::build()
@@ -1464,6 +1513,15 @@ fn requirement_stacked_bar(node : @app.RequirementNode) -> Html {
 }
 
 ///|
+fn requirement_amount(amount : Int, unit : String) -> String {
+  if unit == "単位" {
+    half_units_label(amount)
+  } else {
+    "\{amount}"
+  }
+}
+
+///|
 fn requirement_segment_chip(
   label : String,
   amount : Int,
@@ -1475,7 +1533,7 @@ fn requirement_segment_chip(
       class="inline-block h-2 w-2 shrink-0 rounded-sm \{color_class}",
       ([] : Array[Html]),
     ),
-    span("\{label} \{amount}\{unit}"),
+    span("\{label} \{requirement_amount(amount, unit)}\{unit}"),
   ])
 }
 
@@ -1681,6 +1739,10 @@ fn summary_panel(
             )
           },
           h3(class="mt-4 text-xs font-semibold text-muted", "要件の状況"),
+          p(
+            class="mt-1 text-xs text-muted",
+            "バーと凡例は必要数までの内訳です。",
+          ),
           div(id="summary-requirements", class="mt-2", [
             requirement_tree_node(summary.requirement_root),
           ]),
