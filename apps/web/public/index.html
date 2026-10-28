@@ -14,17 +14,52 @@
         const dialog = () =>
           document.querySelector('[role="dialog"][aria-modal="true"]');
         let returnFocus = null;
+        let removedFocusId = null;
+        let pendingValidation = false;
+        let pendingUndo = false;
         document.addEventListener(
           "click",
           (event) => {
-            if (!dialog() && event.target.closest("button")) {
-              returnFocus = event.target.closest("button");
+            const button = event.target.closest("button");
+            if (!button) return;
+            if (button.id === "remove-detail") removedFocusId = returnFocus?.id;
+            if (button.id === "undo-removal-button") pendingUndo = true;
+            if (
+              button.id === "custom-submit" ||
+              button.id === "override-submit"
+            ) {
+              pendingValidation = true;
+            }
+            if (!dialog() && button.id !== "undo-removal-button") {
+              returnFocus = button;
             }
           },
           true,
         );
         new MutationObserver(() => {
           const panel = dialog();
+          if (pendingValidation) {
+            pendingValidation = false;
+            const invalid = panel?.querySelector('[aria-invalid="true"]');
+            const target = invalid?.matches("input, select, textarea, button")
+              ? invalid
+              : invalid?.querySelector("input, select, textarea, button");
+            if (target) {
+              target.focus();
+              return;
+            }
+          }
+          if (pendingUndo && !document.querySelector("#undo-removal")) {
+            pendingUndo = false;
+            const restored = document.getElementById(removedFocusId);
+            const target = restored?.getClientRects().length
+              ? restored
+              : document.querySelector("#open-catalogue-picker");
+            removedFocusId = null;
+            returnFocus = null;
+            target?.focus();
+            return;
+          }
           if (panel && !panel.contains(document.activeElement)) {
             (
               panel.querySelector("input") ??
@@ -43,9 +78,9 @@
         const focusable = () =>
           Array.from(
             dialog()?.querySelectorAll(
-              'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+              'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
             ) ?? [],
-          );
+          ).filter((element) => element.getClientRects().length > 0);
         document.addEventListener(
           "keydown",
           (event) => {
