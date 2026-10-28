@@ -1961,6 +1961,27 @@ fn custom_form_panel(
 }
 
 ///|
+fn undo_banner(state : @app.PlannerState, emit : Emit[@app.PlannerMsg]) -> Html {
+  if !state.undo_available() {
+    return div(([] : Array[Html]))
+  }
+  div(
+    id="undo-removal",
+    class="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-ink px-4 py-2 text-sm text-white shadow-lg",
+    attrs=@html.Attrs::build().role("status"),
+    [
+      span("履修を削除しました"),
+      button(
+        id="undo-removal-button",
+        class="min-h-9 rounded-md bg-white/15 px-2 font-medium text-white hover:bg-white/25",
+        on_click=emit(@app.PlannerMsg::UndoEnrollmentRemoval),
+        "元に戻す",
+      ),
+    ],
+  )
+}
+
+///|
 fn planner_view(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -2046,6 +2067,7 @@ fn planner_view(
       class="mx-auto flex min-h-screen max-w-6xl flex-col overflow-visible bg-paper md:min-h-[calc(100vh-3rem)] md:rounded-xl md:border md:border-rule md:shadow-[0_16px_48px_rgba(0,0,0,0.10)]",
       content,
     ),
+    undo_banner(state, emit),
     picker_panel(state, emit),
     course_detail(state, emit),
     custom_form_panel(state, emit),

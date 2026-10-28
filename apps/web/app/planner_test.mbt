@@ -1892,3 +1892,67 @@ test "a credits override updates the summary" {
   assert_eq(summary.optimistic.half_units(), 14)
   assert_eq(summary.categories[0].optimistic.half_units(), 6)
 }
+
+///|
+test "undo restores a passed enrollment with its grade and snapshot" {
+  let id = planner_offering_id("offering-1")
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=id),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=id,
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let before = state.enrollments[0]
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::RemoveEnrollment(offering_id=id),
+  )
+  assert_eq(state.enrollments.length(), 0)
+  assert_true(state.undo_available())
+  let state = @app.update_planner(state, @app.PlannerMsg::UndoEnrollmentRemoval)
+  assert_eq(state.enrollments.length(), 1)
+  assert_true(!state.undo_available())
+  let after = state.enrollments[0]
+  assert_true(after.offering_id == before.offering_id)
+  assert_true(after.is_passed())
+  match after.status {
+    @tanikun-domain.EnrollmentStatus::Confirmed(
+      @tanikun-domain.ConfirmedGrade::Passed(grade~, ..)
+    ) => assert_true(grade == @tanikun-domain.PassingGrade::Good)
+    _ => fail("expected the passed grade to survive undo")
+  }
+  let snapshot = match after.snapshot() {
+    Some(value) => value
+    None => fail("expected the pass snapshot to survive undo")
+  }
+  assert_eq(snapshot.name, "Physics")
+  assert_eq(snapshot.credits.half_units(), 4)
+}
+
+///|
+test "undo disappears after an unrelated state change" {
+  let id = planner_offering_id("offering-1")
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=id),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::RemoveEnrollment(offering_id=id),
+  )
+  assert_true(state.undo_available())
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+  )
+  assert_true(!state.undo_available())
+  let state = @app.update_planner(state, @app.PlannerMsg::UndoEnrollmentRemoval)
+  assert_eq(state.enrollments.length(), 0)
+}

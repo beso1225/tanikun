@@ -971,6 +971,32 @@ test(
       0,
     );
 
+    await page
+      .locator("#timetable")
+      .getByText("Physics Lab", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#remove-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    await page.locator("#undo-removal").waitFor();
+    assert.equal(
+      await page.locator("#undo-removal").getAttribute("role"),
+      "status",
+    );
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics Lab", { exact: true })
+        .count(),
+      0,
+    );
+    await page.locator("#undo-removal-button").click();
+    await page.locator("#undo-removal").waitFor({ state: "detached" });
+    await page
+      .locator("#timetable")
+      .getByText("Physics Lab", { exact: true })
+      .waitFor();
+
     await page.evaluate(() => {
       const modal = document.createElement("section");
       modal.id = "synthetic-modal";
