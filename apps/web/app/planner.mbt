@@ -462,12 +462,12 @@ pub struct RequirementNode {
 ///|
 fn requirement_label(rule : @tanikun-requirements.Rule) -> String {
   if rule.is_all() {
-    "すべての要件"
+    "全体"
   } else if rule.is_any() {
     "いずれか1つ以上の要件"
   } else if rule.children() is Some(_) {
     match rule.at_least_count() {
-      Some(count) => "子要件のうち\{count}件以上"
+      Some(count) => "要件のうち\{count}件以上"
       None => "複合要件"
     }
   } else if rule.category_ids() is Some(_) {
@@ -563,9 +563,9 @@ fn remaining_label(progress : @tanikun-requirements.Progress) -> String {
       } else {
         ""
       }
-    @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
-      if satisfied + partial < total {
-        "あと \{total - satisfied - partial}件"
+    @tanikun-requirements.Progress::Children(satisfied~, total~, ..) =>
+      if satisfied < total {
+        "あと \{total - satisfied}件"
       } else {
         ""
       }
@@ -578,8 +578,8 @@ fn progress_counts(progress : @tanikun-requirements.Progress) -> (Int, Int) {
     @tanikun-requirements.Progress::Credits(achieved~, required~) =>
       (achieved.half_units(), required.half_units())
     @tanikun-requirements.Progress::Courses(passed~, total~) => (passed, total)
-    @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
-      (satisfied + partial, total)
+    @tanikun-requirements.Progress::Children(satisfied~, total~, ..) =>
+      (satisfied, total)
   }
 }
 
@@ -605,7 +605,7 @@ fn progress_label(progress : @tanikun-requirements.Progress) -> String {
     @tanikun-requirements.Progress::Courses(passed~, total~) =>
       "合格 \{passed} / \{total}科目"
     @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
-      "子要件 \{satisfied} / \{total}件（部分 \{partial}）"
+      "要件 \{satisfied} / \{total}件（部分 \{partial}）"
   }
 }
 
@@ -2801,6 +2801,7 @@ pub struct ScheduledBlock {
   offering_id : @tanikun-domain.OfferingId
   course_name : String
   category_name : String
+  credits : @tanikun-domain.Credits
   day : @tanikun-domain.DayOfWeek
   period : @tanikun-domain.Period
   status : @tanikun-domain.EnrollmentStatus
@@ -3024,6 +3025,11 @@ pub fn PlannerState::scheduled_blocks(
                   category_name: self
                   .category_name_for(course.id)
                   .unwrap_or("未分類"),
+                  credits: @tanikun-domain.effective_credits(
+                    enrollment,
+                    course,
+                    self.overrides,
+                  ),
                   day: slot.day,
                   period: slot.period,
                   status: enrollment.status,

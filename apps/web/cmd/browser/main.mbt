@@ -723,7 +723,7 @@ fn timetable_grid(
                   div(class="flex items-end justify-between gap-1", [
                     span(
                       class="truncate text-[0.625rem] leading-tight text-muted",
-                      block.category_name,
+                      "\{credits_label(block.credits)}単位 · \{block.category_name}",
                     ),
                     enrollment_status_badge(block.status),
                   ]),
@@ -793,7 +793,7 @@ fn off_grid_item(
           class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted",
           [
             span("\{credits_label(entry.credits)}単位"),
-            span("区分 \{entry.category_name}"),
+            span(entry.category_name),
             enrollment_status_badge(entry.status),
           ],
         ),
@@ -1499,7 +1499,7 @@ fn summary_mode_info(label : String, mode : @app.RequirementMode) -> Html {
     [
       span(class="font-medium text-muted", label),
       span(class="font-medium", mode.status_label()),
-      span(class="text-right text-muted", mode.progress),
+      span(class="text-left text-muted", mode.progress),
       if mode.remaining.is_empty() {
         span(([] : Array[Html]))
       } else {

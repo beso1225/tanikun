@@ -1837,13 +1837,13 @@ test "planner summary exposes credits, categories, and requirement status" {
     summary.requirement_root.optimistic.satisfaction ==
     @tanikun-requirements.Satisfaction::Satisfied,
   )
-  assert_eq(summary.requirement_root.label, "すべての要件")
+  assert_eq(summary.requirement_root.label, "全体")
   assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
   assert_eq(summary.requirement_root.standard.status_label(), "不足")
   assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
   assert_eq(
     summary.requirement_root.optimistic.progress,
-    "子要件 2 / 2件（部分 0）",
+    "要件 2 / 2件（部分 0）",
   )
   assert_eq(summary.requirement_root.children.length(), 2)
   assert_eq(summary.requirement_root.children[0].label, "合計単位数")
@@ -2148,4 +2148,28 @@ test "a custom course can be assigned to a requirement category" {
     Err(_) => fail("expected a summary")
   }
   assert_eq(after, before + 4)
+}
+
+///|
+test "a partially satisfied root does not fill the confirmed bar" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=planner_offering_id("phy301-s"),
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 2)
+  assert_eq(summary.requirement_root.confirmed.done, 0)
+  assert_eq(summary.requirement_root.confirmed.total, 2)
+  assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
+  assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
+  assert_eq(summary.requirement_root.confirmed.remaining, "あと 2件")
 }
