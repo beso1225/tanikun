@@ -997,6 +997,46 @@ test(
       .getByText("Physics Lab", { exact: true })
       .waitFor();
 
+    await page
+      .locator("#timetable")
+      .getByText("Physics I", { exact: true })
+      .click();
+    await page.locator("#course-detail-dialog").waitFor();
+    await page.locator("#passed-snapshot-note").waitFor();
+    await page.locator("#open-override-editor").click();
+    await page.locator("#override-editor").waitFor();
+    await page.locator("#override-passed-note").waitFor();
+    await page.locator("#override-name").fill("Physics I Override");
+    await page.locator("#override-slots-enabled").click();
+    await page.locator("#override-day").selectOption("1");
+    await page.locator("#override-period").selectOption("4");
+    await page.locator("#override-submit").click();
+    await page.locator("#course-detail-dialog").waitFor();
+    assert.equal(
+      await page.locator("#course-detail-title").innerText(),
+      "Physics I",
+    );
+    assert.match(
+      await page.locator("#course-detail-dialog").innerText(),
+      /月1/,
+    );
+    await page.locator("#close-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics I", { exact: true })
+        .count(),
+      1,
+    );
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics I Override", { exact: true })
+        .count(),
+      0,
+    );
+
     await page.evaluate(() => {
       const modal = document.createElement("section");
       modal.id = "synthetic-modal";

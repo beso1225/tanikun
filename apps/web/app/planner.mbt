@@ -1561,7 +1561,15 @@ fn submit_override(state : PlannerState) -> PlannerState {
         ).message,
       )
   }
-  if has_enrollment(state.enrollments, form.offering_id) {
+  let passed = match state.enrollment_status(form.offering_id) {
+    Some(
+      @tanikun-domain.EnrollmentStatus::Confirmed(
+        @tanikun-domain.ConfirmedGrade::Passed(..)
+      )
+    ) => true
+    _ => false
+  }
+  if !passed && has_enrollment(state.enrollments, form.offering_id) {
     match
       find_slot_conflict_with_overrides(
         state,
@@ -2609,7 +2617,16 @@ pub fn PlannerState::offering_display(
         @tanikun-domain.effective_course_credits(course, self.overrides),
       )
   }
-  Some({ name, credits, slots: effective_slots_or(offering, self.overrides), })
+  let slots = match self.enrollment_for(offering_id) {
+    Some(enrollment) =>
+      if enrollment.is_passed() {
+        offering.slots()
+      } else {
+        effective_slots_or(offering, self.overrides)
+      }
+    None => effective_slots_or(offering, self.overrides)
+  }
+  Some({ name, credits, slots, })
 }
 
 ///|
@@ -2624,22 +2641,50 @@ pub fn PlannerState::catalogue_entries(
       offering.status == @tanikun-domain.OfferingStatus::Offered {
       match find_course(self.catalogue, offering.course_id) {
         Some(course) => {
-          let name = @tanikun-domain.effective_course_name(
-            course,
-            self.overrides,
-          )
+          let enrollment = self.enrollment_for(offering.id)
+          let passed = match enrollment {
+            Some(value) => value.is_passed()
+            None => false
+          }
+          let (name, credits) = match enrollment {
+            Some(value) =>
+              if passed {
+                (
+                  @tanikun-domain.effective_name(value, course, self.overrides),
+                  @tanikun-domain.effective_credits(
+                    value,
+                    course,
+                    self.overrides,
+                  ),
+                )
+              } else {
+                (
+                  @tanikun-domain.effective_course_name(course, self.overrides),
+                  @tanikun-domain.effective_course_credits(
+                    course,
+                    self.overrides,
+                  ),
+                )
+              }
+            None =>
+              (
+                @tanikun-domain.effective_course_name(course, self.overrides),
+                @tanikun-domain.effective_course_credits(course, self.overrides),
+              )
+          }
           if self.catalogue_query.is_empty() ||
             name.contains(self.catalogue_query) {
             entries.push({
               offering_id: offering.id,
               course_id: course.id,
               course_name: name,
-              credits: @tanikun-domain.effective_course_credits(
-                course,
-                self.overrides,
-              ),
+              credits,
               schedule: offering.schedule(),
-              slots: effective_slots_or(offering, self.overrides),
+              slots: if passed {
+                offering.slots()
+              } else {
+                effective_slots_or(offering, self.overrides)
+              },
               enrolled: has_enrollment(self.enrollments, offering.id),
               custom: self.is_custom_course(course.id),
             })
@@ -2696,8 +2741,13 @@ pub fn PlannerState::scheduled_blocks(
         if offering.academic_year == self.timetable_year.academic_year &&
           offering_occupies_term(offering, term) {
           match find_course(self.catalogue, offering.course_id) {
-            Some(course) =>
-              for slot in effective_slots_or(offering, self.overrides) {
+            Some(course) => {
+              let slots = if enrollment.is_passed() {
+                offering.slots()
+              } else {
+                effective_slots_or(offering, self.overrides)
+              }
+              for slot in slots {
                 blocks.push({
                   offering_id: offering.id,
                   course_name: @tanikun-domain.effective_name(
@@ -2710,6 +2760,7 @@ pub fn PlannerState::scheduled_blocks(
                   status: enrollment.status,
                 })
               }
+            }
             None => ()
           }
         }

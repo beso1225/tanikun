@@ -537,6 +537,16 @@ fn override_form_panel(
               "集中講義では曜限を変更できません",
             )
           },
+          if state.enrollment_for(form.offering_id) is Some(enrollment) &&
+            enrollment.is_passed() {
+            p(
+              id="override-passed-note",
+              class="rounded-md bg-primary-soft px-3 py-2 text-xs text-primary-text",
+              "合格済みのため、この上書きは時間割とカタログの合格時表示には反映されません。",
+            )
+          } else {
+            div(([] : Array[Html]))
+          },
           if !form.error_message.is_empty() {
             p(
               id="override-form-error",
@@ -1279,8 +1289,21 @@ fn course_detail(
               }
               let detail = "\{credits_label(display_credits)}単位 · \{schedule_label(offering.schedule())} · \{slots_label(display_slots)}"
               let current = state.enrollment_status(offering_id)
+              let passed = match state.enrollment_for(offering_id) {
+                Some(enrollment) => enrollment.is_passed()
+                None => false
+              }
               let body : Array[Html] = [
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),
+                if passed {
+                  p(
+                    id="passed-snapshot-note",
+                    class="mx-4 mb-3 rounded-md bg-primary-soft px-3 py-2 text-xs text-primary-text",
+                    "合格済みの履修は、科目名・単位数を合格時の値で表示し、曜限も元の開講情報を表示します。上書きはこの表示に反映されません。",
+                  )
+                } else {
+                  div(([] : Array[Html]))
+                },
                 match current {
                   Some(_) => status_controls(offering_id, current, emit)
                   None => div(([] : Array[Html]))

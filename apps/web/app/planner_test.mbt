@@ -1400,6 +1400,10 @@ test "a later override does not change a frozen pass display" {
   }
   assert_eq(display.name, "Physics")
   assert_eq(display.credits.half_units(), 4)
+  let entries = state.catalogue_entries(@app.PlannerTerm::S1)
+  assert_eq(entries.length(), 1)
+  assert_eq(entries[0].course_name, "Physics")
+  assert_eq(entries[0].credits.half_units(), 4)
   let totals = match state.planner_summary() {
     Ok(value) => value
     Err(_) => fail("expected credit totals")
@@ -1955,4 +1959,43 @@ test "undo disappears after an unrelated state change" {
   assert_true(!state.undo_available())
   let state = @app.update_planner(state, @app.PlannerMsg::UndoEnrollmentRemoval)
   assert_eq(state.enrollments.length(), 0)
+}
+
+///|
+test "a slot override does not move a passed block" {
+  let id = planner_offering_id("offering-1")
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::AddOffering(offering_id=id),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=id,
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let state = open_override_form(state, id)
+  let state = @app.update_planner(state, @app.PlannerMsg::ToggleOverrideSlots)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateOverrideDay(value="1"),
+  )
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateOverridePeriod(value="4"),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  assert_eq(state.overrides.len(), 1)
+  let block = state.scheduled_blocks(@app.PlannerTerm::S1)[0]
+  assert_true(block.day == @tanikun-domain.DayOfWeek::Monday)
+  assert_eq(block.period.value(), 1)
+  let display = match state.offering_display(id) {
+    Some(value) => value
+    None => fail("expected an offering display")
+  }
+  assert_true(display.slots[0].day == @tanikun-domain.DayOfWeek::Monday)
+  assert_eq(display.slots[0].period.value(), 1)
 }
