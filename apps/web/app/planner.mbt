@@ -396,50 +396,6 @@ pub fn PlannerState::new(
 }
 
 ///|
-/// Derived credit totals for the planner header. This is never stored in
-/// `PlannerState`; it rebuilds the pure evaluation input on demand. The
-/// projected value uses the optimistic projection so planned enrollments count.
-pub struct PlannerCreditTotals {
-  confirmed : @tanikun-domain.Credits
-  standard : @tanikun-domain.Credits
-  projected : @tanikun-domain.Credits
-}
-
-///|
-pub fn PlannerState::credit_totals(
-  self : PlannerState,
-) -> Result[PlannerCreditTotals, @tanikun-domain.DomainError] {
-  let input = match self.evaluation_input() {
-    Ok(value) => value
-    Err(error) => return Err(error)
-  }
-  match @tanikun-requirements.credit_summary(input) {
-    Ok(projection) =>
-      Ok({
-        confirmed: projection.confirmed.total,
-        standard: projection.standard.total,
-        projected: projection.optimistic.total,
-      })
-    Err(error) => Err(error)
-  }
-}
-
-///|
-/// A one-line requirement result for the selected profile.
-pub struct RequirementSummary {
-  satisfaction : @tanikun-requirements.Satisfaction
-}
-
-///|
-pub fn RequirementSummary::label(self : RequirementSummary) -> String {
-  match self.satisfaction {
-    @tanikun-requirements.Satisfaction::Satisfied => "充足"
-    @tanikun-requirements.Satisfaction::Partial => "部分充足"
-    @tanikun-requirements.Satisfaction::Unsatisfied => "未充足"
-  }
-}
-
-///|
 /// One category row in the planner summary.
 pub struct SummaryCategory {
   name : String
@@ -627,17 +583,6 @@ fn PlannerState::evaluation_input(
       self.overrides,
     ),
   )
-}
-
-///|
-/// Evaluates the current planner state against the active requirement set.
-pub fn PlannerState::requirement_summary(
-  self : PlannerState,
-) -> Result[RequirementSummary, @tanikun-domain.DomainError] {
-  match self.planner_summary() {
-    Ok(value) => Ok({ satisfaction: value.requirement_root.satisfaction, })
-    Err(error) => Err(error)
-  }
 }
 
 ///|
