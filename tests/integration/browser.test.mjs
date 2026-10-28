@@ -1,114 +1,20 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+
+import {
+  assertCreditTotal,
+  assertSummaryTotals,
+  auditAccessibility,
+  runJourney,
+  startStaticServer,
+} from "./planner-harness.mjs";
 
 const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 const core = process.env.PLAYWRIGHT_CORE;
 assert.ok(core, "run this test in `nix develop` so PLAYWRIGHT_CORE is set");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
-
-const contentTypes = new Map([
-  [".css", "text/css; charset=utf-8"],
-  [".html", "text/html; charset=utf-8"],
-  [".js", "text/javascript; charset=utf-8"],
-]);
-
-function startStaticServer(root) {
-  const server = createServer(async (request, response) => {
-    let pathname;
-    try {
-      pathname = decodeURIComponent(
-        new URL(request.url, "http://127.0.0.1").pathname,
-      );
-    } catch {
-      response.writeHead(400).end();
-      return;
-    }
-    if (pathname === "/favicon.ico") {
-      response.writeHead(204).end();
-      return;
-    }
-    const relative =
-      pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-    const file = resolve(root, relative);
-    if (file !== root && !file.startsWith(root + sep)) {
-      response.writeHead(403).end();
-      return;
-    }
-    try {
-      const body = await readFile(file);
-      response.writeHead(200, {
-        "Content-Type":
-          contentTypes.get(extname(file)) ?? "application/octet-stream",
-        "Cache-Control": "no-store",
-      });
-      response.end(body);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  return new Promise((resolvePromise, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      resolvePromise({ server, origin: `http://127.0.0.1:${port}` });
-    });
-  });
-}
-
-async function auditAccessibility(page) {
-  return page.evaluate(() => {
-    const issues = [];
-    if (document.querySelectorAll("main").length !== 1) {
-      issues.push("page must have exactly one main landmark");
-    }
-    if (!document.querySelector('a[href="#main-content"]')) {
-      issues.push("page must have a skip link");
-    }
-    for (const header of document.querySelectorAll("th")) {
-      if (!header.getAttribute("scope")) {
-        issues.push(`table header missing scope: ${header.textContent}`);
-      }
-    }
-    for (const control of document.querySelectorAll(
-      "input, select, textarea",
-    )) {
-      const hasLabel = control.labels && control.labels.length > 0;
-      if (!hasLabel && !control.getAttribute("aria-label")) {
-        issues.push(`form control missing label: ${control.id}`);
-      }
-    }
-    for (const button of document.querySelectorAll("button")) {
-      const hasText = button.textContent.trim().length > 0;
-      const hasName =
-        button.getAttribute("aria-label") || button.getAttribute("title");
-      if (!hasText && !hasName) {
-        issues.push(`unnamed button: ${button.id}`);
-      }
-    }
-    for (const dialog of document.querySelectorAll('[role="dialog"]')) {
-      if (dialog.getAttribute("aria-modal") !== "true") {
-        issues.push(`dialog missing aria-modal: ${dialog.id}`);
-      }
-      const labelledBy = dialog.getAttribute("aria-labelledby");
-      if (!labelledBy || !document.getElementById(labelledBy)) {
-        issues.push(`dialog missing labelled heading: ${dialog.id}`);
-      }
-    }
-    return issues;
-  });
-}
-
-async function assertCreditTotal(page, expected) {
-  await page.waitForFunction(
-    (value) =>
-      document.querySelector("#credit-total")?.textContent.includes(value),
-    expected,
-  );
-}
 
 test(
   "built page renders the five-term planner and resizes",
@@ -1069,5 +975,116 @@ test(
     );
 
     assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "Phase 2 journey covers scheduling, status, custom data, overrides, and summary",
+  { timeout: 60_000 },
+  async (t) => {
+    const { server, origin } = await startStaticServer(dist);
+    t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
+
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    await runJourney(browser, "phase2-journey", async (page, errors) => {
+      await page.goto(origin, { waitUntil: "load" });
+      await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+      assert.equal(await page.locator("nav button").count(), 5);
+      assert.deepEqual(await auditAccessibility(page), []);
+      await assertSummaryTotals(page, "0単位", "0単位", "6単位");
+
+      await page.locator("#term-S2").click();
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator("#picker").waitFor();
+      await page.locator("#add-offering-phy102-s2").click();
+      await page.locator("#close-picker").click();
+      await page.locator("#picker").waitFor({ state: "detached" });
+      await assertSummaryTotals(page, "0単位", "0単位", "8単位");
+
+      await page.locator("#open-intensive-picker").click();
+      await page.locator("#picker").waitFor();
+      await page.locator("#add-offering-phy302-s").click();
+      await page.locator("#close-picker").click();
+      await page.locator("#picker").waitFor({ state: "detached" });
+      await assertSummaryTotals(page, "0単位", "0単位", "9単位");
+
+      await page
+        .locator("#timetable")
+        .getByText("Physics II", { exact: true })
+        .click();
+      await page.locator("#course-detail-dialog").waitFor();
+      await page.locator("#remove-detail").click();
+      await page
+        .locator("#course-detail-dialog")
+        .waitFor({ state: "detached" });
+      await assertSummaryTotals(page, "0単位", "0単位", "7単位");
+      await page.locator("#undo-removal").waitFor();
+
+      await page.locator("#term-S1").click();
+      await page.locator("#undo-removal").waitFor({ state: "detached" });
+      await page
+        .locator("#timetable")
+        .getByText("Physics I", { exact: true })
+        .click();
+      await page.locator("#course-detail-dialog").waitFor();
+      await page.locator("#status-passed").click();
+      await page.locator("#grade-good").click();
+      await page.locator("#grade-good[aria-pressed='true']").waitFor();
+      await page.locator("#close-detail").click();
+      await page
+        .locator("#course-detail-dialog")
+        .waitFor({ state: "detached" });
+      await assertSummaryTotals(page, "2単位", "2単位", "7単位");
+
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator("#picker").waitFor();
+      await page.locator("#open-custom-course").click();
+      await page.locator("#custom-course").waitFor();
+      await page.locator("#custom-name").fill("Linearity");
+      await page.locator("#custom-submit").click();
+      await page.locator("#picker").waitFor();
+      await page.locator("#add-offering-user-offering-1").click();
+      await page.locator("#close-picker").click();
+      await page.locator("#picker").waitFor({ state: "detached" });
+      await page
+        .locator("#timetable")
+        .getByText("Linearity", { exact: true })
+        .waitFor();
+      await assertSummaryTotals(page, "2単位", "2単位", "9単位");
+
+      await page
+        .locator("#timetable")
+        .getByText("Physics Lab", { exact: true })
+        .click();
+      await page.locator("#course-detail-dialog").waitFor();
+      await page.locator("#open-override-editor").click();
+      await page.locator("#override-editor").waitFor();
+      await page.locator("#override-name").fill("Physics Lab Advanced");
+      await page.locator("#override-slots-enabled").click();
+      await page.locator("#override-day").selectOption("3");
+      await page.locator("#override-period").selectOption("4");
+      await page.locator("#override-submit").click();
+      await page.locator("#course-detail-dialog").waitFor();
+      assert.equal(
+        await page.locator("#course-detail-title").innerText(),
+        "Physics Lab Advanced",
+      );
+      await page.locator("#close-detail").click();
+      await page
+        .locator("#course-detail-dialog")
+        .waitFor({ state: "detached" });
+      await page
+        .locator("#timetable")
+        .getByText("Physics Lab Advanced", { exact: true })
+        .waitFor();
+      await assertSummaryTotals(page, "2単位", "2単位", "9単位");
+
+      assert.match(
+        await page.locator("#summary-requirements").innerText(),
+        /充足/,
+      );
+      assert.deepEqual(errors, []);
+    });
   },
 );
