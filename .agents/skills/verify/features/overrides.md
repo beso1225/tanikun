@@ -23,8 +23,7 @@ effective values. A passed course shows an informational frozen-display note.
   `#override-slots-enabled` and set `#override-day` / `#override-period`
 - submit `#override-submit`; use `#remove-overrides` to clear all
 - assert the timetable label/slot and `#summary` values
-- for passed Physics I, assert `#override-passed-note` and
-  `#passed-snapshot-note`
+- for passed Physics I, assert `#override-passed-note`
 
 ## Gotchas
 

@@ -50,7 +50,7 @@ node .agents/skills/verify/scripts/drive.mjs timetable
 It:
 
 1. starts the static server from `tests/integration/planner-harness.mjs`
-2. opens the five-term planner
+2. opens the four-tab planner with W grouped under A
 3. checks the initial summary totals and accessibility audit
 4. switches S1 to S2 and back
 5. writes `.cache/verify/timetable.png`

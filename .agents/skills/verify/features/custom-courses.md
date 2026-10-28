@@ -18,7 +18,8 @@ submit. The picker returns to the context that opened it. A custom row exposes
 
 - open `#open-catalogue-picker`, wait for `#picker`, click
   `#open-custom-course`
-- fill `#custom-name`, choose `#custom-year`, submit with `#custom-submit`
+- fill `#custom-name`, choose `#custom-year` and `#custom-category`, submit with
+  `#custom-submit`
 - add `#add-offering-user-offering-1`
 - open `#edit-custom-user-offering-1` to edit; use `#delete-custom-course`
   only after removing any enrollment
@@ -27,5 +28,7 @@ submit. The picker returns to the context that opened it. A custom row exposes
 ## Gotchas
 
 - IDs use the `user` namespace and are session-local.
+- A selected category is merged into the active requirement set for category
+  credits and display; `未分類` is the default.
 - The form year follows the selected timetable year.
 - Deleting an enrolled custom course is blocked; remove the enrollment first.

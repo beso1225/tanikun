@@ -264,5 +264,6 @@ pub fn sample_state() -> PlannerState {
     @tanikun-domain.Overrides::empty(),
     @tanikun-domain.AcademicProfile::new(program, year),
     requirement_sets,
+    [],
   )
 }

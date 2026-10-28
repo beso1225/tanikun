@@ -114,6 +114,7 @@ fn planner_state() -> @app.PlannerState raise Error {
     @tanikun-domain.Overrides::empty(),
     @tanikun-domain.AcademicProfile::new(program, year),
     requirement_sets,
+    [],
   )
 }
 
@@ -432,8 +433,11 @@ test "S and A intensives stay off-grid in their semester terms" {
   )
   assert_eq(state.off_grid_entries(@app.PlannerTerm::S1).length(), 1)
   assert_eq(state.off_grid_entries(@app.PlannerTerm::S2).length(), 1)
-  assert_eq(state.off_grid_entries(@app.PlannerTerm::A1).length(), 1)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::A1).length(), 2)
+  assert_eq(state.off_grid_entries(@app.PlannerTerm::A2).length(), 2)
   assert_eq(state.off_grid_entries(@app.PlannerTerm::W).length(), 1)
+  let winter = state.off_grid_entries(@app.PlannerTerm::A1)[1]
+  assert_true(winter.winter)
   assert_eq(state.scheduled_blocks(@app.PlannerTerm::S1).length(), 1)
 }
 
@@ -815,6 +819,7 @@ test "a later override does not change a frozen pass snapshot" {
     overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let snapshot = match state.enrollments[0].snapshot() {
     Some(snapshot) => snapshot
@@ -1462,7 +1467,7 @@ test "switching programs keeps planner data and recomputes the summary" {
   let visible_days = state.visible_days
   let visible_periods = state.visible_periods
   let before = match state.planner_summary() {
-    Ok(summary) => summary.requirement_root.satisfaction
+    Ok(summary) => summary.requirement_root.optimistic.satisfaction
     Err(_) => fail("expected the initial requirement summary")
   }
   let state = @app.update_planner(
@@ -1480,7 +1485,7 @@ test "switching programs keeps planner data and recomputes the summary" {
   assert_eq(state.visible_periods, visible_periods)
   assert_eq(state.overrides.len(), 1)
   let after = match state.planner_summary() {
-    Ok(summary) => summary.requirement_root.satisfaction
+    Ok(summary) => summary.requirement_root.optimistic.satisfaction
     Err(_) => fail("expected the switched requirement summary")
   }
   assert_true(before == @tanikun-requirements.Satisfaction::Satisfied)
@@ -1580,6 +1585,7 @@ test "a program switch keeps the current year when the target program has it" {
     base.overrides,
     base.profile,
     sets,
+    [],
   )
   let state = @app.update_planner(
     state,
@@ -1649,7 +1655,6 @@ test "timetable projections and placement follow the selected year" {
     state,
     @app.PlannerMsg::SelectGrade(grade="4"),
   )
-  assert_true(state.has_offerings_for_timetable_year())
   let entries = state.catalogue_entries(@app.PlannerTerm::S1)
   assert_eq(entries.length(), 1)
   assert_eq(entries[0].course_name, "Advanced Physics")
@@ -1680,22 +1685,6 @@ test "timetable projections and placement follow the selected year" {
     }
   }
   assert_true(!advanced_block)
-}
-
-///|
-test "a year without offerings reports the empty state" {
-  let state = @app.sample_state()
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::SelectGrade(grade="1"),
-  )
-  assert_eq(state.timetable_year.academic_year.year(), 2024)
-  assert_true(!state.has_offerings_for_timetable_year())
-  let state = @app.update_planner(
-    state,
-    @app.PlannerMsg::SelectGrade(grade="4"),
-  )
-  assert_true(state.has_offerings_for_timetable_year())
 }
 
 ///|
@@ -1750,6 +1739,25 @@ test "a custom course uses the selected timetable year" {
 }
 
 ///|
+test "a custom course can be added to a year with no offerings" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::SelectGrade(grade="1"),
+  )
+  let before = state.enrollments.length()
+  let state = create_named_custom_course(state, "Empty Year Custom")
+  let offering = state.offerings[state.offerings.length() - 1]
+  assert_eq(offering.academic_year.year(), 2024)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id=offering.id),
+  )
+  assert_eq(state.enrollments.length(), before + 1)
+  let block = state.scheduled_blocks(@app.PlannerTerm::S1)[0]
+  assert_eq(block.course_name, "Empty Year Custom")
+}
+
+///|
 test "slot conflicts ignore enrollments from another academic year" {
   let state = @app.sample_state()
   let mut advanced = None
@@ -1781,6 +1789,7 @@ test "slot conflicts ignore enrollments from another academic year" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let state = @app.update_planner(
     state,
@@ -1825,11 +1834,20 @@ test "planner summary exposes credits, categories, and requirement status" {
   assert_eq(summary.categories[2].name, "演習")
   assert_eq(summary.categories[2].optimistic.half_units(), 6)
   assert_true(
-    summary.requirement_root.satisfaction ==
+    summary.requirement_root.optimistic.satisfaction ==
     @tanikun-requirements.Satisfaction::Satisfied,
   )
-  assert_eq(summary.requirement_root.label, "すべての要件を充足")
-  assert_eq(summary.requirement_root.progress, "充足 2 / 部分 0 / 全 2")
+  assert_eq(summary.requirement_root.label, "全体")
+  assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
+  assert_eq(summary.requirement_root.standard.status_label(), "不足")
+  assert_eq(
+    summary.requirement_root.optimistic.status_label(),
+    "計画上充足",
+  )
+  assert_eq(
+    summary.requirement_root.optimistic.progress,
+    "要件 2 / 2件（部分 0）",
+  )
   assert_eq(summary.requirement_root.children.length(), 2)
   assert_eq(summary.requirement_root.children[0].label, "合計単位数")
   assert_eq(summary.requirement_root.children[1].label, "区分単位数")
@@ -1853,6 +1871,9 @@ test "planner summary recomputes after a status change" {
   }
   assert_eq(summary.confirmed.half_units(), 4)
   assert_eq(summary.categories[0].confirmed.half_units(), 4)
+  assert_eq(summary.requirement_root.confirmed.status_label(), "達成")
+  assert_eq(summary.requirement_root.standard.status_label(), "達成")
+  assert_eq(summary.requirement_root.optimistic.status_label(), "達成")
 }
 
 ///|
@@ -1869,6 +1890,7 @@ test "planner summary reports invalid input" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   match state.planner_summary() {
     Err(_) => ()
@@ -2046,6 +2068,7 @@ test "frozen passed slots drive conflict checks in both directions" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let frozen_state = @app.update_planner(
     frozen_state,
@@ -2073,6 +2096,7 @@ test "frozen passed slots drive conflict checks in both directions" {
     state.overrides,
     state.profile,
     state.requirement_sets,
+    state.custom_categories,
   )
   let ghost_state = @app.update_planner(
     ghost_state,
@@ -2085,4 +2109,73 @@ test "frozen passed slots drive conflict checks in both directions" {
     Some(_) => fail("overridden ghost slot should remain free")
   }
   assert_eq(ghost_state.enrollments.length(), 2)
+}
+
+///|
+test "a custom course can be assigned to a requirement category" {
+  let state = @app.sample_state()
+  let before = match state.planner_summary() {
+    Ok(value) => {
+      let mut total = 0
+      for category in value.categories {
+        if category.name == "実験" {
+          total = category.optimistic.half_units()
+        }
+      }
+      total
+    }
+    Err(_) => fail("expected a summary")
+  }
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, "Lab Custom")
+  let state = update_custom(state, @app.CustomCourseField::Category, "lab")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_eq(state.custom_categories.length(), 1)
+  let course_id = state.catalogue[state.catalogue.length() - 1].id
+  assert_eq(state.category_name_for(course_id), Some("実験"))
+  let offering_id = state.offerings[state.offerings.length() - 1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::AddOffering(offering_id~),
+  )
+  let after = match state.planner_summary() {
+    Ok(value) => {
+      let mut total = 0
+      for category in value.categories {
+        if category.name == "実験" {
+          total = category.optimistic.half_units()
+        }
+      }
+      total
+    }
+    Err(_) => fail("expected a summary")
+  }
+  assert_eq(after, before + 4)
+}
+
+///|
+test "a partially satisfied root does not fill the confirmed bar" {
+  let state = @app.sample_state()
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::UpdateEnrollmentStatus(
+      offering_id=planner_offering_id("phy301-s"),
+      target=@app.EnrollmentStatusTarget::Passed(
+        grade=@tanikun-domain.PassingGrade::Good,
+      ),
+    ),
+  )
+  let summary = match state.planner_summary() {
+    Ok(value) => value
+    Err(_) => fail("expected a planner summary")
+  }
+  assert_eq(summary.confirmed.half_units(), 2)
+  assert_eq(summary.requirement_root.confirmed.done, 0)
+  assert_eq(summary.requirement_root.confirmed.total, 2)
+  assert_eq(summary.requirement_root.confirmed.status_label(), "不足")
+  assert_eq(
+    summary.requirement_root.optimistic.status_label(),
+    "計画上充足",
+  )
+  assert_eq(summary.requirement_root.confirmed.remaining, "あと 2件")
 }

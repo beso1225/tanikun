@@ -17,7 +17,7 @@ assert.ok(core, "run this test in `nix develop` so PLAYWRIGHT_CORE is set");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
 
 test(
-  "built page renders the five-term planner and resizes",
+  "built page renders the semester planner and resizes",
   { timeout: 60_000 },
   async (t) => {
     const { server, origin } = await startStaticServer(dist);
@@ -54,7 +54,7 @@ test(
         ),
       "0px",
     );
-    await assertCreditTotal(page, "見込 6単位");
+    await assertCreditTotal(page, "履修予定込 6単位");
     assert.equal(
       await page.locator("#summary-total-confirmed").innerText(),
       "0単位",
@@ -73,14 +73,43 @@ test(
     );
     assert.match(
       await page.locator("#summary-requirements").innerText(),
-      /充足/,
+      /計画上充足/,
     );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /履修中込/,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /履修予定込/,
+    );
+    assert.equal(
+      await page
+        .locator("#summary-requirements [data-requirement-bar]")
+        .count(),
+      3,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /あと 2件/,
+    );
+    assert.match(
+      await page.locator("#summary-requirements").innerText(),
+      /あと 2単位/,
+    );
+    assert.equal(
+      await page.getByLabel("プログラム", { exact: true }).count(),
+      0,
+    );
+    assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 0);
+    assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
+    await page.locator("#open-settings").click();
+    await page.locator("#settings").waitFor();
     assert.equal(
       await page.getByLabel("プログラム", { exact: true }).count(),
       1,
     );
     assert.equal(await page.getByLabel("進級年度", { exact: true }).count(), 1);
-    assert.equal(await page.getByLabel("学年", { exact: true }).count(), 1);
     assert.equal(await page.locator("#grade-select").inputValue(), "3");
     assert.equal(
       await page.locator("#grade-select option").nth(2).innerText(),
@@ -97,14 +126,14 @@ test(
     );
     assert.equal(
       await page.locator("#requirement-summary").innerText(),
-      "要件: 充足",
+      "要件（履修予定込）: 計画上充足",
     );
 
     await page.locator("#program-select").selectOption("applied-chemistry");
     await page.waitForFunction(
       () =>
         document.querySelector("#requirement-summary")?.textContent ===
-        "要件: 部分充足",
+        "要件（履修予定込）: 不足",
     );
     assert.equal(
       await page.locator("#program-select").inputValue(),
@@ -119,14 +148,14 @@ test(
         .count(),
       1,
     );
-    await assertCreditTotal(page, "見込 6単位");
+    await assertCreditTotal(page, "履修予定込 6単位");
 
     await page.locator("#program-select").selectOption("applied-physics");
     await page.waitForFunction(
       () =>
         document.querySelector("#year-select")?.value === "2026" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件: 充足",
+          "要件（履修予定込）: 計画上充足",
     );
     assert.equal(await page.locator("#year-select option").count(), 2);
     await page.locator("#year-select").selectOption("2025");
@@ -134,12 +163,14 @@ test(
       () =>
         document.querySelector("#year-select")?.value === "2025" &&
         document.querySelector("#requirement-summary")?.textContent ===
-          "要件: 部分充足",
+          "要件（履修予定込）: 不足",
     );
     await page.locator("#year-select").selectOption("2026");
     await page.waitForFunction(
       () => document.querySelector("#year-select")?.value === "2026",
     );
+    await page.locator("#close-settings").click();
+    await page.locator("#settings").waitFor({ state: "detached" });
 
     await page.getByRole("link", { name: "時間割へスキップ" }).focus();
     let tileReached = false;
@@ -158,7 +189,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /2単位 · S1 · 月1/,
+      /2単位 · 区分 基礎物理 · S1 · 月1/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -173,24 +204,20 @@ test(
 
     const contextBox = await page.locator("#term-context").boundingBox();
     assert.ok(contextBox);
-    await page.locator("#term-W").click();
-    await page
-      .getByText("Wでは時間割のグリッドを使いません", {
-        exact: true,
-      })
-      .waitFor();
-    const wContextBox = await page.locator("#term-context").boundingBox();
-    assert.ok(wContextBox);
-    assert.equal(wContextBox.x, contextBox.x);
+    await page.locator("#term-A1").click();
+    await page.locator("#off-grid").getByText("Seminar A").waitFor();
+    const aContextBox = await page.locator("#term-context").boundingBox();
+    assert.ok(aContextBox);
+    assert.equal(aContextBox.x, contextBox.x);
     await page.locator("#term-S1").click();
     await page.locator("#timetable").waitFor();
 
-    assert.equal(await page.locator("nav button").count(), 5);
+    assert.equal(await page.locator("nav button").count(), 4);
     assert.equal(await page.locator("#term-S1").count(), 1);
     assert.equal(await page.locator("#term-S2").count(), 1);
     assert.equal(await page.locator("#term-A1").count(), 1);
     assert.equal(await page.locator("#term-A2").count(), 1);
-    assert.equal(await page.locator("#term-W").count(), 1);
+    assert.equal(await page.locator("#term-W").count(), 0);
 
     assert.equal(await page.locator("#add-day").count(), 0);
     assert.equal(await page.locator("#open-settings").count(), 1);
@@ -315,7 +342,7 @@ test(
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     await page.locator("#off-grid").getByText("Seminar S2").waitFor();
-    await assertCreditTotal(page, "見込 7単位");
+    await assertCreditTotal(page, "履修予定込 7単位");
 
     await page.locator("#open-settings").click();
     await page.locator("#settings").waitFor();
@@ -435,7 +462,7 @@ test(
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "見込 9単位");
+    await assertCreditTotal(page, "履修予定込 9単位");
     await page
       .locator("#timetable")
       .getByText("Physics II", { exact: true })
@@ -444,7 +471,7 @@ test(
     assert.deepEqual(await auditAccessibility(page), []);
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /2単位 · S2 · 火2/,
+      /2単位 · 区分 基礎物理 · S2 · 火2/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -481,7 +508,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await assertCreditTotal(page, "見込 7単位");
+    await assertCreditTotal(page, "履修予定込 7単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -494,7 +521,7 @@ test(
     );
     await addButton.waitFor({ state: "detached" });
     assert.equal(await addButton.count(), 0);
-    await assertCreditTotal(page, "見込 9単位");
+    await assertCreditTotal(page, "履修予定込 9単位");
     await page.locator("#close-picker").click();
     await page.locator("#picker").waitFor({ state: "detached" });
     assert.equal(
@@ -512,17 +539,12 @@ test(
       .getByText("Physics Lab", { exact: true })
       .waitFor();
 
-    await page.locator("#term-W").click();
-    await page
-      .getByText("Wでは時間割のグリッドを使いません", { exact: true })
-      .waitFor();
-    assert.equal(await page.locator("#timetable").count(), 0);
     await page.locator("#off-grid").getByText("Winter Workshop").waitFor();
     await page.locator("#off-grid").getByText("Winter Workshop").click();
     await page.locator("#course-detail-dialog").waitFor();
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /1単位 · 集中 W · 曜限なし/,
+      /1単位 · 区分 演習 · 集中 W · 曜限なし/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -530,7 +552,7 @@ test(
     );
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await page.getByText("集中講義はありません").waitFor();
+    await page.getByText("Wの集中講義はありません").waitFor();
     await page.locator("#open-intensive-picker").click();
     await page.locator("#add-offering-phy501-w").click();
     await page.locator("#picker").waitFor();
@@ -547,7 +569,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     assert.match(
       await page.locator("#course-detail-dialog").innerText(),
-      /2単位 · S1 · 月1/,
+      /2単位 · 区分 基礎物理 · S1 · 月1/,
     );
     assert.equal(
       await page.locator("#status-planned").getAttribute("aria-pressed"),
@@ -596,7 +618,7 @@ test(
       .locator("#timetable")
       .getByText("Calculus", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定 2 / 見込 11単位");
+    await assertCreditTotal(page, "修得済 2 ・ 履修予定込 11単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -638,7 +660,7 @@ test(
       .locator("#timetable")
       .getByText("Linear Algebra", { exact: true })
       .waitFor();
-    await assertCreditTotal(page, "確定 2 / 見込 13単位");
+    await assertCreditTotal(page, "修得済 2 ・ 履修予定込 13単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -661,7 +683,7 @@ test(
     await page.locator("#course-detail-dialog").waitFor();
     await page.locator("#remove-detail").click();
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
-    await assertCreditTotal(page, "確定 2 / 見込 11単位");
+    await assertCreditTotal(page, "修得済 2 ・ 履修予定込 11単位");
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -832,9 +854,9 @@ test(
     );
     assert.equal(await page.locator("#grade-select").inputValue(), "4");
     await page.locator("#grade-select").selectOption("1");
-    await page.locator("#empty-year").waitFor();
-    assert.equal(await page.locator("#timetable").count(), 0);
-    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#timetable").waitFor();
+    assert.equal(await page.locator("#timetable").count(), 1);
+    await page.locator("#slot-0-3").click();
     await page.locator("#picker").waitFor();
     await page.locator("#open-custom-course").click();
     await page.locator("#custom-course").waitFor();
@@ -908,7 +930,6 @@ test(
       .getByText("Physics I", { exact: true })
       .click();
     await page.locator("#course-detail-dialog").waitFor();
-    await page.locator("#passed-snapshot-note").waitFor();
     await page.locator("#open-override-editor").click();
     await page.locator("#override-editor").waitFor();
     await page.locator("#override-passed-note").waitFor();
@@ -990,7 +1011,7 @@ test(
     await runJourney(browser, "phase2-journey", async (page, errors) => {
       await page.goto(origin, { waitUntil: "load" });
       await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
-      assert.equal(await page.locator("nav button").count(), 5);
+      assert.equal(await page.locator("nav button").count(), 4);
       assert.deepEqual(await auditAccessibility(page), []);
       await assertSummaryTotals(page, "0単位", "0単位", "6単位");
 
@@ -1042,6 +1063,7 @@ test(
       await page.locator("#open-custom-course").click();
       await page.locator("#custom-course").waitFor();
       await page.locator("#custom-name").fill("Linearity");
+      await page.locator("#custom-category").selectOption("lab");
       await page.locator("#custom-submit").click();
       await page.locator("#picker").waitFor();
       await page.locator("#add-offering-user-offering-1").click();
@@ -1052,6 +1074,19 @@ test(
         .getByText("Linearity", { exact: true })
         .waitFor();
       await assertSummaryTotals(page, "2単位", "2単位", "9単位");
+      await page
+        .locator("#timetable")
+        .getByText("Linearity", { exact: true })
+        .click();
+      await page.locator("#course-detail-dialog").waitFor();
+      assert.match(
+        await page.locator("#course-detail-dialog").innerText(),
+        /区分 実験/,
+      );
+      await page.locator("#close-detail").click();
+      await page
+        .locator("#course-detail-dialog")
+        .waitFor({ state: "detached" });
 
       await page
         .locator("#timetable")
@@ -1082,7 +1117,7 @@ test(
 
       assert.match(
         await page.locator("#summary-requirements").innerText(),
-        /充足/,
+        /達成/,
       );
       assert.deepEqual(errors, []);
     });

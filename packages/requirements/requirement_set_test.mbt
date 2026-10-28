@@ -11,6 +11,9 @@ test "requirement set stores its key, categories, table, and rule" {
   assert_true(set.key == key)
   assert_eq(set.categories().length(), 1)
   assert_same_category_id(expect_some(set.category_for(mechanics)), physics.id)
+  let assignments = set.assignments()
+  assert_eq(assignments.length(), 1)
+  assert_same_category_id(assignments[0].1, physics.id)
   assert_eq(set.rule(), "rule-1")
 }
 

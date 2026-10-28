@@ -16,13 +16,13 @@ document; this contract does not claim that closeout is complete.
 
 Phase 2 turns the pure Phase 1 model into one local, in-memory planner:
 
-- five displayed terms S1, S2, A1, A2, and W;
+- four sidebar terms S1, S2, A1, and A2, with W intensives grouped under A;
 - planned, in-progress, passed, failed, and not-taken enrollments;
 - custom courses and offerings;
 - name, credit, and slot overrides;
 - program and advancement-year selection for requirements;
 - grade and academic-year navigation for the timetable;
-- confirmed, standard projected, and optimistic projected summaries.
+- confirmed, in-progress-inclusive, and planned-inclusive summaries.
 
 Phase 2 has no persistence, Workers requests, network API, D1, Automerge, or
 multi-device sync. Reloading the page discards the planner.
@@ -35,29 +35,30 @@ packages own validation and evaluation; they do not import the planner.
 
 `PlannerState` contains:
 
-| Field                       | Meaning                                               |
-| --------------------------- | ----------------------------------------------------- |
-| `catalogue`                 | In-memory courses, including custom courses           |
-| `offerings`                 | In-memory offerings for all sample and custom years   |
-| `enrollments`               | One enrollment per offering id                        |
-| `undo_removal`              | At most one previous enrollment list and its revision |
-| `overrides`                 | Sparse course and offering overrides                  |
-| `profile`                   | Program and advancement year used for requirements    |
-| `timetable_year`            | Selected grade and mapped academic year               |
-| `requirement_sets`          | Available requirement sets keyed by program/year      |
-| `selected_term`             | S1, S2, A1, A2, or W                                  |
-| `selected_offering`         | Offering shown in the detail dialog                   |
-| `error`                     | Current planner-level `UiError`                       |
-| `catalogue_query`           | Picker search text                                    |
-| `picker`                    | Slot, intensive, or all-catalogue picker, or none     |
-| `settings_open`             | Whether the settings dialog is open                   |
-| `override_form`             | Draft override editor, or none                        |
-| `custom_form`               | Draft custom-course editor, or none                   |
-| `custom_course_ids`         | Courses created in the `user` namespace               |
-| `next_custom_course_number` | Session-local custom id counter                       |
-| `visible_days`              | 5 through 7                                           |
-| `visible_periods`           | 6 through 10                                          |
-| `revision`                  | Monotonic UI refresh marker                           |
+| Field                       | Meaning                                                                  |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `catalogue`                 | In-memory courses, including custom courses                              |
+| `offerings`                 | In-memory offerings for all sample and custom years                      |
+| `enrollments`               | One enrollment per offering id                                           |
+| `undo_removal`              | At most one previous enrollment list and its revision                    |
+| `overrides`                 | Sparse course and offering overrides                                     |
+| `profile`                   | Program and advancement year used for requirements                       |
+| `timetable_year`            | Selected grade and mapped academic year                                  |
+| `requirement_sets`          | Available requirement sets keyed by program/year                         |
+| `selected_term`             | S1, S2, A1, A2, or W; W is model-level and never selected by the sidebar |
+| `selected_offering`         | Offering shown in the detail dialog                                      |
+| `error`                     | Current planner-level `UiError`                                          |
+| `catalogue_query`           | Picker search text                                                       |
+| `picker`                    | Slot, intensive, or all-catalogue picker, or none                        |
+| `settings_open`             | Whether the settings dialog is open                                      |
+| `override_form`             | Draft override editor, or none                                           |
+| `custom_form`               | Draft custom-course editor, or none                                      |
+| `custom_course_ids`         | Courses created in the `user` namespace                                  |
+| `custom_categories`         | Category assignments for custom courses                                  |
+| `next_custom_course_number` | Session-local custom id counter                                          |
+| `visible_days`              | 5 through 7                                                              |
+| `visible_periods`           | 6 through 10                                                             |
+| `revision`                  | Monotonic UI refresh marker                                              |
 
 No derived credit, category, requirement, catalogue row, scheduled block, or
 effective display value is stored in `PlannerState`. The view calls the pure
@@ -75,11 +76,12 @@ large nested record cheaply.
 - A1 and A2 belong to semester A.
 - W has no domain `Term`; it is the off-grid winter period and never renders a
   weekday grid.
-- W still has off-grid intensive entries and the summary panel.
+- W is not a sidebar tab. Its intensive offerings appear under the A1 and A2
+  intensive sections, after the A entries.
 - YearLong offerings occupy every term.
 - Regular offerings occupy only their listed terms.
 - Intensive offerings have no slots and appear in the off-grid list for their
-  semester. W intensives appear only under W.
+  semester. W intensives appear under A1 and A2.
 
 ### Timetable grade mapping
 
@@ -98,20 +100,20 @@ The selected term is preserved when the grade, year, or profile changes.
 Scheduled blocks, off-grid entries, catalogue rows, and placement are filtered
 by `timetable_year.academic_year`.
 
-A year with no offered courses shows the empty-year message instead of a grid.
-A year with offerings but no enrollments still shows the grid cells.
+A year with no offered courses still shows the grid cells. The sidebar has no W
+tab; W intensives are listed under A1 and A2 instead.
 
 ## Derived projections
 
 These methods return fresh values:
 
 - `catalogue_entries(term)`: effective name, credits, and slots for offerings in
-  the selected year and term that are offered.
+  the selected year and term that are offered. A1 and A2 include W intensives.
 - `picker_entries()`: catalogue entries narrowed by the open picker target.
 - `scheduled_blocks(term)`: enrolled offerings for the selected year and term,
   one block per effective slot.
 - `off_grid_entries(term)`: enrolled intensive offerings for the selected year
-  and term.
+  and term. A1 and A2 include W intensives with `winter = true`.
 - `offering_display(offering_id)`: effective name, credits, and slots for the
   detail dialog.
 - `planner_summary()`: all three totals, category credits, and the requirement
@@ -119,6 +121,8 @@ These methods return fresh values:
 
 Effective display rules:
 
+- A course's category name comes from the effective requirement set, including
+  custom course assignments.
 - A non-passed enrollment uses current course and offering overrides.
 - A passed enrollment uses the frozen name and credits from its snapshot.
 - A passed enrollment's timetable and catalogue slots use the offering's stored
@@ -140,7 +144,9 @@ Visible range bounds are:
 - periods: 6 through 10.
 
 The settings dialog changes those bounds immediately and keeps changes after
-closing. The selected term and year are not changed by the settings dialog.
+closing. It also owns the program and advancement-year selectors; the timetable
+grade selector stays in the sidebar. The selected term and timetable year are
+not changed by the settings dialog.
 
 ## Message catalog
 
@@ -196,11 +202,13 @@ picker's own create action replaces it with the custom form.
 
 - No enrollments or blocks in a term: the visible cells render empty.
 - No intensive entries in the current year/term: `集中講義はありません`.
-- No offered courses in the selected academic year: `この年度の開講科目はありません`.
+- No offered courses in the selected academic year: the grid still renders empty
+  cells, so a custom course can be added for that year.
 - All scheduled blocks are inside the visible range: the outside-range note is
   absent.
 - No picker matches: `該当する科目がありません`.
-- W: `Wでは時間割のグリッドを使いません`; off-grid entries and summary remain.
+- There is no W sidebar tab. W intensives render under A1 and A2, with
+  `Wの集中講義はありません` when that subsection is empty.
 - Missing requirement set: summary shows `要件: 要件セットが見つかりません`;
   invalid evaluation shows `要件: 要件を評価できません`.
 
@@ -230,7 +238,8 @@ unknown offering; it converts to `UiError`.
   connect `aria-invalid` and `aria-describedby` to the offending control.
 - A rejected status or delete action keeps state unchanged and reports a
   planner error.
-- `#requirement-summary` uses `role="status"`; `#summary-error` is also a status.
+- `#requirement-summary` uses `role="status"` in the summary header; `#summary-error`
+  is also a status.
 - The undo toast is a `role="status"` surface and keyboard-reachable.
 
 ## Passed enrollments, overrides, and removal
@@ -242,8 +251,8 @@ read the snapshot for passed enrollments.
 
 Slot overrides are not applied to passed enrollments. The timetable and
 catalogue use the offering's stored slots, and conflict checks compare those
-frozen slots. The override editor shows an informational note for passed
-enrollments, and the detail popup explains the frozen display.
+frozen slots. The override editor shows an informational note for passed enrollments; the
+course detail keeps the frozen values visible without repeating the explanation.
 
 Removing an enrollment is allowed regardless of status. The exact previous
 enrollment list is captured for one-step undo. Undo restores passed grades and
@@ -262,20 +271,44 @@ reused. Editing preserves ids. Deleting is allowed only when none of the
 course's offerings are enrolled. The next number is session-local; Phase 3
 persistence must replace it with a collision-safe allocator.
 
+The custom form may assign the course to one of the active requirement set's
+categories. The assignment is merged into the effective category table, so it
+affects category credits and display. `未分類` is the default. Deleting the
+custom course removes the assignment.
+
 ## Requirement profile and summary
 
 Available program and advancement-year choices come from
-`RequirementSets::keys()`. The active set is always derived from the profile;
-`PlannerState` stores no active requirement set. Selecting a profile is one
-atomic state transition. A missing set keeps the profile, reports
+`RequirementSets::keys()`. They live in the settings dialog; the timetable grade
+selector remains in the sidebar. The active set is always derived from the
+profile; `PlannerState` stores no active requirement set. Selecting a profile is
+one atomic state transition. A missing set keeps the profile, reports
 `MissingRequirementSet`, and can be recovered by selecting a valid profile.
 
-The summary shows:
+The summary uses these user-facing labels:
 
-- confirmed, standard projected, and optimistic projected totals;
-- category credits for all three modes;
-- the requirement tree for the optimistic mode, with rule labels, satisfaction,
-  progress, and children.
+- `修得済` for passed credits;
+- `履修中込` for passed plus in-progress credits;
+- `履修予定込` for passed, in-progress, and planned credits.
+
+It shows:
+
+- the three totals and category credits;
+- one requirement tree with all three cumulative projections at every node;
+- rule labels, status labels, progress text, remaining text, and one stacked bar
+  with `合格済`, `履修中`, and `履修予定` segments;
+- a legend that labels those three segments, plus a note that each cumulative
+  stage includes the earlier stages.
+
+Requirement status labels distinguish when the result is actually achieved:
+
+- `達成` when the passed credits alone satisfy the requirement;
+- `不足` when no projection satisfies it;
+- `履修中で充足見込` when in-progress credits would satisfy it;
+- `計画上充足` when planned credits would satisfy it.
+
+The rule labels do not repeat a status word. The optimistic result supplies the
+one-line `要件（履修予定込）: ...` status in the summary header.
 
 Status and override changes are reflected on the next render because the summary
 is derived, not cached.

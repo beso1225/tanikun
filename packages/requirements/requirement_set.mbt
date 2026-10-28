@@ -70,6 +70,14 @@ pub fn[Rule] RequirementSet::category_for(
 }
 
 ///|
+/// Returns a copy of the course-to-category assignments.
+pub fn[Rule] RequirementSet::assignments(
+  self : RequirementSet[Rule],
+) -> Array[(@tanikun-domain.CourseId, @tanikun-domain.CategoryId)] {
+  self.category_table.assignments()
+}
+
+///|
 pub fn[Rule] RequirementSet::rule(self : RequirementSet[Rule]) -> Rule {
   self.rule
 }
