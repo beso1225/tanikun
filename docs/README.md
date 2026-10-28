@@ -1,6 +1,6 @@
 # Documentation
 
-Start with the current Phase 1 documents.
+Start with the current phase documents.
 
 ## Current
 

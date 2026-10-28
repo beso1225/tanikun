@@ -24,7 +24,7 @@ Phase 2 turns the pure Phase 1 model into one local, in-memory planner:
 - grade and academic-year navigation for the timetable;
 - confirmed, standard projected, and optimistic projected summaries.
 
-Phase 2 has no persistence, Workers request, network API, D1, Automerge, or
+Phase 2 has no persistence, Workers requests, network API, D1, Automerge, or
 multi-device sync. Reloading the page discards the planner.
 
 ## Ownership and state
@@ -65,7 +65,7 @@ projection methods and `planner_summary()` from the current state.
 
 `revision` is not history. Every accepted state transition increments it, and
 `PlannerState` equality compares only that revision so Rabbita refreshes the
-large nested state cheaply.
+large nested record cheaply.
 
 ## Terms and academic years
 
@@ -148,45 +148,45 @@ closing. The selected term and year are not changed by the settings dialog.
 message increments `revision` unless the message is an explicit no-op at a
 boundary.
 
-| Message                                       | State change                                                                                                                                                                                              |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SelectTerm(term)`                            | Sets `selected_term`; clears `selected_offering`, `error`, `picker`, and `catalogue_query`.                                                                                                               |
-| `SelectOffering(offering_id)`                 | Sets `selected_offering` if the offering exists and clears `error`; otherwise reports `UnknownOffering`.                                                                                                  |
-| `ClearOfferingSelection`                      | Clears `selected_offering` and `error`.                                                                                                                                                                   |
-| `AddOffering(offering_id)`                    | Validates year, term availability, and slot conflicts; appends a planned enrollment and closes a slot picker. Repeated add is a no-op. Failed validation leaves enrollments unchanged and sets `error`.   |
-| `RemoveEnrollment(offering_id)`               | Removes the matching enrollment, closes the detail, and stores the previous enrollment list plus the new revision in `undo_removal`. Missing enrollment is a no-op.                                       |
-| `UndoEnrollmentRemoval`                       | Restores the captured enrollment list only when the stored revision still matches; otherwise clears the stale undo.                                                                                       |
-| `UpdateEnrollmentStatus(offering_id, target)` | Replaces the enrollment status, builds a pass snapshot when entering passed, preserves an existing pass snapshot across passing-grade changes, and clears `error`.                                        |
-| `SelectProgram(program_id)`                   | Resolves a program from the requirement-set keys, preserves the current year when available, falls back to the first year, and applies the profile atomically. Unknown or empty programs report an error. |
-| `SelectAdvancementYear(year)`                 | Applies the year to the current program and reports `MissingRequirementSet` when no set exists. The selected profile stays visible for recovery.                                                          |
-| `SelectGrade(grade)`                          | Parses grade 1–4 and builds the mapped `timetable_year`; clears selected offering, picker, override editor, and error. The term is preserved.                                                             |
-| `OpenSettings`                                | Opens settings; clears picker, detail, override form, custom form, and error.                                                                                                                             |
-| `CloseSettings`                               | Closes settings and clears `error`.                                                                                                                                                                       |
-| `OpenOverrideEditor(offering_id)`             | Builds an override draft from current overrides and closes the detail and picker. Missing targets report an error.                                                                                        |
-| `CloseOverrideEditor`                         | Closes the editor and reopens the detail for the edited offering.                                                                                                                                         |
-| `UpdateOverrideField(field, value)`           | Updates name or credits text; clears the form error and planner error.                                                                                                                                    |
-| `UpdateOverrideDay(value)`                    | Parses and updates the draft slot day; clears form and planner errors.                                                                                                                                    |
-| `UpdateOverridePeriod(value)`                 | Parses and updates the draft slot period; clears form and planner errors.                                                                                                                                 |
-| `ToggleOverrideSlots`                         | Toggles the slot override when the offering supports slots.                                                                                                                                               |
-| `RemoveAllOverrides`                          | Removes the course name/credits and offering slots overrides for the form target, closes the editor, and reopens the detail.                                                                              |
-| `SubmitOverride`                              | Validates and saves the draft override set. Failed name, credit, slot, or conflict validation keeps the editor open with a field error. On success closes the editor and reopens the detail.              |
-| `OpenCustomCourseForm`                        | Builds a draft from the current picker context, selected timetable year, and selected term; clears the picker, detail, override form, and error.                                                          |
-| `CloseCustomCourseForm`                       | Closes the form and restores the picker that opened it.                                                                                                                                                   |
-| `UpdateCustomCourseField(field, value)`       | Updates one draft field and clears form/planner errors.                                                                                                                                                   |
-| `ToggleCustomTerm(term)`                      | Adds or removes a regular term in the draft.                                                                                                                                                              |
-| `OpenEditCustomCourse(offering_id)`           | Opens the custom edit form for a `user` course/offering and preserves the return picker.                                                                                                                  |
-| `DeleteCustomCourse(course_id)`               | Deletes a custom course and its offerings only when unenrolled; otherwise keeps state and reports an error.                                                                                               |
-| `SubmitCustomCourse`                          | Validates and creates or edits a custom course/offering. Invalid input keeps the form open with a field error. Creation appends to the catalogue/offerings and uses the next custom number.               |
-| `OpenSlotPicker(day, period)`                 | Opens the slot picker and clears the catalogue query.                                                                                                                                                     |
-| `OpenIntensivePicker`                         | Opens the intensive picker and clears the catalogue query.                                                                                                                                                |
-| `OpenCataloguePicker`                         | Opens the all-catalogue picker and clears the catalogue query.                                                                                                                                            |
-| `ClosePicker`                                 | Closes the picker and clears the catalogue query.                                                                                                                                                         |
-| `UpdateCatalogueQuery(query)`                 | Updates the picker search text only.                                                                                                                                                                      |
-| `IncreaseVisibleDays`                         | Adds one visible day up to 7.                                                                                                                                                                             |
-| `DecreaseVisibleDays`                         | Removes one visible day down to 5.                                                                                                                                                                        |
-| `IncreaseVisiblePeriods`                      | Adds one visible period up to 10.                                                                                                                                                                         |
-| `DecreaseVisiblePeriods`                      | Removes one visible period down to 6.                                                                                                                                                                     |
-| `DismissError`                                | Clears planner `error`.                                                                                                                                                                                   |
+| Message                                       | State change                                                                                                                                                                                                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SelectTerm(term)`                            | Sets `selected_term`; clears `selected_offering`, `error`, `picker`, and `catalogue_query`.                                                                                                                                                              |
+| `SelectOffering(offering_id)`                 | Sets `selected_offering` if the offering exists and clears `error`; otherwise reports `UnknownOffering`.                                                                                                                                                 |
+| `ClearOfferingSelection`                      | Clears `selected_offering` and `error`.                                                                                                                                                                                                                  |
+| `AddOffering(offering_id)`                    | Validates year, term availability, and slot conflicts; appends a planned enrollment and closes a slot picker. Repeated add is a no-op. Failed validation leaves enrollments unchanged and sets `error`.                                                  |
+| `RemoveEnrollment(offering_id)`               | Removes the matching enrollment, closes the detail, and stores the previous enrollment list plus the new revision in `undo_removal`. Missing enrollment changes no enrollment but still closes the detail, clears the error, and expires a pending undo. |
+| `UndoEnrollmentRemoval`                       | Restores the captured enrollment list only when the stored revision still matches; otherwise clears the stale undo.                                                                                                                                      |
+| `UpdateEnrollmentStatus(offering_id, target)` | Replaces the enrollment status, builds a pass snapshot when entering passed, preserves an existing pass snapshot across passing-grade changes, and clears `error`.                                                                                       |
+| `SelectProgram(program_id)`                   | Resolves a program from the requirement-set keys, preserves the current year when available, falls back to the first year, and applies the profile atomically. An unknown program id or a program with no requirement-set years reports an error.        |
+| `SelectAdvancementYear(year)`                 | Applies the year to the current program and reports `MissingRequirementSet` when no set exists. The selected profile stays visible for recovery.                                                                                                         |
+| `SelectGrade(grade)`                          | Parses grade 1–4 and builds the mapped `timetable_year`; clears selected offering, picker, override editor, and error. The term is preserved.                                                                                                            |
+| `OpenSettings`                                | Opens settings; clears picker, detail, override form, custom form, and error.                                                                                                                                                                            |
+| `CloseSettings`                               | Closes settings and clears `error`.                                                                                                                                                                                                                      |
+| `OpenOverrideEditor(offering_id)`             | Builds an override draft from current overrides and closes the detail and picker. Missing targets report an error.                                                                                                                                       |
+| `CloseOverrideEditor`                         | Closes the editor and reopens the detail for the edited offering.                                                                                                                                                                                        |
+| `UpdateOverrideField(field, value)`           | Updates name or credits text; clears the form error and planner error.                                                                                                                                                                                   |
+| `UpdateOverrideDay(value)`                    | Parses and updates the draft slot day; clears form and planner errors.                                                                                                                                                                                   |
+| `UpdateOverridePeriod(value)`                 | Parses and updates the draft slot period; clears form and planner errors.                                                                                                                                                                                |
+| `ToggleOverrideSlots`                         | Toggles the slot override when the offering supports slots.                                                                                                                                                                                              |
+| `RemoveAllOverrides`                          | Removes the course name/credits and offering slots overrides for the form target, closes the editor, and reopens the detail.                                                                                                                             |
+| `SubmitOverride`                              | Validates and saves the draft override set. Failed name, credit, slot, or conflict validation keeps the editor open with a field error. On success closes the editor and reopens the detail.                                                             |
+| `OpenCustomCourseForm`                        | Builds a draft from the current picker context, selected timetable year, and selected term; clears the picker, detail, override form, and error.                                                                                                         |
+| `CloseCustomCourseForm`                       | Closes the form and restores the picker that opened it.                                                                                                                                                                                                  |
+| `UpdateCustomCourseField(field, value)`       | Updates one draft field and clears form/planner errors.                                                                                                                                                                                                  |
+| `ToggleCustomTerm(term)`                      | Adds or removes a regular term in the draft.                                                                                                                                                                                                             |
+| `OpenEditCustomCourse(offering_id)`           | Opens the custom edit form for a `user` course/offering and preserves the return picker.                                                                                                                                                                 |
+| `DeleteCustomCourse(course_id)`               | Deletes a custom course and its offerings only when unenrolled; otherwise keeps state and reports an error.                                                                                                                                              |
+| `SubmitCustomCourse`                          | Validates and creates or edits a custom course/offering. Invalid input keeps the form open with a field error. Creation appends to the catalogue/offerings and uses the next custom number.                                                              |
+| `OpenSlotPicker(day, period)`                 | Opens the slot picker and clears the catalogue query.                                                                                                                                                                                                    |
+| `OpenIntensivePicker`                         | Opens the intensive picker and clears the catalogue query.                                                                                                                                                                                               |
+| `OpenCataloguePicker`                         | Opens the all-catalogue picker and clears the catalogue query.                                                                                                                                                                                           |
+| `ClosePicker`                                 | Closes the picker and clears the catalogue query.                                                                                                                                                                                                        |
+| `UpdateCatalogueQuery(query)`                 | Updates the picker search text only.                                                                                                                                                                                                                     |
+| `IncreaseVisibleDays`                         | Adds one visible day up to 7.                                                                                                                                                                                                                            |
+| `DecreaseVisibleDays`                         | Removes one visible day down to 5.                                                                                                                                                                                                                       |
+| `IncreaseVisiblePeriods`                      | Adds one visible period up to 10.                                                                                                                                                                                                                        |
+| `DecreaseVisiblePeriods`                      | Removes one visible period down to 6.                                                                                                                                                                                                                    |
+| `DismissError`                                | Clears planner `error`.                                                                                                                                                                                                                                  |
 
 Grouped modal rule: opening settings, an override editor, or a custom editor
 closes the other modal surfaces. A picker cannot open a second modal; only the
@@ -194,12 +194,11 @@ picker's own create action replaces it with the custom form.
 
 ## Empty states
 
-- No enrollments or blocks in a term: the visible cells render empty and the
-  off-grid list shows `集中講義はありません`.
+- No enrollments or blocks in a term: the visible cells render empty.
 - No intensive entries in the current year/term: `集中講義はありません`.
 - No offered courses in the selected academic year: `この年度の開講科目はありません`.
-- No enrolled blocks in the visible range: no rows are hidden, so the
-  outside-range message is absent.
+- All scheduled blocks are inside the visible range: the outside-range note is
+  absent.
 - No picker matches: `該当する科目がありません`.
 - W: `Wでは時間割のグリッドを使いません`; off-grid entries and summary remain.
 - Missing requirement set: summary shows `要件: 要件セットが見つかりません`;
@@ -220,7 +219,7 @@ course, or offering. Kinds are:
 - `General`
 
 `TimetableError` covers slot conflict, not offered in the selected term, and
-unknown offering, and converts to `UiError`.
+unknown offering; it converts to `UiError`.
 
 - Planner errors render in `#planner-error` with `role="alert"`.
 - Successful selection, navigation, modal open/close, add/remove/undo, and form
@@ -248,7 +247,7 @@ enrollments, and the detail popup explains the frozen display.
 
 Removing an enrollment is allowed regardless of status. The exact previous
 enrollment list is captured for one-step undo. Undo restores passed grades and
-snapshots. The undo affordance expires on the next unrelated revision. There is
+snapshots. The undo affordance expires after the next unrelated state change. There is
 no general revision history.
 
 ## Custom courses and ids
@@ -267,7 +266,7 @@ persistence must replace it with a collision-safe allocator.
 
 Available program and advancement-year choices come from
 `RequirementSets::keys()`. The active set is always derived from the profile;
-`PlannerState` does not store a second active set. Selecting a profile is one
+`PlannerState` stores no active requirement set. Selecting a profile is one
 atomic state transition. A missing set keeps the profile, reports
 `MissingRequirementSet`, and can be recovered by selecting a valid profile.
 

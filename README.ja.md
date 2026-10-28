@@ -5,8 +5,8 @@ MoonBit で実装しています。
 
 Phase 1 は完了し、純粋なドメインモデル、単位集計、要件評価を実装しました。
 Phase 2 では時間割プランナーの UI を実装しています。契約は
-[docs/PHASE_2.md](docs/PHASE_2.md) にあります。Phase 2 の結果と永続化は
-まだ作業中です。
+[docs/PHASE_2.md](docs/PHASE_2.md) にあります。Phase 2 の結果はまだ作業中で、
+永続化と同期は後続の Phase で対応します。
 
 **English:** [README.md](README.md)
 
@@ -17,7 +17,7 @@ Phase 2 では時間割プランナーの UI を実装しています。契約�
 - Phase 1: 完了。契約は [docs/PHASE_1.md](docs/PHASE_1.md)、
   結果は [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) にあります。
 - Phase 2: 実装中。プランナー UI の契約は
-  [docs/PHASE_2.md](docs/PHASE_2.md) にあります。結果と closeout は未完了です。
+  [docs/PHASE_2.md](docs/PHASE_2.md) にあります。結果と総括（closeout）は未完了です。
 - 後の Phase: 永続化、同期。未着手です。
 
 ## 構成

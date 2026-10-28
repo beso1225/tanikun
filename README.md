@@ -5,8 +5,8 @@ requirements. It is built with MoonBit.
 
 Phase 1 is complete. It implements the pure domain model, credit summaries, and
 requirement evaluation. Phase 2 adds the in-memory planner UI; its contract is
-[docs/PHASE_2.md](docs/PHASE_2.md). Phase 2 results and persistence are still
-pending.
+[docs/PHASE_2.md](docs/PHASE_2.md). Phase 2 results are still pending, and
+persistence and sync come later.
 
 **日本語版:** [README.ja.md](README.ja.md)
 
