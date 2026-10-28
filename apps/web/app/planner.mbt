@@ -323,12 +323,20 @@ fn timetable_year_for_grade(
 }
 
 ///|
+/// The enrollment list captured immediately before a removal.
+pub struct UndoRemoval {
+  enrollments : Array[@tanikun-domain.Enrollment]
+  revision : Int
+}
+
+///|
 /// In-memory Phase 2 planner state. Derived credits and requirements are not
 /// stored here; they are computed from this state.
 pub struct PlannerState {
   catalogue : Array[@tanikun-domain.Course]
   offerings : Array[@tanikun-domain.CourseOffering]
   enrollments : Array[@tanikun-domain.Enrollment]
+  undo_removal : UndoRemoval?
   overrides : @tanikun-domain.Overrides
   profile : @tanikun-domain.AcademicProfile
   timetable_year : TimetableYear
@@ -375,6 +383,7 @@ pub fn PlannerState::new(
     catalogue: catalogue.copy(),
     offerings: offerings.copy(),
     enrollments: enrollments.copy(),
+    undo_removal: None,
     overrides,
     profile,
     timetable_year: { grade: 3, academic_year: profile.advancement_year, },
@@ -712,6 +721,7 @@ pub(all) enum PlannerMsg {
   ClearOfferingSelection
   AddOffering(offering_id~ : @tanikun-domain.OfferingId)
   RemoveEnrollment(offering_id~ : @tanikun-domain.OfferingId)
+  UndoEnrollmentRemoval
   UpdateEnrollmentStatus(
     offering_id~ : @tanikun-domain.OfferingId,
     target~ : EnrollmentStatusTarget
@@ -774,6 +784,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({ ..state, selected_offering: None, error: None, })
     AddOffering(offering_id~) => add_offering(state, offering_id)
     RemoveEnrollment(offering_id~) => remove_enrollment(state, offering_id)
+    UndoEnrollmentRemoval => undo_enrollment_removal(state)
     UpdateEnrollmentStatus(offering_id~, target~) =>
       update_enrollment_status(state, offering_id, target)
     SelectProgram(program_id~) => select_program(state, program_id)
@@ -2481,7 +2492,43 @@ fn remove_enrollment(
   if !found {
     return bump({ ..state, selected_offering: None, error: None, })
   }
-  bump({ ..state, enrollments, selected_offering: None, error: None, })
+  bump({
+    ..state,
+    enrollments,
+    undo_removal: Some({
+      enrollments: state.enrollments.copy(),
+      revision: state.revision + 1,
+    }),
+    selected_offering: None,
+    error: None,
+  })
+}
+
+///|
+fn undo_enrollment_removal(state : PlannerState) -> PlannerState {
+  match state.undo_removal {
+    None => state
+    Some(undo) =>
+      if undo.revision != state.revision {
+        bump({ ..state, undo_removal: None, error: None, })
+      } else {
+        bump({
+          ..state,
+          enrollments: undo.enrollments.copy(),
+          undo_removal: None,
+          selected_offering: None,
+          error: None,
+        })
+      }
+  }
+}
+
+///|
+pub fn PlannerState::undo_available(self : PlannerState) -> Bool {
+  match self.undo_removal {
+    Some(undo) => undo.revision == self.revision
+    None => false
+  }
 }
 
 ///|
