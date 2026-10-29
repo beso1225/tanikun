@@ -50,9 +50,12 @@ three files:
   a passed grade, a custom course, name and slot overrides, all three totals,
   and a requirement result
 
-The tests use the shared [planner harness](../tests/integration/planner-harness.mjs),
-fail on page errors and console errors, and preserve failure screenshots and
-traces under `.cache/verify/`.
+All three files use the shared
+[planner harness](../tests/integration/planner-harness.mjs) static server. The
+shell and Phase 2 journey suites also collect page errors and console errors and
+assert the list is empty; the journey suite preserves a screenshot and trace
+under `.cache/verify/` on failure. The display suite currently uses only the
+harness server and does not yet capture failure artifacts.
 
 The local verification skill is in
 [`.agents/skills/verify/`](../.agents/skills/verify/SKILL.md):
@@ -75,6 +78,9 @@ Model tests are split by feature:
 - [`planner_summary_test.mbt`](../apps/web/app/planner_summary_test.mbt)
 - shared fixtures in
   [`planner_test_support_test.mbt`](../apps/web/app/planner_test_support_test.mbt)
+- the pre-existing Rabbita demo model in
+  [`model_test.mbt`](../apps/web/app/model_test.mbt), which contributes two tests
+  to the same package run
 
 Run them with:
 
@@ -82,8 +88,9 @@ Run them with:
 nix develop -c just test
 ```
 
-`just test` currently reports 222 passing model tests plus the JavaScript export
-test.
+`just test` currently reports 222 passing MoonBit tests across the API, domain,
+requirements, and web app packages, plus the JavaScript export test. The total
+includes the two demo-model tests.
 
 ## In-memory boundary
 
@@ -119,14 +126,15 @@ The pure-package baseline is in [MUTATION.md](MUTATION.md):
 | domain       |     139 |    138 |        0 |       1 | 99.28% |
 | requirements |     237 |    221 |       15 |       1 | 93.25% |
 
-Phase 2's later pure additions were read-only accessors and did not change the
-recorded mutation numbers. Mutation remains local evidence, not a CI gate.
+The recorded numbers include the Phase 2 read-only accessors refreshed on
+2026-10-28. The later copy-only accessors added no mutants, which is why no
+further refresh was needed. Mutation remains local evidence, not a CI gate.
 
 ## Verification
 
 - Phase 2 milestone issues #50 through #71 and the implementation refactor
   #87 / #97 / #98 / #99 are closed.
-- `just test` passes with 222 model tests.
+- `just test` passes with 222 MoonBit tests.
 - `just test-browser` passes four Chromium tests across three files.
 - `just lint` and `just test-css` pass.
 - `nix build path:.#web path:.#pure --no-link` passes locally.

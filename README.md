@@ -20,7 +20,7 @@ later.
 - Phase 2: complete. The planner UI contract is
   [docs/PHASE_2.md](docs/PHASE_2.md), and the evidence is in
   [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md).
-- Later phases: Phase 3 persistence and sync. Not started.
+- Later phases: Phase 3 persistence and Phase 4 sync. Not started.
 
 ## Stack
 

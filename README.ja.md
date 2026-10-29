@@ -20,7 +20,7 @@ Phase 2 では時間割プランナーの UI を実装しました。契約と�
 - Phase 2: 完了。プランナー UI の契約は
   [docs/PHASE_2.md](docs/PHASE_2.md)、結果は
   [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md) にあります。
-- 後の Phase: Phase 3 の永続化と同期。未着手です。
+- 後の Phase: Phase 3 の永続化、Phase 4 の同期。未着手です。
 
 ## 構成
 
