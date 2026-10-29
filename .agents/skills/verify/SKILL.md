@@ -17,6 +17,9 @@ nix develop
 just build-web
 ```
 
+Set `TANIKUN_WEB_DIST` to drive packaged assets instead of the default dist.
+Linux CI runs doctor and all mapped journeys against its Nix-built web output.
+
 Ready means these files exist:
 
 - `apps/web/dist/index.html`
@@ -41,29 +44,32 @@ exits nonzero on failure.
 
 ## Drive
 
-The current proof journey is the timetable surface:
+Run one live path for each mapped feature in one owned browser and server:
 
 ```sh
-node .agents/skills/verify/scripts/drive.mjs timetable
+nix develop -c node .agents/skills/verify/scripts/doctor.mjs
+nix develop -c node .agents/skills/verify/scripts/drive.mjs all
 ```
 
-It:
+Pass a feature filename stem instead of `all` to isolate a failure. Supported
+modes are `timetable`, `enrollment-status`, `custom-courses`, `overrides`, and
+`summary-profile-year`. Each mode reloads the production page to reset Phase 2
+in-memory state. The map also lists extended checks; a mode proves its executed
+path, not every sub-feature. Run `nix develop -c just test-browser` for broader
+regression coverage. Timetable also checks 390px overflow and keyboard dismissal
+with focus restoration.
 
-1. starts the static server from `tests/integration/planner-harness.mjs`
-2. opens the four-tab planner with W grouped under A
-3. checks the initial summary totals and accessibility audit
-4. switches S1 to S2 and back
-5. writes `.cache/verify/timetable.png`
-6. closes the page, browser, and server
-
-The feature map lists the other journeys and their stable selectors. Add a new
-mode to `drive.mjs` before claiming a new feature is verified by this skill.
+Run doctor before first drive and after failure. Failed runs close their owned
+instances in `finally`; start a fresh mode after doctor succeeds. Inspect
+screenshots for visual changes and use a separate exploratory browser session
+when needed. Do not mutate the user's existing planner to obtain evidence.
 
 ## Evidence
 
 Proof artifacts go under `.cache/verify/`, which is git-ignored:
 
-- successful journey: `.cache/verify/<feature>.png`
+- successful journey: `.cache/verify/<feature>.png` and `<mode>-trace.zip`
+  with actions and resulting states
 - failed journey: `.cache/verify/<feature>-failure.png` and
   `.cache/verify/<feature>-failure-trace.zip`
 
@@ -79,19 +85,30 @@ browser/server started by that run; do not delete `.cache/verify/`.
 ## Helpers
 
 - `scripts/doctor.mjs` — read-only environment and page health check.
-- `scripts/drive.mjs` — timetable journey and screenshot capture.
+- `scripts/drive.mjs` — mapped journeys, traces, and screenshots.
 - [`tests/integration/planner-harness.mjs`](../../../tests/integration/planner-harness.mjs)
   — shared static server, accessibility audit, and summary assertions.
 - `features/README.md` — feature map index.
 
 ## Proof
 
-Executed on 2026-10-28:
+Check that evidence survives teardown:
 
 ```sh
 nix develop -c node .agents/skills/verify/scripts/doctor.mjs
-nix develop -c node .agents/skills/verify/scripts/drive.mjs timetable
-test -s .cache/verify/timetable.png
+nix develop -c node .agents/skills/verify/scripts/drive.mjs all
+for feature in timetable enrollment-status custom-courses overrides summary-profile-year; do
+  test -s ".cache/verify/$feature.png" || exit 1
+done
+test -s .cache/verify/all-trace.zip
 ```
 
-The screenshot existed after the driver closed its server and browser.
+All five screenshots and the action trace must remain after the driver closes
+its server and browser.
+
+## Accessibility limits
+
+DOM audits and Chromium keyboard checks do not prove spoken announcements or
+Safari behavior. Manual screen-reader evidence belongs to issue #103. Record
+browser, assistive technology, actions, and observed speech before claiming it
+passed.

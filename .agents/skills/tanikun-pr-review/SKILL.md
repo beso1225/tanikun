@@ -5,20 +5,22 @@ description: "Review, fix, and land a Tanikun pull request. Use when a PR is ope
 
 # Tanikun PR review
 
-Use this skill for an open pull request. Use `tanikun-moonbit-change` for code
-fixes and `tanikun-docs-update` for documentation fixes.
+Use this skill for an open pull request. Use `tanikun-planner-change` for planner
+fixes, `tanikun-moonbit-change` for pure-package fixes, and
+`tanikun-docs-update` for documentation fixes.
 
 ## Gather state
 
 ```sh
-gh pr view <number> --json state,mergeStateStatus,reviewDecision,reviews
+gh pr view <number> --json state,headRefOid,mergeStateStatus,reviewDecision,reviews
 gh pr checks <number>
 git status --short
 git log --oneline -5
 ```
 
 Read every unresolved review thread. Read the full diff, not only the files in
-the latest comment.
+the latest comment. Check linked issue acceptance criteria against the final
+implementation before closing them; a passing test does not prove omitted scope.
 
 If `gh` cannot resolve DNS, set `GODEBUG=netdns=cgo` for the command.
 
@@ -44,18 +46,27 @@ If a check fails, load `tanikun-nix-ci` before changing production code.
 
 ## Merge
 
-Merge only after the user approves the merge.
+Merge only after the user approves the merge. Confirm the latest head has
+successful required checks and all actionable review threads are resolved.
+Use the reviewed SHA so a new push cannot slip into the merge.
 
 ```sh
-gh pr merge <number> --squash --delete-branch
-git checkout main
+gh pr merge <number> --squash --match-head-commit <reviewed-sha> --delete-branch
+git switch main
 git pull --ff-only
 ```
+
+The deletion rule protects the default branch, not feature branches. Delete
+the merged feature branch when it is no longer needed. A GitHub connector
+squash merge with `expected_head_sha` provides the same head check; branch
+cleanup is a separate action.
 
 Then check:
 
 - the issue closed automatically, or close it with a reason;
-- `main` CI passes;
+- the `main` CI run whose `headSha` matches the merge commit completes with
+  successful job conclusions (use `gh run list --branch main`, then
+  `gh run watch <run-id> --exit-status` and `gh run view <run-id>`);
 - the milestone is still accurate;
 - the working tree is clean.
 

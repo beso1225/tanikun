@@ -21,7 +21,7 @@ an enrollment with `履修から削除`; use the bottom `元に戻す` toast.
 - click `#status-passed`, then `#grade-good`; wait for
   `#grade-good[aria-pressed='true']`
 - close with `#close-detail` and assert the block badge
-- click `#remove-detail`; wait for `#undo-removal`; click
+- reopen the course detail, then click `#remove-detail`; wait for `#undo-removal`; click
   `#undo-removal-button` and wait for the tile to return
 
 ## Gotchas

@@ -11,7 +11,7 @@
 
 ## How to get to it (user POV)
 
-Read the `累計単位・要件` panel below the timetable. Open `設定` and use the
+Read the `単位・要件` panel below the timetable. Open `設定` and use the
 `プロファイル` selects there for program and advancement year. Use the
 `時間割` grade select for the displayed year. Every requirement node shows
 one stacked bar with `合格済`, `履修中`, and `履修予定` segments.
@@ -25,7 +25,7 @@ one stacked bar with `合格済`, `履修中`, and `履修予定` segments.
   `合格済`, `履修中`, and `履修予定`
 - open `#open-settings`; select `#program-select` = `applied-chemistry` and
   wait for `要件（履修予定込）: 不足`
-- select `#year-select` = `2025`, then restore `2026`
+- restore `#program-select` = `applied-physics`, then select `#year-select` = `2025`, then restore `2026`
 - close with `#close-settings`
 - select `#grade-select` = `4` and wait for `#term-context` to include `2027年度`
 - select grade `1`; `#timetable` remains for custom-course placement
@@ -41,3 +41,7 @@ one stacked bar with `合格済`, `履修中`, and `履修予定` segments.
   sidebar.
 - `#requirement-summary` is the optimistic one-line status in the summary
   header, not the settings dialog.
+
+The summary covers all years and terms (`#summary-scope`). The missing-profile
+branch has no selectable sample UI prerequisite. Cover it in model tests
+instead of inserting state through internal setters.

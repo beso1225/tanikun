@@ -72,6 +72,21 @@ Load `tanikun-mutation-refresh` before updating the baseline.
   drive the built planner page in Chromium; doctor, journeys, and evidence
   under `.cache/verify/`.
 
+## Planner maintenance
+
+Use [tanikun-planner-change](.agents/skills/tanikun-planner-change/SKILL.md)
+for planner model and browser changes. Keep verification procedures in skills.
+
+| Rule                                                   | Enforcement                                                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Keep credit formatting in one owner                    | App formatter and view delegation in `planner_summary.mbt` and `view_support.mbt`; formatter model tests |
+| Preserve passed enrollment snapshots                   | Enrollment and override model tests; Phase 2 browser journey                                             |
+| Keep phone layouts usable without horizontal scrolling | `browser-display.test.mjs` and `browser.test.mjs` in local `just test-browser` and Linux CI              |
+| Restore focus after dialogs and Undo                   | Shell browser tests and mapped verification journeys                                                     |
+
+Issue acceptance and spoken screen-reader behavior require review and observed
+evidence. Chromium tests cannot establish those judgment calls by themselves.
+
 ## Documentation
 
 - [docs/PHASE_1.md](docs/PHASE_1.md) is the current contract.
