@@ -32,3 +32,8 @@ submit. The picker returns to the context that opened it. A custom row exposes
   credits and display; `未分類` is the default.
 - The form year follows the selected timetable year.
 - Deleting an enrolled custom course is blocked; remove the enrollment first.
+
+Another entry is `#open-intensive-picker`; custom creation returns to that
+picker. Regular supports multiple terms; YearLong and Intensive are separate
+schedule choices. Empty-name submission keeps the form open, shows
+`#custom-form-error[role=alert]`, and focuses the invalid `#custom-name`.

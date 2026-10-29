@@ -23,7 +23,7 @@ effective values. A passed course shows an informational frozen-display note.
   `#override-slots-enabled` and set `#override-day` / `#override-period`
 - submit `#override-submit`; use `#remove-overrides` to clear all
 - assert the timetable label/slot and `#summary` values
-- for passed Physics I, assert `#override-passed-note`
+- first mark Physics I passed and select a grade; then assert `#override-passed-note`
 
 ## Gotchas
 
@@ -32,3 +32,7 @@ effective values. A passed course shows an informational frozen-display note.
   move the block and skips the no-op conflict re-check.
 - The override editor's visible fields change with the schedule; an intensive
   offering does not expose the slot toggle.
+
+Clear names with an empty field, credits with the default empty option, and
+slots by disabling the toggle. Remove-all applies to the edited course and
+offering, not every course.

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { startStaticServer } from "../../../../tests/integration/planner-harness.mjs";
 
-const dist = resolve("apps/web/dist");
+const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 for (const file of ["index.html", "index.js", "styles.css"]) {
   await access(join(dist, file));
 }

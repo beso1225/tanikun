@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -9,9 +9,27 @@ import {
   startStaticServer,
 } from "../../../../tests/integration/planner-harness.mjs";
 
-const feature = process.argv[2] ?? "timetable";
-assert.equal(feature, "timetable", `unknown feature: ${feature}`);
-const dist = resolve("apps/web/dist");
+const feature = process.argv[2] ?? "all";
+const modes = [
+  "timetable",
+  "enrollment-status",
+  "custom-courses",
+  "overrides",
+  "summary-profile-year",
+];
+assert.ok(
+  feature === "all" || modes.includes(feature),
+  `unknown feature: ${feature}`,
+);
+const mappedModes = (await readdir(new URL("../features/", import.meta.url)))
+  .filter((name) => name.endsWith(".md") && name !== "README.md")
+  .map((name) => name.slice(0, -3));
+assert.deepEqual(
+  modes.toSorted(),
+  mappedModes.toSorted(),
+  "verify feature map and drive.mjs modes differ; implement a journey for each feature file",
+);
+const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 const core = process.env.PLAYWRIGHT_CORE;
 assert.ok(core, "PLAYWRIGHT_CORE is not set; run inside `nix develop`");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
@@ -39,28 +57,128 @@ try {
     waitUntil: "load",
   });
   await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
-  assert.equal(await page.locator("nav button").count(), 4);
-  assert.deepEqual(await auditAccessibility(page), []);
-  await assertSummaryTotals(page, "0単位", "0単位", "6単位");
-  await page.locator("#term-S2").click();
-  await page.getByRole("heading", { name: "S2" }).waitFor();
-  await page.locator("#term-S1").click();
-  await page.getByRole("heading", { name: "S1" }).waitFor();
-  await page.locator("#term-A1").click();
-  await page.locator("#off-grid").getByText("W（冬期）").waitFor();
-  await page.locator("#term-S1").click();
-  await page.getByRole("heading", { name: "S1" }).waitFor();
-  await page.screenshot({
-    path: resolve(evidenceDir, `${feature}.png`),
-    fullPage: false,
-  });
+  const openCourse = async (name) => {
+    await page.locator("#timetable").getByText(name, { exact: true }).click();
+    await page.locator("#course-detail-dialog").waitFor();
+  };
+  const closeDetail = async () => {
+    await page.locator("#close-detail").click();
+    await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
+  };
+  for (const mode of feature === "all" ? modes : [feature]) {
+    // Reload is the production reset for the Phase 2 in-memory planner.
+    await page.reload();
+    await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await assertSummaryTotals(page, "0単位", "0単位", "6単位");
+    if (mode === "timetable") {
+      assert.equal(await page.locator("nav button").count(), 4);
+      await page.locator("#term-S2").click();
+      await page.getByRole("heading", { name: "S2", exact: true }).waitFor();
+      await page.locator("#term-A1").click();
+      await page.locator("#off-grid").getByText("W（冬期）").waitFor();
+      await page.locator("#term-S1").click();
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      await page.locator('[id^="mobile-detail-phy101-s1"]').click();
+      await page.locator("#course-detail-dialog").waitFor();
+      await page.keyboard.press("Escape");
+      await page
+        .locator("#course-detail-dialog")
+        .waitFor({ state: "detached" });
+      assert.match(
+        await page.evaluate(() => document.activeElement?.id),
+        /^mobile-detail-/,
+      );
+    } else if (mode === "enrollment-status") {
+      await openCourse("Physics I");
+      await page.locator("#status-passed").click();
+      await page.locator("#grade-good").click();
+      await page.locator("#grade-good[aria-pressed='true']").waitFor();
+      await closeDetail();
+      await assertSummaryTotals(page, "2単位", "2単位", "6単位");
+      await openCourse("Physics Lab");
+      await page.locator("#remove-detail").click();
+      await assertSummaryTotals(page, "2単位", "2単位", "5単位");
+      await page.locator("#undo-removal-button").click();
+      await assertSummaryTotals(page, "2単位", "2単位", "6単位");
+      assert.match(
+        await page.evaluate(() => document.activeElement?.id),
+        /^open-detail-phy201-year-/,
+      );
+    } else if (mode === "custom-courses") {
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator("#open-custom-course").click();
+      await page.locator("#custom-submit").click();
+      await page.locator("#custom-form-error[role='alert']").waitFor();
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.id),
+        "custom-name",
+      );
+      await page.locator("#custom-name").fill("Verification course");
+      await page.locator("#custom-submit").click();
+      await page.locator("#add-offering-user-offering-1").click();
+      await page.locator("#close-picker").click();
+      await page
+        .locator("#timetable")
+        .getByText("Verification course", { exact: true })
+        .waitFor();
+    } else if (mode === "overrides") {
+      await openCourse("Physics Lab");
+      await page.locator("#open-override-editor").click();
+      await page.locator("#override-name").fill("Verification override");
+      await page.locator("#override-submit").click();
+      await page
+        .locator("#course-detail-title")
+        .getByText("Verification override", { exact: true })
+        .waitFor();
+      await closeDetail();
+      await page
+        .locator("#timetable")
+        .getByText("Verification override", { exact: true })
+        .waitFor();
+    } else {
+      await page.locator("#open-settings").click();
+      await page.locator("#program-select").selectOption("applied-chemistry");
+      await page.waitForFunction(() =>
+        document
+          .querySelector("#requirement-summary")
+          ?.textContent.includes("不足"),
+      );
+      await page.locator("#program-select").selectOption("applied-physics");
+      await page.locator("#year-select").selectOption("2025");
+      await page.locator("#year-select").selectOption("2026");
+      await page.locator("#close-settings").click();
+      await page.locator("#grade-select").selectOption("4");
+      await page.waitForFunction(() =>
+        document
+          .querySelector("#term-context")
+          ?.textContent.includes("2027年度"),
+      );
+      await assertSummaryTotals(page, "0単位", "0単位", "6単位");
+    }
+    assert.deepEqual(await auditAccessibility(page), []);
+    await page.screenshot({
+      path: resolve(evidenceDir, `${mode}.png`),
+      fullPage: true,
+    });
+  }
   assert.deepEqual(errors, []);
-  await context.tracing.stop();
+  await context.tracing.stop({
+    path: resolve(evidenceDir, `${feature}-trace.zip`),
+  });
   console.log(
     JSON.stringify({
       ok: true,
       feature,
-      evidence: resolve(evidenceDir, `${feature}.png`),
+      evidence: (feature === "all" ? modes : [feature]).map((mode) =>
+        resolve(evidenceDir, `${mode}.png`),
+      ),
+      trace: resolve(evidenceDir, `${feature}-trace.zip`),
     }),
   );
 } catch (error) {

@@ -13,7 +13,7 @@
 
 ## How to get to it (user POV)
 
-Open the page. The S1 timetable is visible. Use the sidebar `学年 (2026年度)`
+Open the page. The S1 timetable is visible. Use the `学年` with option `3年（2026年度）`
 select to change timetable year, the term tabs to change term, and `設定` to
 change visible days or periods.
 
@@ -35,3 +35,10 @@ change visible days or periods.
 - The visible year is derived from the grade mapping; changes clear the selected
   offering and picker.
 - The initial sample has enrolled 2026 entries but no 2027 enrollments.
+
+At 390px, document scroll width must not exceed viewport width. Open details
+using `[id^="mobile-detail-"]`, press Escape, and verify focus restoration.
+`#timetable-scope` shows year and term below 1024px. Hidden enrollments appear
+in `#hidden-blocks`; `#open-hidden-settings` opens range controls. Expanding
+the range reveals the course and removes the notice. The setup is executable
+in `tests/integration/browser-display.test.mjs`.

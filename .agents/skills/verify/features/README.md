@@ -1,8 +1,8 @@
 # Feature map
 
 Each file describes one user-facing planner surface, how to reach it, how to
-drive it in Chromium, and what end state proves it works. The driver script is
-only a seed; add a mode there before claiming a new journey is automated.
+drive it in Chromium, and what end state proves it works. Run `drive.mjs all` for one live path per feature. Extended recipes
+remain in the map; a passing mode does not prove every sub-feature.
 
 | Feature                      | File                                               |
 | ---------------------------- | -------------------------------------------------- |
