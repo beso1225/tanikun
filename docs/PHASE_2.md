@@ -300,7 +300,9 @@ The summary uses these user-facing labels:
 - `履修中込` for passed plus in-progress credits;
 - `履修予定込` for passed, in-progress, and planned credits.
 
-The timetable identifies the selected academic year and term. The summary
+The timetable identifies the selected academic year and term. On wide screens,
+the header supplies this context; on narrower screens, it appears above the grid.
+The summary
 states that its totals cover enrollments across all grades and terms, regardless
 of the timetable selection.
 

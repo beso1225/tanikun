@@ -797,7 +797,7 @@ fn timetable_grid(
   let children : Array[Html] = [
     p(
       id="timetable-scope",
-      class="text-sm font-medium text-ink",
+      class="text-sm font-medium text-ink lg:hidden",
       "時間割：\{state.timetable_year.academic_year.year()}年度 \{state.selected_term.label()}",
     ),
     p(
@@ -1633,7 +1633,7 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
     if children.is_empty() {
       div(([] : Array[Html]))
     } else {
-      ul(class="space-y-2", children)
+      ul(class="space-y-2", attrs=@html.Attrs::build().role("list"), children)
     },
   ])
 }
@@ -1746,18 +1746,26 @@ fn summary_panel(
                     ),
                     th(
                       scope=@html.Scope::Col,
-                      class="w-[20%] pb-1 px-2 text-right text-xs text-muted sm:w-1/4",
+                      class="w-[20%] whitespace-nowrap pb-1 px-1 text-right text-xs text-muted sm:w-1/4 sm:px-2",
                       "修得済",
                     ),
                     th(
                       scope=@html.Scope::Col,
-                      class="w-[20%] pb-1 px-2 text-right text-xs text-muted sm:w-1/4",
-                      "履修中込",
+                      class="w-[20%] whitespace-nowrap pb-1 px-1 text-right text-xs text-muted sm:w-1/4 sm:px-2",
+                      attrs=@html.Attrs::build().aria_label("履修中込"),
+                      [
+                        span(class="sr-only sm:not-sr-only", "履修"),
+                        span("中込"),
+                      ],
                     ),
                     th(
                       scope=@html.Scope::Col,
-                      class="w-[20%] pb-1 pl-2 text-right text-xs text-muted sm:w-1/4",
-                      "履修予定込",
+                      class="w-[20%] whitespace-nowrap pb-1 pl-1 text-right text-xs text-muted sm:w-1/4 sm:pl-2",
+                      attrs=@html.Attrs::build().aria_label("履修予定込"),
+                      [
+                        span(class="sr-only sm:not-sr-only", "履修"),
+                        span("予定込"),
+                      ],
                     ),
                   ]),
                 ]),
@@ -1771,7 +1779,9 @@ fn summary_panel(
             "バーと凡例は必要数までの内訳です。",
           ),
           div(id="summary-requirements", class="mt-2", [
-            ul([li(requirement_tree_node(summary.requirement_root))]),
+            ul(attrs=@html.Attrs::build().role("list"), [
+              li(requirement_tree_node(summary.requirement_root)),
+            ]),
           ]),
         ],
       )

@@ -240,6 +240,10 @@ test(
       1,
     );
     assert.equal(
+      await page.locator("#summary-requirements ul:not([role='list'])").count(),
+      0,
+    );
+    assert.equal(
       await page
         .locator("#summary-requirements > ul > li > div > ul > li")
         .count(),
@@ -446,12 +450,29 @@ test(
       (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
     );
     assert.equal(await page.locator("#timetable thead th").count(), 6);
+    assert.equal(await page.locator("#timetable-scope").isVisible(), true);
+    const projectedHeader = page.locator("#summary-categories th").last();
+    assert.equal(
+      await projectedHeader.locator("span").last().innerText(),
+      "予定込",
+    );
+    assert.equal(
+      await projectedHeader.evaluate(
+        (element) => getComputedStyle(element).whiteSpace,
+      ),
+      "nowrap",
+    );
+    assert.equal(
+      await page.getByRole("columnheader", { name: "履修予定込" }).count(),
+      1,
+    );
     const lastDayHeader = await page
       .locator("#timetable thead th")
       .last()
       .evaluate((element) => element.getBoundingClientRect().right);
     assert.ok(lastDayHeader <= 390);
     await page.setViewportSize({ width: 1280, height: 720 });
+    assert.equal(await page.locator("#timetable-scope").isVisible(), false);
     assert.equal(await page.locator("#timetable thead th").count(), 6);
     const headers = await page.locator("#timetable thead th").allTextContents();
     assert.deepEqual(headers, ["時限", "月", "火", "水", "木", "金"]);
@@ -533,6 +554,11 @@ test(
     assert.equal(await page.locator("#timetable tbody tr").count(), 7);
 
     await page.locator("#term-S2").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#timetable-scope")
+        ?.textContent?.includes("2026年度 S2"),
+    );
     assert.equal(await page.locator("#picker").count(), 0);
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -1042,7 +1068,7 @@ test(
     );
     assert.equal(await page.locator("#grade-select").inputValue(), "4");
     assert.match(
-      await page.locator("#timetable-scope").innerText(),
+      await page.locator("#timetable-scope").textContent(),
       /2027年度 S2/,
     );
     assert.match(
