@@ -13,6 +13,7 @@ using @html {
   header,
   input,
   label,
+  li,
   main_,
   nav,
   option,
@@ -26,6 +27,7 @@ using @html {
   th,
   thead,
   tr,
+  ul,
 }
 
 ///|
@@ -766,6 +768,7 @@ fn timetable_grid(
   }
   let hidden = state.hidden_scheduled_block_count(state.selected_term)
   let mobile_blocks : Array[Html] = []
+  let hidden_blocks : Array[Html] = []
   for block in blocks {
     if state.is_visible_slot(block.day, block.period) {
       mobile_blocks.push(
@@ -783,9 +786,20 @@ fn timetable_grid(
           ],
         ),
       )
+    } else {
+      hidden_blocks.push(
+        li(
+          "\{day_label(block.day)}\{block.period.value()}限 · \{block.course_name}",
+        ),
+      )
     }
   }
   let children : Array[Html] = [
+    p(
+      id="timetable-scope",
+      class="text-sm font-medium text-ink",
+      "時間割：\{state.timetable_year.academic_year.year()}年度 \{state.selected_term.label()}",
+    ),
     p(
       class="mt-4 text-xs text-muted",
       "空き時間を選んで科目を追加できます。",
@@ -809,11 +823,19 @@ fn timetable_grid(
   ]
   if hidden > 0 {
     children.push(
-      p(
-        id="hidden-blocks",
-        class="mt-2 text-xs text-muted",
-        "表示範囲外に\{hidden}件の履修があります",
-      ),
+      div(id="hidden-blocks", class="mt-3 rounded-lg bg-canvas p-3 text-sm", [
+        p("表示範囲外に\{hidden}件の履修があります"),
+        ul(
+          class="mt-1 list-inside list-disc break-words text-muted",
+          hidden_blocks,
+        ),
+        button(
+          id="open-hidden-settings",
+          class="mt-2 min-h-11 rounded-md px-2 text-primary-text hover:bg-primary-soft",
+          on_click=emit(@app.PlannerMsg::OpenSettings),
+          "表示範囲を変更",
+        ),
+      ]),
     )
   }
   div(children)
@@ -1576,7 +1598,7 @@ fn requirement_status_class(status : String) -> String {
 ///|
 fn summary_mode_info(label : String, mode : @app.RequirementMode) -> Html {
   div(
-    class="grid grid-cols-[minmax(0,1.1fr)_7.5rem_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-2 text-xs",
+    class="grid grid-cols-2 items-baseline gap-x-2 gap-y-1 rounded-md bg-canvas px-2 py-2 text-xs sm:grid-cols-[minmax(0,1.1fr)_7.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:bg-transparent sm:p-0",
     [
       span(class="font-medium text-muted", label),
       span(
@@ -1600,7 +1622,7 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
     children.push(requirement_tree_node(child))
   }
   div(class="space-y-2 border-l border-rule/60 pl-3", [
-    p(class="text-sm font-medium", node.label),
+    p(class="break-words text-sm font-medium", node.label),
     requirement_stacked_bar(node),
     requirement_segment_legend(node),
     div(class="space-y-1", [
@@ -1698,6 +1720,11 @@ fn summary_panel(
               summary.optimistic,
             ),
           ]),
+          p(
+            id="summary-scope",
+            class="mt-2 text-xs text-muted",
+            "すべての学年・学期の履修を集計しています。",
+          ),
           p(
             id="summary-note",
             class="mt-2 text-xs text-muted",
