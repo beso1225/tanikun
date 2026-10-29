@@ -2,15 +2,13 @@
 
 ## Status
 
-Phase 2 implements the planner UI in `apps/web`. This document is the current
-contract for its state, transitions, projections, and error boundary. It is
+Phase 2 is complete. Its results and evidence are in
+[PHASE_2_RESULTS.md](PHASE_2_RESULTS.md). This document is the current contract
+for the planner state, transitions, projections, and error boundary. It is
 consistent with [ADR-0006](adr/0006-phase-2-planner-state-and-ui-errors.md),
 [ADR-0007](adr/0007-custom-course-id-namespace.md),
 [ADR-0008](adr/0008-timetable-grade-year-mapping.md), and the Phase 1 contract in
 [PHASE_1.md](PHASE_1.md).
-
-Phase 2 results and closeout evidence belong in the future Phase 2 results
-document; this contract does not claim that closeout is complete.
 
 ## Goal and scope
 
