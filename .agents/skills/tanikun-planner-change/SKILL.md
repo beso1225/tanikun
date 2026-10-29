@@ -26,8 +26,9 @@ requires a later-phase contract rather than an incidental UI change.
   `tests/integration/planner-harness.mjs`.
 
 Keep totals, requirement evaluation, and effective display values derived.
-Passed enrollment snapshots freeze names, credits, and slots; both rendering
-and conflict checks must use those frozen values. An override on a passed
+Passed enrollment display freezes names and credits from the snapshot. Slots
+come from the offering's stored slots, not the snapshot or slot overrides.
+Rendering and conflict checks must use those frozen display values. An override on a passed
 course must explain why the visible enrollment remains frozen.
 
 ## Change and prove

@@ -51,13 +51,15 @@ successful required checks and all actionable review threads are resolved.
 Use the reviewed SHA so a new push cannot slip into the merge.
 
 ```sh
-gh pr merge <number> --squash --match-head-commit <reviewed-sha>
+gh pr merge <number> --squash --match-head-commit <reviewed-sha> --delete-branch
 git switch main
 git pull --ff-only
 ```
 
-Branch deletion is blocked by repository rules; do not add `--delete-branch`.
-The GitHub connector's squash merge with `expected_head_sha` is equivalent.
+The deletion rule protects the default branch, not feature branches. Delete
+the merged feature branch when it is no longer needed. A GitHub connector
+squash merge with `expected_head_sha` provides the same head check; branch
+cleanup is a separate action.
 
 Then check:
 

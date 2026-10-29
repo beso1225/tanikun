@@ -97,10 +97,14 @@ Check that evidence survives teardown:
 ```sh
 nix develop -c node .agents/skills/verify/scripts/doctor.mjs
 nix develop -c node .agents/skills/verify/scripts/drive.mjs all
-test -s .cache/verify/timetable.png
+for feature in timetable enrollment-status custom-courses overrides summary-profile-year; do
+  test -s ".cache/verify/$feature.png" || exit 1
+done
+test -s .cache/verify/all-trace.zip
 ```
 
-The screenshot existed after the driver closed its server and browser.
+All five screenshots and the action trace must remain after the driver closes
+its server and browser.
 
 ## Accessibility limits
 
