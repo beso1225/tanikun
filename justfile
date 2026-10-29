@@ -72,7 +72,7 @@ build-web: build-css
 # Verify the built page in Chromium; run inside `nix develop` for Playwright.
 # Set TANIKUN_WEB_DIST to test an already built directory instead of dist.
 test-browser: build-web
-    node --test tests/integration/browser.test.mjs
+    node --test tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
