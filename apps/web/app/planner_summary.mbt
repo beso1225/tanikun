@@ -192,6 +192,8 @@ fn progress_counts(progress : @tanikun-requirements.Progress) -> (Int, Int) {
 }
 
 ///|
+/// Formats a half-unit count as a whole or half unit. `Credits` stores
+/// half-units, so odd values end in `.5`.
 pub fn half_units_label(half_units : Int) -> String {
   if half_units % 2 == 0 {
     "\{half_units / 2}"
@@ -201,6 +203,7 @@ pub fn half_units_label(half_units : Int) -> String {
 }
 
 ///|
+/// Formats credits through the canonical half-unit formatter.
 pub fn credits_label(credits : @tanikun-domain.Credits) -> String {
   half_units_label(credits.half_units())
 }

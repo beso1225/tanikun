@@ -361,3 +361,8 @@ test "a partially satisfied root does not fill the confirmed bar" {
   )
   assert_eq(summary.requirement_root.confirmed.remaining, "あと 2件")
 }
+
+///|
+test "half-unit formatter preserves the .5 branch" {
+  assert_eq(@app.half_units_label(13), "6.5")
+}

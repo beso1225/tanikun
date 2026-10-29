@@ -62,8 +62,6 @@ fn slot_id(day : @tanikun-domain.DayOfWeek, period : Int) -> String {
 }
 
 ///|
-/// Formats a whole-unit label. `Credits` stores half-units, so odd values end
-/// in `.5`.
 fn credits_label(credits : @tanikun-domain.Credits) -> String {
   @app.credits_label(credits)
 }
