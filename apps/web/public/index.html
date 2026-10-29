@@ -17,12 +17,14 @@
         let removedFocusId = null;
         let pendingValidation = false;
         let pendingUndo = false;
+        let hiddenSettingsOpen = false;
         document.addEventListener(
           "click",
           (event) => {
             const button = event.target.closest("button");
             if (!button) return;
             if (button.id === "remove-detail") removedFocusId = returnFocus?.id;
+            if (button.id === "open-hidden-settings") hiddenSettingsOpen = true;
             if (button.id === "undo-removal-button") pendingUndo = true;
             if (
               button.id === "custom-submit" ||
@@ -66,6 +68,15 @@
               panel.querySelector("[data-dialog-close]") ??
               panel.querySelector("button")
             )?.focus();
+          }
+          if (!panel && hiddenSettingsOpen) {
+            hiddenSettingsOpen = false;
+            const target =
+              document.querySelector("#open-hidden-settings") ??
+              document.querySelector("#open-settings");
+            returnFocus = null;
+            target?.focus();
+            return;
           }
           if (panel || !returnFocus) return;
           const target = returnFocus;

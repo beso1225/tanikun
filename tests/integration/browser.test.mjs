@@ -16,6 +16,55 @@ const core = process.env.PLAYWRIGHT_CORE;
 assert.ok(core, "run this test in `nix develop` so PLAYWRIGHT_CORE is set");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
 
+test("hidden courses name their slots and link to display settings", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(origin);
+  await page.locator("#open-catalogue-picker").click();
+  await page.locator("#open-custom-course").click();
+  await page.locator("#custom-name").fill("Hidden course");
+  await page.locator("#custom-day").selectOption("5");
+  await page.locator("#custom-period").selectOption("7");
+  await page.locator("#custom-submit").click();
+  await page.locator("#add-offering-user-offering-1").click();
+  await page.locator("#close-picker").click();
+  assert.match(
+    await page.locator("#hidden-blocks").innerText(),
+    /土7限 · Hidden course/,
+  );
+  await page.locator("#open-hidden-settings").focus();
+  await page.keyboard.press("Enter");
+  await page.locator("#add-day").click();
+  await page.locator("#close-settings").click();
+  await page.locator("#settings").waitFor({ state: "detached" });
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    "open-hidden-settings",
+  );
+  assert.match(
+    await page.locator("#hidden-blocks").innerText(),
+    /土7限 · Hidden course/,
+  );
+  await page.locator("#open-hidden-settings").click();
+  await page.locator("#add-period").click();
+  await page.locator("#close-settings").click();
+  await page.locator("#settings").waitFor({ state: "detached" });
+  assert.equal(await page.locator("#hidden-blocks").count(), 0);
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    "open-settings",
+  );
+  assert.ok(
+    await page.locator("#timetable").getByText("Hidden course").isVisible(),
+  );
+  assert.ok(
+    (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
+  );
+});
+
 test("half-credit requirement labels match the displayed totals", async (t) => {
   const { server, origin } = await startStaticServer(dist);
   t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
@@ -148,6 +197,10 @@ test(
       "0px",
     );
     await assertCreditTotal(page, "履修予定込 6単位");
+    assert.match(
+      await page.locator("#summary-scope").innerText(),
+      /すべての学年・学期/,
+    );
     assert.equal(
       await page.locator("#summary-total-confirmed").innerText(),
       "0単位",
@@ -181,6 +234,20 @@ test(
         .locator("#summary-requirements [data-requirement-bar]")
         .count(),
       3,
+    );
+    assert.equal(
+      await page.locator("#summary-requirements > ul > li").count(),
+      1,
+    );
+    assert.equal(
+      await page.locator("#summary-requirements ul:not([role='list'])").count(),
+      0,
+    );
+    assert.equal(
+      await page
+        .locator("#summary-requirements > ul > li > div > ul > li")
+        .count(),
+      2,
     );
     assert.equal(
       await page
@@ -383,12 +450,29 @@ test(
       (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390,
     );
     assert.equal(await page.locator("#timetable thead th").count(), 6);
+    assert.equal(await page.locator("#timetable-scope").isVisible(), true);
+    const projectedHeader = page.locator("#summary-categories th").last();
+    assert.equal(
+      await projectedHeader.locator("span").last().innerText(),
+      "予定込",
+    );
+    assert.equal(
+      await projectedHeader.evaluate(
+        (element) => getComputedStyle(element).whiteSpace,
+      ),
+      "nowrap",
+    );
+    assert.equal(
+      await page.getByRole("columnheader", { name: "履修予定込" }).count(),
+      1,
+    );
     const lastDayHeader = await page
       .locator("#timetable thead th")
       .last()
       .evaluate((element) => element.getBoundingClientRect().right);
     assert.ok(lastDayHeader <= 390);
     await page.setViewportSize({ width: 1280, height: 720 });
+    assert.equal(await page.locator("#timetable-scope").isVisible(), false);
     assert.equal(await page.locator("#timetable thead th").count(), 6);
     const headers = await page.locator("#timetable thead th").allTextContents();
     assert.deepEqual(headers, ["時限", "月", "火", "水", "木", "金"]);
@@ -470,6 +554,11 @@ test(
     assert.equal(await page.locator("#timetable tbody tr").count(), 7);
 
     await page.locator("#term-S2").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#timetable-scope")
+        ?.textContent?.includes("2026年度 S2"),
+    );
     assert.equal(await page.locator("#picker").count(), 0);
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
@@ -978,6 +1067,14 @@ test(
           ?.textContent?.includes("2027年度") ?? false,
     );
     assert.equal(await page.locator("#grade-select").inputValue(), "4");
+    assert.match(
+      await page.locator("#timetable-scope").textContent(),
+      /2027年度 S2/,
+    );
+    assert.match(
+      await page.locator("#summary-scope").innerText(),
+      /すべての学年・学期/,
+    );
     await page.locator("#grade-select").selectOption("1");
     await page.locator("#timetable").waitFor();
     assert.equal(await page.locator("#timetable").count(), 1);

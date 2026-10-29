@@ -136,7 +136,8 @@ Effective display rules:
 The grid renders only visible days and periods. A scheduled enrollment outside
 the range remains in state and in `scheduled_blocks()`, but is not drawn. The
 view shows `表示範囲外にN件の履修があります` when
-`hidden_scheduled_block_count(term) > 0`.
+`hidden_scheduled_block_count(term) > 0`. The notice lists each hidden block's
+day, period, and course name and opens the display settings.
 
 The grid says `空き時間を選んで科目を追加できます。` above its cells. At
 phone widths, a list below the grid repeats visible scheduled blocks with their
@@ -299,6 +300,12 @@ The summary uses these user-facing labels:
 - `履修中込` for passed plus in-progress credits;
 - `履修予定込` for passed, in-progress, and planned credits.
 
+The timetable identifies the selected academic year and term. On wide screens,
+the header supplies this context; on narrower screens, it appears above the grid.
+The summary
+states that its totals cover enrollments across all grades and terms, regardless
+of the timetable selection.
+
 It shows:
 
 - the three totals and category credits;
@@ -311,6 +318,10 @@ It shows:
 The bar and its legend stop at the required amount. The note
 `バーと凡例は必要数までの内訳です。` distinguishes those segments from
 the uncapped cumulative progress shown in the rows and bar's accessible name.
+On narrow screens, each projection uses two rows so the status, progress, and
+remaining amount remain readable without horizontal scrolling.
+The requirement tree uses nested lists to expose its parent-child structure to
+assistive technology. The category table gives names more space on narrow screens.
 
 Requirement status labels distinguish when the result is actually achieved:
 
