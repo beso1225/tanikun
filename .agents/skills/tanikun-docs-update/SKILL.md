@@ -5,8 +5,9 @@ description: "Update Tanikun documentation, ADR indexes, AGENTS.md, or Phase evi
 
 # Tanikun docs update
 
-Use this skill for documentation changes. For code and behavior changes, use
-`tanikun-moonbit-change` first.
+Use this skill for documentation changes. For accompanying behavior changes,
+use `tanikun-planner-change` for `apps/web` or `tanikun-moonbit-change` for
+pure packages first.
 
 ## Read first
 
@@ -17,12 +18,12 @@ Use this skill for documentation changes. For code and behavior changes, use
 
 ## Classify the document
 
-| Kind         | Examples                                                                      | Rule                                                               |
-| ------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Current      | `README.md`, `docs/PHASE_1.md`, `docs/PHASE_1_RESULTS.md`, `docs/MUTATION.md` | Update facts, commands, and links.                                 |
-| Historical   | `docs/PHASE_0.md`, `docs/INITIAL_DESIGN.md`, `docs/TECH_REVIEW.md`            | Keep the evidence. Add or update a historical note and links only. |
-| Index        | `docs/README.md`, `docs/adr/README.md`                                        | Keep entries short and link to the owning document.                |
-| Instructions | `AGENTS.md`, project skills                                                   | Move procedures into skills; keep only invariants in AGENTS.md.    |
+| Kind         | Examples                                                                             | Rule                                                               |
+| ------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Current      | `README.md`, `docs/PHASE_1.md`, `docs/PHASE_2.md`, phase results, `docs/MUTATION.md` | Update facts, commands, and links.                                 |
+| Historical   | `docs/PHASE_0.md`, `docs/INITIAL_DESIGN.md`, `docs/TECH_REVIEW.md`                   | Keep the evidence. Add or update a historical note and links only. |
+| Index        | `docs/README.md`, `docs/adr/README.md`                                               | Keep entries short and link to the owning document.                |
+| Instructions | `AGENTS.md`, project skills                                                          | Move procedures into skills; keep only invariants in AGENTS.md.    |
 
 Do not rewrite historical evidence to match the current implementation. Point
 readers to the current contract instead.
@@ -63,6 +64,10 @@ term emphasis or a README task list when the role of the text explains them.
 - Check every relative link you touch.
 - Keep phase status consistent across `README.md`, `README.ja.md`, and the
   current Phase document.
+- For phase closeout, verify issue and milestone state and the merge commit's
+  successful `main` CI before recording completion. State browser, visual,
+  keyboard, and screen-reader evidence separately; a follow-up such as #103
+  must remain visible rather than being implied complete by Chromium tests.
 
 ## Verify
 
