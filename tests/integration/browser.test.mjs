@@ -236,6 +236,16 @@ test(
       3,
     );
     assert.equal(
+      await page.locator("#summary-requirements > ul > li").count(),
+      1,
+    );
+    assert.equal(
+      await page
+        .locator("#summary-requirements > ul > li > div > ul > li")
+        .count(),
+      2,
+    );
+    assert.equal(
       await page
         .locator("#summary-requirements [data-requirement-bar]")
         .nth(1)

@@ -318,6 +318,8 @@ The bar and its legend stop at the required amount. The note
 the uncapped cumulative progress shown in the rows and bar's accessible name.
 On narrow screens, each projection uses two rows so the status, progress, and
 remaining amount remain readable without horizontal scrolling.
+The requirement tree uses nested lists to expose its parent-child structure to
+assistive technology. The category table gives names more space on narrow screens.
 
 Requirement status labels distinguish when the result is actually achieved:
 

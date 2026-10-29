@@ -1619,7 +1619,7 @@ fn summary_mode_info(label : String, mode : @app.RequirementMode) -> Html {
 fn requirement_tree_node(node : @app.RequirementNode) -> Html {
   let children : Array[Html] = []
   for child in node.children {
-    children.push(requirement_tree_node(child))
+    children.push(li(requirement_tree_node(child)))
   }
   div(class="space-y-2 border-l border-rule/60 pl-3", [
     p(class="break-words text-sm font-medium", node.label),
@@ -1633,7 +1633,7 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
     if children.is_empty() {
       div(([] : Array[Html]))
     } else {
-      div(class="space-y-2", children)
+      ul(class="space-y-2", children)
     },
   ])
 }
@@ -1741,22 +1741,22 @@ fn summary_panel(
                   tr([
                     th(
                       scope=@html.Scope::Col,
-                      class="pb-1 text-left text-xs text-muted",
+                      class="w-[40%] pb-1 text-left text-xs text-muted sm:w-1/4",
                       "区分",
                     ),
                     th(
                       scope=@html.Scope::Col,
-                      class="pb-1 px-2 text-right text-xs text-muted",
+                      class="w-[20%] pb-1 px-2 text-right text-xs text-muted sm:w-1/4",
                       "修得済",
                     ),
                     th(
                       scope=@html.Scope::Col,
-                      class="pb-1 px-2 text-right text-xs text-muted",
+                      class="w-[20%] pb-1 px-2 text-right text-xs text-muted sm:w-1/4",
                       "履修中込",
                     ),
                     th(
                       scope=@html.Scope::Col,
-                      class="pb-1 pl-2 text-right text-xs text-muted",
+                      class="w-[20%] pb-1 pl-2 text-right text-xs text-muted sm:w-1/4",
                       "履修予定込",
                     ),
                   ]),
@@ -1771,7 +1771,7 @@ fn summary_panel(
             "バーと凡例は必要数までの内訳です。",
           ),
           div(id="summary-requirements", class="mt-2", [
-            requirement_tree_node(summary.requirement_root),
+            ul([li(requirement_tree_node(summary.requirement_root))]),
           ]),
         ],
       )
