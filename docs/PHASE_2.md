@@ -29,9 +29,10 @@ multi-device sync. Reloading the page discards the planner.
 
 ## Ownership and state
 
-`apps/web/app/planner.mbt` owns the state and transitions. The view in
-`apps/web/cmd/browser/main.mbt` emits messages and renders projections. The pure
-packages own validation and evaluation; they do not import the planner.
+The `apps/web/app/planner_*.mbt` files own state, transitions, projections, and
+summary. The `apps/web/cmd/browser/view_*.mbt` files render the shell and
+projections, while `main.mbt` owns the entry point. The pure packages own
+validation and evaluation; they do not import the planner.
 
 `PlannerState` contains:
 
@@ -338,11 +339,13 @@ is derived, not cached.
 
 ## Testing and verification
 
-- Model tests live in `apps/web/app/planner_test.mbt` and cover transitions,
-  projections, frozen snapshots, custom ids, profile/year mapping, summary, and
-  error paths.
-- The Playwright regression in `tests/integration/browser.test.mjs` covers the
-  broad shell plus the deterministic Phase 2 journey. The shared harness is
+- Model tests live in the `apps/web/app/planner_*_test.mbt` files, split by
+  feature, and cover transitions, projections, frozen snapshots, custom ids,
+  profile/year mapping, summary, and error paths.
+- Playwright regressions live in
+  `tests/integration/browser-display.test.mjs`,
+  `tests/integration/browser.test.mjs`, and
+  `tests/integration/browser-phase2.test.mjs`. The shared harness is
   `tests/integration/planner-harness.mjs`.
 - `.agents/skills/verify/` drives the built page in Chromium and captures
   evidence under `.cache/verify/`.

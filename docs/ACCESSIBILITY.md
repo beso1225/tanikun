@@ -4,7 +4,7 @@ This document is the current baseline for the planner UI. Apply it to every new 
 
 ## Modals
 
-Every modal uses the shared `modal_shell` in [main.mbt](../apps/web/cmd/browser/main.mbt). The shell owns the backdrop, dialog semantics, header, close control, and body. The browser-level behavior matches any element with `role="dialog"` and `aria-modal="true"`, not a fixed dialog ID.
+Every modal uses the shared `modal_shell` in [view_timetable.mbt](../apps/web/cmd/browser/view_timetable.mbt). The shell owns the backdrop, dialog semantics, header, close control, and body. The browser-level behavior matches any element with `role="dialog"` and `aria-modal="true"`, not a fixed dialog ID.
 
 A modal must have:
 
