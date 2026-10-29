@@ -4,9 +4,10 @@ Tanikun is a local-first web app for planning university credits and graduation
 requirements. It is built with MoonBit.
 
 Phase 1 is complete. It implements the pure domain model, credit summaries, and
-requirement evaluation. Phase 2 adds the in-memory planner UI; its contract is
-[docs/PHASE_2.md](docs/PHASE_2.md). Phase 2 results are still pending, and
-persistence and sync come later.
+requirement evaluation. Phase 2 adds the in-memory planner UI; its contract and
+evidence are in [docs/PHASE_2.md](docs/PHASE_2.md) and
+[docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md). Persistence and sync come
+later.
 
 **日本語版:** [README.ja.md](README.ja.md)
 
@@ -16,9 +17,10 @@ persistence and sync come later.
   [docs/PHASE_0.md](docs/PHASE_0.md), which is a historical record.
 - Phase 1: complete. The contract is in [docs/PHASE_1.md](docs/PHASE_1.md),
   and the evidence is in [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md).
-- Phase 2: in progress. The planner UI contract is
-  [docs/PHASE_2.md](docs/PHASE_2.md). Results and closeout are pending.
-- Later phases: persistence and sync. Not started.
+- Phase 2: complete. The planner UI contract is
+  [docs/PHASE_2.md](docs/PHASE_2.md), and the evidence is in
+  [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md).
+- Later phases: Phase 3 persistence and sync. Not started.
 
 ## Stack
 
@@ -79,6 +81,7 @@ See [docs/MUTATION.md](docs/MUTATION.md) for the baseline and accepted mutants.
 - [Phase 1 contract](docs/PHASE_1.md)
 - [Phase 1 results](docs/PHASE_1_RESULTS.md)
 - [Phase 2 planner contract](docs/PHASE_2.md)
+- [Phase 2 results](docs/PHASE_2_RESULTS.md)
 - [Mutation testing](docs/MUTATION.md)
 - [Glossary](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)
