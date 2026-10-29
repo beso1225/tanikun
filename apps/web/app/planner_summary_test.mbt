@@ -314,7 +314,7 @@ test "a custom course can be assigned to a requirement category" {
   let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
   assert_eq(state.custom_categories.length(), 1)
   let course_id = state.catalogue[state.catalogue.length() - 1].id
-  assert_eq(state.category_name_for(course_id), Some("実験"))
+  assert_eq(state.category_names().name_for(course_id), "実験")
   let offering_id = state.offerings[state.offerings.length() - 1].id
   let state = @app.update_planner(
     state,

@@ -31,7 +31,7 @@ multi-device sync. Reloading the page discards the planner.
 
 The `apps/web/app/planner_*.mbt` files own state, transitions, projections, and
 summary. The `apps/web/cmd/browser/view_*.mbt` files render the shell and
-projections, while `main.mbt` owns the entry point. The pure packages own
+projections, while `main.mbt` owns the entry point and the root view composition. The pure packages own
 validation and evaluation; they do not import the planner.
 
 `PlannerState` contains:

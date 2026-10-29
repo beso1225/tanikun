@@ -161,7 +161,7 @@ fn remaining_label(progress : @tanikun-requirements.Progress) -> String {
   match progress {
     @tanikun-requirements.Progress::Credits(achieved~, required~) =>
       if achieved.half_units() < required.half_units() {
-        "あと \{half_units_text(required.half_units() - achieved.half_units())}単位"
+        "あと \{half_units_label(required.half_units() - achieved.half_units())}単位"
       } else {
         ""
       }
@@ -192,7 +192,7 @@ fn progress_counts(progress : @tanikun-requirements.Progress) -> (Int, Int) {
 }
 
 ///|
-fn half_units_text(half_units : Int) -> String {
+pub fn half_units_label(half_units : Int) -> String {
   if half_units % 2 == 0 {
     "\{half_units / 2}"
   } else {
@@ -201,15 +201,15 @@ fn half_units_text(half_units : Int) -> String {
 }
 
 ///|
-fn credits_text(credits : @tanikun-domain.Credits) -> String {
-  half_units_text(credits.half_units())
+pub fn credits_label(credits : @tanikun-domain.Credits) -> String {
+  half_units_label(credits.half_units())
 }
 
 ///|
 fn progress_label(progress : @tanikun-requirements.Progress) -> String {
   match progress {
     @tanikun-requirements.Progress::Credits(achieved~, required~) =>
-      "\{credits_text(achieved)} / \{credits_text(required)}単位"
+      "\{credits_label(achieved)} / \{credits_label(required)}単位"
     @tanikun-requirements.Progress::Courses(passed~, total~) =>
       "合格 \{passed} / \{total}科目"
     @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
@@ -380,27 +380,6 @@ pub fn PlannerState::category_names(self : PlannerState) -> CategoryNames {
     None => ()
   }
   { entries, }
-}
-
-///|
-pub fn PlannerState::category_name_for(
-  self : PlannerState,
-  course_id : @tanikun-domain.CourseId,
-) -> String? {
-  let set = match self.effective_requirement_set() {
-    Some(value) => value
-    None => return None
-  }
-  let category_id = match set.category_for(course_id) {
-    Some(value) => value
-    None => return None
-  }
-  for category in set.categories() {
-    if category.id == category_id {
-      return Some(category.name)
-    }
-  }
-  None
 }
 
 ///|

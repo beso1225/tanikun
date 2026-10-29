@@ -65,12 +65,7 @@ fn slot_id(day : @tanikun-domain.DayOfWeek, period : Int) -> String {
 /// Formats a whole-unit label. `Credits` stores half-units, so odd values end
 /// in `.5`.
 fn credits_label(credits : @tanikun-domain.Credits) -> String {
-  let half = credits.half_units()
-  if half % 2 == 0 {
-    "\{half / 2}"
-  } else {
-    "\{half / 2}.5"
-  }
+  @app.credits_label(credits)
 }
 
 ///|
@@ -182,9 +177,5 @@ fn program_label(value : String) -> String {
 
 ///|
 fn half_units_label(half_units : Int) -> String {
-  if half_units % 2 == 0 {
-    "\{half_units / 2}"
-  } else {
-    "\{half_units / 2}.5"
-  }
+  @app.half_units_label(half_units)
 }
