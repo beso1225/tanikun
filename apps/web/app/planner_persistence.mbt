@@ -126,7 +126,6 @@ pub(all) struct PersistedEnrollment {
   status : String
   passing_grade : String
   failing_grade : String
-  has_snapshot : Bool
   snapshot : PersistedSnapshot
 } derive(ToJson, FromJson)
 
@@ -142,7 +141,6 @@ pub(all) struct PersistedOverride {
   course_namespace : String
   course_local : String
   offering_id : String
-  attribute : String
   value_kind : String
   text : String
   credits : Int
@@ -552,14 +550,12 @@ fn decode_offering(dto : PersistedOffering) -> DecodeOfferingResult {
 fn persisted_enrollment(
   enrollment : @tanikun-domain.Enrollment,
 ) -> PersistedEnrollment {
-  let (status, passing, failing, has_snapshot, snapshot) = match
-    enrollment.status {
+  let (status, passing, failing, snapshot) = match enrollment.status {
     @tanikun-domain.EnrollmentStatus::Planned =>
       (
         "planned",
         "",
         "",
-        false,
         {
           course_id: { namespace_part: "", local_part: "", },
           name: "",
@@ -571,7 +567,6 @@ fn persisted_enrollment(
         "in-progress",
         "",
         "",
-        false,
         {
           course_id: { namespace_part: "", local_part: "", },
           name: "",
@@ -585,7 +580,6 @@ fn persisted_enrollment(
             "passed",
             passing_grade_code(grade),
             "",
-            true,
             {
               course_id: persisted_course_id(snapshot.course_id),
               name: snapshot.name,
@@ -597,7 +591,6 @@ fn persisted_enrollment(
             "failed",
             "",
             failing_grade_code(grade),
-            false,
             {
               course_id: { namespace_part: "", local_part: "", },
               name: "",
@@ -609,7 +602,6 @@ fn persisted_enrollment(
             "not-taken",
             "",
             "",
-            false,
             {
               course_id: { namespace_part: "", local_part: "", },
               name: "",
@@ -623,7 +615,6 @@ fn persisted_enrollment(
     status,
     passing_grade: passing,
     failing_grade: failing,
-    has_snapshot,
     snapshot,
   }
 }
@@ -693,20 +684,28 @@ fn persisted_override(entry : @tanikun-domain.Override) -> PersistedOverride {
     @tanikun-domain.OverrideTarget::Offering(id) =>
       ("offering", "", "", id.value)
   }
-  let (attribute, value_kind, text, credits, slots) = match
-    (entry.attribute, entry.text(), entry.credits(), entry.slots()) {
-    (_, Some(value), _, _) =>
-      ("name", "text", value, 0, ([] : Array[PersistedSlot]))
-    (_, _, Some(value), _) => ("credits", "credits", "", value.half_units(), [])
-    (_, _, _, Some(value)) => ("slots", "slots", "", 0, persisted_slots(value))
-    _ => ("unknown", "unknown", "", 0, [])
+  let value_kind = match entry.attribute {
+    @tanikun-domain.OverrideAttribute::DisplayName => "text"
+    @tanikun-domain.OverrideAttribute::Credits => "credits"
+    @tanikun-domain.OverrideAttribute::Slots => "slots"
+  }
+  let text = match entry.text() {
+    Some(value) => value
+    None => ""
+  }
+  let credits = match entry.credits() {
+    Some(value) => value.half_units()
+    None => 0
+  }
+  let slots = match entry.slots() {
+    Some(value) => persisted_slots(value)
+    None => []
   }
   {
     target_kind,
     course_namespace,
     course_local,
     offering_id,
-    attribute,
     value_kind,
     text,
     credits,
@@ -734,27 +733,31 @@ fn decode_override(dto : PersistedOverride) -> DecodeOverrideResult {
     }
     _ => return Err("上書き対象が正しくありません")
   }
-  let attribute = match dto.attribute {
-    "name" => @tanikun-domain.OverrideAttribute::DisplayName
-    "credits" => @tanikun-domain.OverrideAttribute::Credits
-    "slots" => @tanikun-domain.OverrideAttribute::Slots
-    _ => return Err("上書き属性が正しくありません")
-  }
-  let value = match dto.value_kind {
-    "text" => @tanikun-domain.OverrideValue::Text(dto.text)
+  let (attribute, value) = match dto.value_kind {
+    "text" =>
+      (
+        @tanikun-domain.OverrideAttribute::DisplayName,
+        @tanikun-domain.OverrideValue::Text(dto.text),
+      )
     "credits" => {
       let credits = match @tanikun-domain.Credits::new(dto.credits) {
         Ok(value) => value
         Err(_) => return Err("単位数が正しくありません")
       }
-      @tanikun-domain.OverrideValue::Credits(credits)
+      (
+        @tanikun-domain.OverrideAttribute::Credits,
+        @tanikun-domain.OverrideValue::Credits(credits),
+      )
     }
     "slots" => {
       let slots = match decode_slots(dto.slots) {
         Ok(value) => value
         Err(error) => return Err(error)
       }
-      @tanikun-domain.OverrideValue::Slots(slots)
+      (
+        @tanikun-domain.OverrideAttribute::Slots,
+        @tanikun-domain.OverrideValue::Slots(slots),
+      )
     }
     _ => return Err("上書き値が正しくありません")
   }
@@ -903,6 +906,128 @@ pub fn decode_planner_state(
     }
     custom_categories.push((course, category))
   }
+  let requirement_set = match
+    base.requirement_sets.lookup(profile.program_id, profile.advancement_year) {
+    Some(value) => value
+    None => return Err("対象の要件セットがありません")
+  }
+  for index in 0..<catalogue.length() {
+    for other in (index + 1)..<catalogue.length() {
+      if catalogue[index].id == catalogue[other].id {
+        return Err("科目IDが重複しています")
+      }
+    }
+  }
+  for index in 0..<offerings.length() {
+    for other in (index + 1)..<offerings.length() {
+      if offerings[index].id == offerings[other].id {
+        return Err("開講IDが重複しています")
+      }
+    }
+  }
+  for offering in offerings {
+    let mut found = false
+    for course in catalogue {
+      if course.id == offering.course_id {
+        found = true
+      }
+    }
+    if !found {
+      return Err("開講の科目がありません")
+    }
+  }
+  for index in 0..<enrollments.length() {
+    let mut found = false
+    for offering in offerings {
+      if offering.id == enrollments[index].offering_id {
+        found = true
+      }
+    }
+    if !found {
+      return Err("履修の開講がありません")
+    }
+    for other in (index + 1)..<enrollments.length() {
+      if enrollments[index].offering_id == enrollments[other].offering_id {
+        return Err("履修が重複しています")
+      }
+    }
+  }
+  for entry in overrides.entries() {
+    match entry.target {
+      @tanikun-domain.OverrideTarget::Course(id) => {
+        let mut found = false
+        for course in catalogue {
+          if course.id == id {
+            found = true
+          }
+        }
+        if !found {
+          return Err("上書き対象の科目がありません")
+        }
+      }
+      @tanikun-domain.OverrideTarget::Offering(id) => {
+        let mut found = false
+        for offering in offerings {
+          if offering.id == id {
+            found = true
+          }
+        }
+        if !found {
+          return Err("上書き対象の開講がありません")
+        }
+      }
+    }
+  }
+  for id in custom_course_ids {
+    let mut found = false
+    for course in catalogue {
+      if course.id == id {
+        found = true
+      }
+    }
+    if !found {
+      return Err("独自科目IDが catalogue にありません")
+    }
+  }
+  let categories = requirement_set.categories()
+  for assignment in custom_categories {
+    let mut course_found = false
+    for course in catalogue {
+      if course.id == assignment.0 {
+        course_found = true
+      }
+    }
+    if !course_found {
+      return Err("独自区分の科目がありません")
+    }
+    let mut category_found = false
+    for category in categories {
+      if category.id == assignment.1 {
+        category_found = true
+      }
+    }
+    if !category_found {
+      return Err("独自区分の区分がありません")
+    }
+  }
+  let selected_term = match planner_term_from_code(dto.selected_term) {
+    Some(value) => value
+    None => return Err("選択学期が正しくありません")
+  }
+  let timetable_year = match
+    timetable_year_for_grade(profile, dto.timetable_grade) {
+    Some(value) => value
+    None => return Err("表示学年が正しくありません")
+  }
+  if dto.visible_days < 5 || dto.visible_days > 7 {
+    return Err("表示日数が正しくありません")
+  }
+  if dto.visible_periods < 6 || dto.visible_periods > 10 {
+    return Err("表示時限が正しくありません")
+  }
+  if dto.next_custom_course_number < 1 {
+    return Err("独自科目の採番が正しくありません")
+  }
   let state = PlannerState::new(
     catalogue,
     offerings,
@@ -912,39 +1037,14 @@ pub fn decode_planner_state(
     base.requirement_sets,
     custom_categories,
   )
-  let timetable_year = match
-    timetable_year_for_grade(profile, dto.timetable_grade) {
-    Some(value) => value
-    None => state.timetable_year
-  }
-  let selected_term = match planner_term_from_code(dto.selected_term) {
-    Some(value) => value
-    None => S1
-  }
   Ok({
     ..state,
     timetable_year,
     selected_term,
-    visible_days: if dto.visible_days < 5 {
-      5
-    } else if dto.visible_days > 7 {
-      7
-    } else {
-      dto.visible_days
-    },
-    visible_periods: if dto.visible_periods < 6 {
-      6
-    } else if dto.visible_periods > 10 {
-      10
-    } else {
-      dto.visible_periods
-    },
+    visible_days: dto.visible_days,
+    visible_periods: dto.visible_periods,
     custom_course_ids,
-    next_custom_course_number: if dto.next_custom_course_number < 1 {
-      1
-    } else {
-      dto.next_custom_course_number
-    },
+    next_custom_course_number: dto.next_custom_course_number,
     revision: 1,
   })
 }

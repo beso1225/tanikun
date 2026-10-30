@@ -4,12 +4,24 @@ fn planner_view(
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
   if state.storage_status == @app.StorageStatus::Loading {
-    return div(
-      id="persistence-loading",
-      class="flex min-h-screen items-center justify-center bg-canvas text-sm text-muted",
-      attrs=@html.Attrs::build().role("status"),
-      "読み込み中",
-    )
+    return div(class="min-h-screen bg-canvas p-0 md:p-6", [
+      a(
+        href="#main-content",
+        class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-paper focus:px-3 focus:py-2",
+        "時間割へスキップ",
+      ),
+      main_(
+        id="main-content",
+        class="flex min-h-screen items-center justify-center text-sm text-muted",
+        [
+          div(
+            id="persistence-loading",
+            attrs=@html.Attrs::build().role("status"),
+            "読み込み中",
+          ),
+        ],
+      ),
+    ])
   }
   let summary = state.planner_summary()
   let categories = state.category_names()

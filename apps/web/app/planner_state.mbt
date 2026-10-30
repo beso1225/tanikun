@@ -12,6 +12,7 @@ pub(all) enum StorageStatus {
   Saving
   Saved
   Unsaved
+  LoadFailed
   Failed
 } derive(Eq)
 
@@ -52,8 +53,9 @@ pub struct PlannerState {
 }
 
 ///|
-/// Equality drives the Rabbita view refresh. Every state change increments the
-/// revision, so the large nested planner state does not need structural Eq.
+/// Equality drives the Rabbita view refresh. Content changes increment the
+/// revision; persistence-status changes are included separately, so the large
+/// nested planner state does not need structural Eq.
 pub impl Eq for PlannerState with fn equal(self, other) {
   self.revision == other.revision && self.storage_status == other.storage_status
 }

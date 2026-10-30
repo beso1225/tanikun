@@ -25,13 +25,22 @@ plan with an empty seed.
   profile selects the applicable set after restore.
 - Do not persist derived totals, requirement results, scheduled blocks, category
   name caches, open dialogs, form drafts, errors, or Undo state.
-- Save after every successful planner update. Serialize writes so a slow write
-  cannot overwrite a newer one. Report loading, unsaved, saving, saved, and
-  failed-save states in the shell.
-- Restore on startup before the first user interaction. A missing document uses
-  the seed. A parse error, invalid domain value, or unsupported version reports
-  `保存失敗`, keeps the current seed, and surfaces an error instead of applying a
-  partial document.
+- Save only when the encoded source document changes. UI-only updates keep the
+  last saved document and never enqueue a write. Serialize writes so a slow write
+  cannot overwrite a newer one. Report loading, unsaved, saving, saved,
+  load-failed, and save-failed states in the shell.
+- Status messages carry the encoded document text. Apply a status only when it
+  still matches the current source document, so a stale completion cannot
+  overwrite a newer edit.
+- Restore on startup before the first user interaction. Keep the shell
+  landmarks available while loading. A load that does not settle within five
+  seconds fails visibly and falls back to the seed.
+- A missing document uses the seed. A parse error, unsupported version, scalar
+  invalid value, or broken reference reports `読み込み失敗`, keeps the current
+  seed, and surfaces an error instead of applying a partial document. Validate
+  duplicate course/offering/enrollment IDs, offering-to-course and
+  enrollment-to-offering references, override targets, custom category
+  references, and the profile's requirement set before constructing state.
 - Version 1 is the first supported schema. Future versions must add an explicit
   migration or reject the document; they must not mutate it in place.
 - Custom course IDs and the next counter are persisted so restored entities keep

@@ -68,6 +68,7 @@ fn storage_status_label(status : @app.StorageStatus) -> String {
     @app.StorageStatus::Saving => "保存中"
     @app.StorageStatus::Saved => "保存済み"
     @app.StorageStatus::Unsaved => "未保存"
+    @app.StorageStatus::LoadFailed => "読み込み失敗"
     @app.StorageStatus::Failed => "保存失敗"
   }
 }

@@ -1,3 +1,17 @@
+const withTimeout = (promise, message) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), 5000);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 (() => {
   const databaseName = "tanikun-planner";
   const storeName = "documents";
@@ -25,68 +39,76 @@
       });
     });
   const readDocument = () =>
-    openDatabase().then(
-      (database) =>
-        new Promise((resolve, reject) => {
-          const transaction = database.transaction(storeName, "readonly");
-          const request = transaction.objectStore(storeName).get(documentKey);
-          transaction.addEventListener(
-            "complete",
-            () => {
-              database.close();
-              resolve(typeof request.result === "string" ? request.result : "");
-            },
-            { once: true },
-          );
-          transaction.addEventListener(
-            "error",
-            () => {
-              database.close();
-              reject(transaction.error);
-            },
-            { once: true },
-          );
-          transaction.addEventListener(
-            "abort",
-            () => {
-              database.close();
-              reject(transaction.error);
-            },
-            { once: true },
-          );
-        }),
+    withTimeout(
+      openDatabase().then(
+        (database) =>
+          new Promise((resolve, reject) => {
+            const transaction = database.transaction(storeName, "readonly");
+            const request = transaction.objectStore(storeName).get(documentKey);
+            transaction.addEventListener(
+              "complete",
+              () => {
+                database.close();
+                resolve(
+                  typeof request.result === "string" ? request.result : "",
+                );
+              },
+              { once: true },
+            );
+            transaction.addEventListener(
+              "error",
+              () => {
+                database.close();
+                reject(transaction.error);
+              },
+              { once: true },
+            );
+            transaction.addEventListener(
+              "abort",
+              () => {
+                database.close();
+                reject(transaction.error);
+              },
+              { once: true },
+            );
+          }),
+      ),
+      "IndexedDB load timed out",
     );
   const writeDocument = (text) =>
-    openDatabase().then(
-      (database) =>
-        new Promise((resolve, reject) => {
-          const transaction = database.transaction(storeName, "readwrite");
-          transaction.objectStore(storeName).put(text, documentKey);
-          transaction.addEventListener(
-            "complete",
-            () => {
-              database.close();
-              resolve();
-            },
-            { once: true },
-          );
-          transaction.addEventListener(
-            "error",
-            () => {
-              database.close();
-              reject(transaction.error);
-            },
-            { once: true },
-          );
-          transaction.addEventListener(
-            "abort",
-            () => {
-              database.close();
-              reject(transaction.error);
-            },
-            { once: true },
-          );
-        }),
+    withTimeout(
+      openDatabase().then(
+        (database) =>
+          new Promise((resolve, reject) => {
+            const transaction = database.transaction(storeName, "readwrite");
+            transaction.objectStore(storeName).put(text, documentKey);
+            transaction.addEventListener(
+              "complete",
+              () => {
+                database.close();
+                resolve();
+              },
+              { once: true },
+            );
+            transaction.addEventListener(
+              "error",
+              () => {
+                database.close();
+                reject(transaction.error);
+              },
+              { once: true },
+            );
+            transaction.addEventListener(
+              "abort",
+              () => {
+                database.close();
+                reject(transaction.error);
+              },
+              { once: true },
+            );
+          }),
+      ),
+      "IndexedDB save timed out",
     );
   const enqueueWrite = (text) => {
     const operation = writeQueue.then(

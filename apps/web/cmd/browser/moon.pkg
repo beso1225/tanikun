@@ -4,6 +4,7 @@ import {
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/html",
   "moonbitlang/async/js_async",
+  "moonbitlang/core/ref",
 }
 
 pkgtype(kind: "executable")

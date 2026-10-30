@@ -109,7 +109,7 @@ pub(all) enum PlannerMsg {
   DecreaseVisiblePeriods
   DismissError
   Hydrate(text~ : String)
-  StorageStatusChanged(status~ : StorageStatus, revision~ : Int)
+  StorageStatusChanged(status~ : StorageStatus, text~ : String)
 }
 
 ///|
@@ -244,7 +244,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         Err(_) =>
           bump({
             ..state,
-            storage_status: Failed,
+            storage_status: LoadFailed,
             error: Some(
               UiError::new(
                 General,
@@ -254,8 +254,8 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
             ),
           })
       }
-    StorageStatusChanged(status~, revision~) =>
-      if revision == state.revision {
+    StorageStatusChanged(status~, text~) =>
+      if encode_planner_state(state) == text {
         { ..state, storage_status: status, }
       } else {
         state

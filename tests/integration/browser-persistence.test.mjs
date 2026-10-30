@@ -65,7 +65,7 @@ test("corrupt local data is reported without discarding the seed", async (t) => 
     await waitForPersistence(page);
     await saveInvalidDocument(page);
     await page.reload();
-    await waitForPersistence(page, "保存失敗");
+    await waitForPersistence(page, "読み込み失敗");
     assert.match(
       await page.locator("#planner-error").innerText(),
       /保存データを読み込めません/,
@@ -98,4 +98,59 @@ test("save failures keep the edit visible and report the failure", async (t) => 
       assert.deepEqual(errors, []);
     },
   );
+});
+
+test("unsaved is visible while a source edit is queued", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(browser, "persistence-unsaved", async (page, errors) => {
+    await page.goto(origin);
+    await waitForPersistence(page);
+    await page.evaluate(() => {
+      const labels = [];
+      globalThis["persistenceLabels"] = labels;
+      const target = document.querySelector("#persistence-status");
+      new MutationObserver(() => labels.push(target.textContent)).observe(
+        target,
+        { childList: true, characterData: true, subtree: true },
+      );
+      const save = globalThis["tanikunStorage"].save;
+      globalThis["tanikunStorage"].save = (text) =>
+        new Promise((finish) => setTimeout(finish, 300)).then(() => save(text));
+    });
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#add-offering-phy302-s").click();
+    await page.locator("#close-picker").click();
+    await waitForPersistence(page);
+    const labels = await page.evaluate(() => globalThis["persistenceLabels"]);
+    assert.ok(labels.includes("未保存"));
+    assert.ok(labels.includes("保存中"));
+    assert.deepEqual(errors, []);
+  });
+});
+
+test("UI-only changes do not write the planner document", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(browser, "persistence-ui-only", async (page, errors) => {
+    await page.goto(origin);
+    await waitForPersistence(page);
+    await page.evaluate(() => {
+      globalThis["persistenceSaves"] = 0;
+      const save = globalThis["tanikunStorage"].save;
+      globalThis["tanikunStorage"].save = (text) => {
+        globalThis["persistenceSaves"] += 1;
+        return save(text);
+      };
+    });
+    await page.locator("#open-catalogue-picker").click();
+    await page.locator("#catalogue-search").fill("Physics");
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis["persistenceSaves"]), 0);
+    assert.deepEqual(errors, []);
+  });
 });

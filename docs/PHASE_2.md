@@ -22,8 +22,10 @@ Phase 2 turns the pure Phase 1 model into one local, in-memory planner:
 - grade and academic-year navigation for the timetable;
 - confirmed, in-progress-inclusive, and planned-inclusive summaries.
 
-Phase 2 has no persistence, Workers requests, network API, D1, Automerge, or
-multi-device sync. Reloading the page discards the planner.
+Phase 2's in-memory transition and projection model remains the planner
+contract. Phase 3 adds local IndexedDB persistence and reload recovery; see
+[ADR-0011](adr/0011-local-planner-persistence.md). Phase 2 itself has no
+Workers requests, network API, D1, Automerge, or multi-device sync.
 
 ## Ownership and state
 
@@ -57,6 +59,7 @@ validation and evaluation; they do not import the planner.
 | `next_custom_course_number` | Session-local custom id counter                                          |
 | `visible_days`              | 5 through 7                                                              |
 | `visible_periods`           | 6 through 10                                                             |
+| `storage_status`            | Loading, saving, saved, unsaved, load-failed, or save-failed state       |
 | `revision`                  | Monotonic UI refresh marker                                              |
 
 No derived credit, category, requirement, catalogue row, scheduled block, or
@@ -64,8 +67,9 @@ effective display value is stored in `PlannerState`. The view calls the pure
 projection methods and `planner_summary()` from the current state.
 
 `revision` is not history. Every accepted state transition increments it, and
-`PlannerState` equality compares only that revision so Rabbita refreshes the
-large nested record cheaply.
+`PlannerState` equality compares that revision plus `storage_status` so Rabbita
+refreshes the large nested record cheaply. Persistence status changes do not
+increment `revision`, so they cannot expire the one-step Undo barrier.
 
 ## Terms and academic years
 
@@ -156,8 +160,10 @@ not changed by the settings dialog.
 ## Message catalog
 
 `update_planner(state, msg)` is the only planner transition function. Every
-message increments `revision` unless the message is an explicit no-op at a
-boundary.
+message that changes planner content increments `revision`; status-only and
+stale persistence messages do not. `Hydrate` replaces the source state after a
+successful load; `StorageStatusChanged` applies only when its document text
+matches the current source document.
 
 | Message                                       | State change                                                                                                                                                                                                                                             |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -198,6 +204,8 @@ boundary.
 | `IncreaseVisiblePeriods`                      | Adds one visible period up to 10.                                                                                                                                                                                                                        |
 | `DecreaseVisiblePeriods`                      | Removes one visible period down to 6.                                                                                                                                                                                                                    |
 | `DismissError`                                | Clears planner `error`.                                                                                                                                                                                                                                  |
+| `Hydrate(text)`                               | Decodes a persisted source document and replaces the planner state on success; corrupt, unsupported, or referentially invalid documents keep the seed and report an error.                                                                               |
+| `StorageStatusChanged(status, text)`          | Applies a loading/saving/saved/unsaved/failed status only when `text` equals the current encoded source document; does not increment `revision` or expire Undo.                                                                                          |
 
 Grouped modal rule: opening settings, an override editor, or a custom editor
 closes the other modal surfaces. A picker cannot open a second modal; only the

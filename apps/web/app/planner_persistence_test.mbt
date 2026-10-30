@@ -100,13 +100,33 @@ test "planner persistence preserves overrides and custom category assignments" {
   let category = planner_expect_ok(
     @tanikun-domain.CategoryId::new("foundation"),
   )
+  let category_def = planner_expect_ok(
+    @tanikun-requirements.Category::new(category, "Foundation"),
+  )
+  let rule = planner_expect_ok(
+    @tanikun-requirements.Rule::total_minimum(planner_credits(4)),
+  )
+  let requirement_set = planner_expect_ok(
+    @tanikun-requirements.RequirementSet::new(
+      @tanikun-requirements.RequirementSetKey::new(
+        base.profile.program_id,
+        base.profile.advancement_year,
+      ),
+      [category_def],
+      [(extra.id, category)],
+      rule,
+    ),
+  )
+  let requirement_sets = planner_expect_ok(
+    @tanikun-requirements.RequirementSets::new([requirement_set]),
+  )
   let state = @app.PlannerState::new(
     [base.catalogue[0], extra],
     [base.offerings[0], offering],
     [],
     overrides,
     base.profile,
-    base.requirement_sets,
+    requirement_sets,
     [(extra.id, category)],
   )
   let text = @app.encode_planner_state(state)
@@ -137,7 +157,7 @@ test "persistence status updates do not expire the undo barrier" {
     state,
     @app.PlannerMsg::StorageStatusChanged(
       status=@app.StorageStatus::Saving,
-      revision=state.revision,
+      text=@app.encode_planner_state(state),
     ),
   )
   assert_true(state.undo_available())
@@ -145,8 +165,9 @@ test "persistence status updates do not expire the undo barrier" {
 
 ///|
 test "stale storage status updates do not overwrite newer edits" {
+  let seed = @app.sample_state()
   let state = @app.update_planner(
-    @app.sample_state(),
+    seed,
     @app.PlannerMsg::RemoveEnrollment(
       offering_id=planner_offering_id("phy101-s1"),
     ),
@@ -155,7 +176,7 @@ test "stale storage status updates do not overwrite newer edits" {
     state,
     @app.PlannerMsg::StorageStatusChanged(
       status=@app.StorageStatus::Saved,
-      revision=state.revision - 1,
+      text=@app.encode_planner_state(seed),
     ),
   )
   assert_true(stale.storage_status == @app.StorageStatus::Loading)
@@ -163,9 +184,76 @@ test "stale storage status updates do not overwrite newer edits" {
     stale,
     @app.PlannerMsg::StorageStatusChanged(
       status=@app.StorageStatus::Saved,
-      revision=stale.revision,
+      text=@app.encode_planner_state(stale),
     ),
   )
   assert_true(current.storage_status == @app.StorageStatus::Saved)
   assert_true(current.undo_available())
+}
+
+///|
+fn persistence_replace_required(
+  text : String,
+  old : String,
+  new : String,
+) -> String raise Error {
+  let replaced = text.replace(old~, new~)
+  if replaced == text {
+    fail("expected persistence fixture text to contain a replacement target")
+  }
+  replaced
+}
+
+///|
+fn persistence_expect_decode_error(
+  state : @app.PlannerState,
+  text : String,
+) -> Unit raise Error {
+  match @app.decode_planner_state(state, text) {
+    Err(_) => ()
+    Ok(_) => fail("expected the document to be rejected")
+  }
+}
+
+///|
+test "planner persistence rejects corrupt scalar fields" {
+  let state = @app.sample_state()
+  let text = @app.encode_planner_state(state)
+  for
+    (old, new) in [
+      ("\"timetable_grade\":3", "\"timetable_grade\":9"),
+      ("\"visible_days\":5", "\"visible_days\":99"),
+      ("\"visible_periods\":6", "\"visible_periods\":99"),
+      ("\"selected_term\":\"S1\"", "\"selected_term\":\"XX\""),
+      ("\"next_custom_course_number\":1", "\"next_custom_course_number\":0"),
+    ] {
+    persistence_expect_decode_error(
+      state,
+      persistence_replace_required(text, old, new),
+    )
+  }
+}
+
+///|
+test "planner persistence rejects broken document references" {
+  let state = @app.sample_state()
+  let text = @app.encode_planner_state(state)
+  persistence_expect_decode_error(
+    state,
+    persistence_replace_required(
+      text, "\"offering_id\":\"phy101-s1\"", "\"offering_id\":\"no-such-offering\"",
+    ),
+  )
+  persistence_expect_decode_error(
+    state,
+    persistence_replace_required(
+      text, "\"program_id\":\"applied-physics\"", "\"program_id\":\"no-such-program\"",
+    ),
+  )
+  persistence_expect_decode_error(
+    state,
+    persistence_replace_required(
+      text, "\"local_part\":\"PHY101\"", "\"local_part\":\"PHY102\"",
+    ),
+  )
 }
