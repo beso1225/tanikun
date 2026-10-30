@@ -8,6 +8,7 @@ import {
   auditAccessibility,
   runJourney,
   startStaticServer,
+  waitForPersistence,
 } from "./planner-harness.mjs";
 
 const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
@@ -26,6 +27,7 @@ test(
     t.after(() => browser.close());
     await runJourney(browser, "phase2-journey", async (page, errors) => {
       await page.goto(origin, { waitUntil: "load" });
+      await waitForPersistence(page);
       await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
       assert.equal(await page.locator("nav button").count(), 4);
       assert.deepEqual(await auditAccessibility(page), []);

@@ -7,6 +7,7 @@ import {
   assertCreditTotal,
   auditAccessibility,
   startStaticServer,
+  waitForPersistence,
 } from "./planner-harness.mjs";
 
 const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
@@ -32,6 +33,7 @@ test(
     });
 
     const response = await page.goto(origin, { waitUntil: "load" });
+    await waitForPersistence(page);
     assert.equal(response?.status(), 200);
     await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
     assert.equal(await page.title(), "応物単位くん");

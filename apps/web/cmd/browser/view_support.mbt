@@ -62,6 +62,17 @@ fn slot_id(day : @tanikun-domain.DayOfWeek, period : Int) -> String {
 }
 
 ///|
+fn storage_status_label(status : @app.StorageStatus) -> String {
+  match status {
+    @app.StorageStatus::Loading => "読み込み中"
+    @app.StorageStatus::Saving => "保存中"
+    @app.StorageStatus::Saved => "保存済み"
+    @app.StorageStatus::Unsaved => "未保存"
+    @app.StorageStatus::Failed => "保存失敗"
+  }
+}
+
+///|
 fn credits_label(credits : @tanikun-domain.Credits) -> String {
   @app.credits_label(credits)
 }

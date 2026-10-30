@@ -3,6 +3,14 @@ fn planner_view(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
+  if state.storage_status == @app.StorageStatus::Loading {
+    return div(
+      id="persistence-loading",
+      class="flex min-h-screen items-center justify-center bg-canvas text-sm text-muted",
+      attrs=@html.Attrs::build().role("status"),
+      "読み込み中",
+    )
+  }
   let summary = state.planner_summary()
   let categories = state.category_names()
   let grid = timetable_grid(state, emit, categories)
@@ -25,6 +33,12 @@ fn planner_view(
           class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
           [
             credit_total_view(summary),
+            span(
+              id="persistence-status",
+              class="text-[0.6875rem] text-muted",
+              attrs=@html.Attrs::build().role("status"),
+              storage_status_label(state.storage_status),
+            ),
             button(
               id="open-catalogue-picker",
               class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
@@ -82,10 +96,109 @@ fn planner_view(
 }
 
 ///|
+enum StorageLoadResult {
+  Loaded(String)
+  Missing
+  Failed
+}
+
+///|
+fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
+  let state = @app.sample_state()
+  let command = @rabbita.perform(
+    result => {
+      match result {
+        Loaded(text) => emit(@app.PlannerMsg::Hydrate(text~))
+        Missing =>
+          emit(
+            @app.PlannerMsg::StorageStatusChanged(
+              status=@app.StorageStatus::Saved,
+            ),
+          )
+        Failed =>
+          emit(
+            @app.PlannerMsg::StorageStatusChanged(
+              status=@app.StorageStatus::Failed,
+            ),
+          )
+      }
+    },
+    async fn() noraise {
+      try {
+        let text = storage_load()
+        if text.is_empty() {
+          Missing
+        } else {
+          Loaded(text)
+        }
+      } catch {
+        _ => Failed
+      }
+    },
+  )
+  (state, command)
+}
+
+///|
+fn app_update(
+  state : @app.PlannerState,
+  message : @app.PlannerMsg,
+  emit : Emit[@app.PlannerMsg],
+) -> (@app.PlannerState, @rabbita.Cmd) {
+  let next = @app.update_planner(state, message)
+  match message {
+    @app.PlannerMsg::Hydrate(_) | @app.PlannerMsg::StorageStatusChanged(_) =>
+      (next, @rabbita.none)
+    _ =>
+      if next.revision == state.revision {
+        (next, @rabbita.none)
+      } else {
+        let text = @app.encode_planner_state(next)
+        let unsaved = emit(
+          @app.PlannerMsg::StorageStatusChanged(
+            status=@app.StorageStatus::Unsaved,
+          ),
+        )
+        let saving = emit(
+          @app.PlannerMsg::StorageStatusChanged(
+            status=@app.StorageStatus::Saving,
+          ),
+        )
+        let save = @rabbita.perform(
+          saved => {
+            if saved {
+              emit(
+                @app.PlannerMsg::StorageStatusChanged(
+                  status=@app.StorageStatus::Saved,
+                ),
+              )
+            } else {
+              emit(
+                @app.PlannerMsg::StorageStatusChanged(
+                  status=@app.StorageStatus::Failed,
+                ),
+              )
+            }
+          },
+          async fn() noraise {
+            try {
+              storage_save(text)
+              true
+            } catch {
+              _ => false
+            }
+          },
+        )
+        (next, @rabbita.batch([unsaved, saving, save]))
+      }
+  }
+}
+
+///|
 fn app() -> Val[Html] {
-  let (state, emit) = @rabbita.create_pure_state(
-    @app.sample_state(),
-    update=@app.update_planner,
+  let (state, emit) = @rabbita.create_state_with_init(
+    init=app_init,
+    update=app_update,
   )
   state.view(state => planner_view(state, emit))
 }

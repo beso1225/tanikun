@@ -108,6 +108,8 @@ pub(all) enum PlannerMsg {
   IncreaseVisiblePeriods
   DecreaseVisiblePeriods
   DismissError
+  Hydrate(text~ : String)
+  StorageStatusChanged(status~ : StorageStatus)
 }
 
 ///|
@@ -236,6 +238,23 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         state
       }
     DismissError => bump({ ..state, error: None, })
+    Hydrate(text~) =>
+      match decode_planner_state(state, text) {
+        Ok(value) => { ..value, storage_status: Saved, }
+        Err(_) =>
+          bump({
+            ..state,
+            storage_status: Failed,
+            error: Some(
+              UiError::new(
+                General,
+                General,
+                "保存データを読み込めません",
+              ),
+            ),
+          })
+      }
+    StorageStatusChanged(status~) => { ..state, storage_status: status, }
   }
 }
 

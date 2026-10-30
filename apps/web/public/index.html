@@ -6,6 +6,86 @@
     <title>応物単位くん</title>
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./index.js"></script>
+    <script>
+      (() => {
+        const databaseName = "tanikun-planner";
+        const storeName = "documents";
+        const documentKey = "planner";
+        let writeQueue = Promise.resolve();
+        const openDatabase = () =>
+          new Promise((resolve, reject) => {
+            if (!globalThis.indexedDB) {
+              reject(new Error("IndexedDB is unavailable"));
+              return;
+            }
+            const request = indexedDB.open(databaseName, 1);
+            request.onupgradeneeded = () => {
+              request.result.createObjectStore(storeName);
+            };
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+        const readDocument = () =>
+          openDatabase().then(
+            (database) =>
+              new Promise((resolve, reject) => {
+                const transaction = database.transaction(storeName, "readonly");
+                const request = transaction
+                  .objectStore(storeName)
+                  .get(documentKey);
+                transaction.oncomplete = () => {
+                  database.close();
+                  resolve(
+                    typeof request.result === "string" ? request.result : "",
+                  );
+                };
+                transaction.onerror = () => {
+                  database.close();
+                  reject(transaction.error);
+                };
+                transaction.onabort = () => {
+                  database.close();
+                  reject(transaction.error);
+                };
+              }),
+          );
+        const writeDocument = (text) =>
+          openDatabase().then(
+            (database) =>
+              new Promise((resolve, reject) => {
+                const transaction = database.transaction(
+                  storeName,
+                  "readwrite",
+                );
+                transaction.objectStore(storeName).put(text, documentKey);
+                transaction.oncomplete = () => {
+                  database.close();
+                  resolve();
+                };
+                transaction.onerror = () => {
+                  database.close();
+                  reject(transaction.error);
+                };
+                transaction.onabort = () => {
+                  database.close();
+                  reject(transaction.error);
+                };
+              }),
+          );
+        const enqueueWrite = (text) => {
+          const operation = writeQueue.then(
+            () => writeDocument(text),
+            () => writeDocument(text),
+          );
+          writeQueue = operation.catch(() => {});
+          return operation;
+        };
+        globalThis.__tanikunStorage = {
+          load: readDocument,
+          save: enqueueWrite,
+        };
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

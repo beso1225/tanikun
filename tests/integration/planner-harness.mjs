@@ -162,3 +162,11 @@ export async function runJourney(browser, name, drive) {
     await context.close();
   }
 }
+
+export async function waitForPersistence(page, status = "保存済み") {
+  await page.waitForFunction(
+    (expected) =>
+      document.querySelector("#persistence-status")?.textContent === expected,
+    status,
+  );
+}
