@@ -360,13 +360,17 @@ is derived, not cached.
   profile/year mapping, summary, and error paths.
 - Playwright regressions live in
   `tests/integration/browser-display.test.mjs`,
-  `tests/integration/browser.test.mjs`, and
-  `tests/integration/browser-phase2.test.mjs`. The shared harness is
+  `tests/integration/browser.test.mjs`,
+  `tests/integration/browser-phase2.test.mjs`, and
+  `tests/integration/browser-allocations.test.mjs`. The allocation suite uses
+  an isolated fictional fixture to check term-specific slots, shared cells,
+  mandatory projections, removal, Undo, and the 390px layout. The shared harness is
   `tests/integration/planner-harness.mjs`.
 - `.agents/skills/verify/` drives the built page in Chromium and captures
   evidence under `.cache/verify/`.
-- Browser tests fail on page errors and console errors. The Phase 2 journey
-  captures a screenshot and trace on failure.
+- The shell, Phase 2 journey, and allocation suites fail on page errors and
+  console errors. The Phase 2 and allocation journeys capture a screenshot and
+  trace on failure.
 
 Run:
 
