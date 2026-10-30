@@ -2,6 +2,12 @@
 
 ## Sub-features
 
+- term-specific slots in one enrollment, including later-phase conflict checks
+- source-backed shared cells with independently actionable course controls
+- fictional allocation journey: run `moon run scripts/build-allocation-fixture.mbtx`
+  followed by `node --test tests/integration/browser-allocations.test.mjs` inside
+  `nix develop`; its owned browser and server close after the journey
+
 - four sidebar term tabs: S1, S2, A1, A2
 - W intensives grouped under A1 and A2
 - five-to-seven weekday columns and six-to-ten period rows

@@ -36,16 +36,21 @@ lint checks.
 
 ## Baseline
 
-Recorded on 2026-10-28 with `--target js --jobs 2` after the #35 and #36
-production refactors. #37 consolidated test files, which mutation testing
-excludes, so it does not move this baseline. The machine-readable baseline,
+Recorded on 2026-10-30 with `--target js --jobs 2` after the #111, #112, and #113
+offering and mandatory-planning changes. The machine-readable baseline,
 including every accepted survivor, is
 [mutation-baseline.json](mutation-baseline.json).
 
 | Package      | Mutants | Killed | Survived | Timeout |  Score | Public | Private |
 | ------------ | ------: | -----: | -------: | ------: | -----: | -----: | ------: |
-| domain       |     139 |    138 |        0 |       1 | 99.28% | 98.04% |    100% |
-| requirements |     237 |    221 |       15 |       1 | 93.25% | 98.55% |  91.07% |
+| domain       |     167 |    166 |        0 |       1 | 99.40% | 98.73% |    100% |
+| requirements |     238 |    222 |       15 |       1 | 93.28% | 98.55% |  91.12% |
+
+The new phase tests reject extra and repeated phases even when every active
+term is also present. The mandatory-rule tests include failed and not-taken
+courses alongside projected membership, detecting an inverted course-ID match.
+All new observable mutants are killed. The accepted survivors below are
+unchanged; no new exception was added for these features.
 
 The `CourseId::compare` namespace-ordering gap found in the first trial is
 closed by `course id compares namespaces before local parts`. The whitespace

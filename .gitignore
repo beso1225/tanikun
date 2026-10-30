@@ -15,3 +15,4 @@ output/playwright/
 /.pnpm-store/
 /.codex/
 .DS_Store
+/local/

@@ -1,0 +1,22 @@
+import {
+  "moonbitlang/async@0.22.4",
+  "moonbitlang/async@0.22.4/fs",
+  "moonbitlang/async@0.22.4/shell",
+}
+
+async fn main {
+  let root = ".cache/allocation-fixture"
+  @fs.mkdir(root + "/apps", recursive=true, allow_exist=true)
+  @shell.Cmd("cp", ["-R", "apps/web", root + "/apps/"]).run()
+  @shell.Cmd("cp", ["-R", "packages", root + "/"]).run()
+  @fs.write_file(root + "/moon.work", "members = [\"./apps/web\", \"./packages/domain\", \"./packages/requirements\"]\n")
+  if !@fs.exists(root + "/.mooncakes") {
+    @fs.symlink(target="../../.mooncakes", root + "/.mooncakes")
+  }
+  let fixture = @fs.read_file("tests/integration/fixtures/allocations.mbt")
+  @fs.write_file(root + "/apps/web/app/allocation_fixture.mbt", fixture.text())
+  let source = @fs.read_file("apps/web/cmd/browser/main.mbt")
+  @fs.write_file(root + "/apps/web/cmd/browser/main.mbt", source.text().replace(old="@app.sample_state()", new="@app.allocation_fixture_state()"))
+  @shell.Cmd("pnpm", ["exec", "tailwindcss", "-i", "apps/web/styles/input.css", "-o", root + "/apps/web/public/styles.css", "--minify"]).run()
+  @shell.Cmd("warren", ["-C", root + "/apps/web", "build"]).run()
+}

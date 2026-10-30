@@ -37,6 +37,13 @@ Phase 1 meets the following completion conditions. The evidence is in
 
 ## Module ownership
 
+The current offering model also supports complete term-specific slot sets and
+source-backed coordinated allocations, as specified in
+[ADR-0009](adr/0009-term-specific-and-coordinated-allocations.md).
+The requirement AST adds a projected mandatory-membership leaf under
+[ADR-0010](adr/0010-mandatory-course-planning.md). The existing confirmed-only
+`AllCoursesPassed` contract and the Phase 1 golden results remain unchanged.
+
 | Module                  | Contents                                                                                                                                |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/domain`       | `Credits`, ID types, calendar values, `Course`, `CourseOffering`, `AcademicProfile`, `Program`, `Enrollment`, `Override`, pass snapshot |
