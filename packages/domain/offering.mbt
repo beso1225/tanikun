@@ -176,6 +176,19 @@ pub fn CourseOffering::slots_in_term(
 }
 
 ///|
+/// Returns a copy of the term-specific phases. Empty for an offering without
+/// phases; `slots_in_term` remains the fallback allocation.
+pub fn CourseOffering::term_slots(
+  self : CourseOffering,
+) -> Array[(Term, Array[Slot])] {
+  let phases : Array[(Term, Array[Slot])] = []
+  for phase in self.term_slots {
+    phases.push((phase.0, phase.1.copy()))
+  }
+  phases
+}
+
+///|
 /// Attaches source-backed coordination evidence. Callers must verify that the
 /// source establishes coordinated, non-simultaneous use of the allocation.
 pub fn CourseOffering::with_coordinated_allocation(

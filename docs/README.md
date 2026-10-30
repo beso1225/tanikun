@@ -8,6 +8,7 @@ Start with the current phase documents.
 - [Phase 1 results and evidence](PHASE_1_RESULTS.md)
 - [Phase 2 planner contract](PHASE_2.md)
 - [Phase 2 results and evidence](PHASE_2_RESULTS.md)
+- [Phase 3 local persistence contract](adr/0011-local-planner-persistence.md)
 - [Accessibility baseline](ACCESSIBILITY.md)
 - [Mutation testing](MUTATION.md)
 - [Mutation baseline](mutation-baseline.json)

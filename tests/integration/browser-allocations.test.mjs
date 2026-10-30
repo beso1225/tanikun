@@ -8,6 +8,7 @@ import {
   auditAccessibility,
   runJourney,
   startStaticServer,
+  waitForPersistence,
 } from "./planner-harness.mjs";
 
 const core = process.env.PLAYWRIGHT_CORE;
@@ -23,6 +24,7 @@ test("phased schedules, coordinated cells, and mandatory planning", async (t) =>
   t.after(() => browser.close());
   await runJourney(browser, "allocations", async (page, errors) => {
     await page.goto(origin);
+    await waitForPersistence(page);
     assert.match(
       await page.locator("#summary-requirements").innerText(),
       /予定に含まれていない必修/,

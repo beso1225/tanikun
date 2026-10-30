@@ -3,6 +3,8 @@ import {
   "beso1225/tanikun-web/app",
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/html",
+  "moonbitlang/async/js_async",
+  "moonbitlang/core/ref",
 }
 
 pkgtype(kind: "executable")

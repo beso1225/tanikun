@@ -13,6 +13,7 @@ let
       ../apps/web/cmd
       ../apps/web/moon.mod
       ../apps/web/public/index.html
+      ../apps/web/public/persistence.js
       ../apps/web/styles
       ../packages
       ../scripts

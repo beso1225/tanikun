@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
-import { startStaticServer } from "./planner-harness.mjs";
+import { startStaticServer, waitForPersistence } from "./planner-harness.mjs";
 
 const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 const core = process.env.PLAYWRIGHT_CORE;
@@ -17,6 +17,7 @@ test("hidden courses name their slots and link to display settings", async (t) =
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await page.goto(origin);
+  await waitForPersistence(page);
   await page.locator("#open-catalogue-picker").click();
   await page.locator("#open-custom-course").click();
   await page.locator("#custom-name").fill("Hidden course");
@@ -66,6 +67,7 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.goto(origin);
+  await waitForPersistence(page);
   await page.locator("#open-catalogue-picker").click();
   await page.locator("#open-custom-course").click();
   await page

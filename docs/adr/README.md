@@ -12,6 +12,7 @@
 | [0008](0008-timetable-grade-year-mapping.md)              | Timetable grades map to academic years from the advancement year         | accepted |
 | [0009](0009-term-specific-and-coordinated-allocations.md) | Offerings own term-specific and coordinated allocations                  | accepted |
 | [0010](0010-mandatory-course-planning.md)                 | Mandatory membership projects separately from confirmed passes           | accepted |
+| [0011](0011-local-planner-persistence.md)                 | Persist planner source state locally with a versioned document           | accepted |
 
 The ADR bodies are unchanged. See the [documentation index](../README.md) for the
 current contract.

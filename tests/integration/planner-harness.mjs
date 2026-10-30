@@ -162,3 +162,17 @@ export async function runJourney(browser, name, drive) {
     await context.close();
   }
 }
+
+export async function waitForPersistence(page, status = "保存済み") {
+  const deadline = Date.now() + 10_000;
+  let observed = "absent";
+  while (Date.now() < deadline) {
+    observed = await page.evaluate(
+      () =>
+        document.querySelector("#persistence-status")?.textContent ?? "absent",
+    );
+    if (observed === status) return;
+    await page.waitForTimeout(100);
+  }
+  assert.fail(`expected persistence status ${status}, saw ${observed}`);
+}

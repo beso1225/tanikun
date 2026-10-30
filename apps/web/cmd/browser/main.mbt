@@ -3,6 +3,26 @@ fn planner_view(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
 ) -> Html {
+  if state.storage_status == @app.StorageStatus::Loading {
+    return div(class="min-h-screen bg-canvas p-0 md:p-6", [
+      a(
+        href="#main-content",
+        class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-paper focus:px-3 focus:py-2",
+        "時間割へスキップ",
+      ),
+      main_(
+        id="main-content",
+        class="flex min-h-screen items-center justify-center text-sm text-muted",
+        [
+          div(
+            id="persistence-loading",
+            attrs=@html.Attrs::build().role("status"),
+            "読み込み中",
+          ),
+        ],
+      ),
+    ])
+  }
   let summary = state.planner_summary()
   let categories = state.category_names()
   let grid = timetable_grid(state, emit, categories)
@@ -25,6 +45,12 @@ fn planner_view(
           class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
           [
             credit_total_view(summary),
+            span(
+              id="persistence-status",
+              class="text-[0.6875rem] text-muted",
+              attrs=@html.Attrs::build().role("status"),
+              storage_status_label(state.storage_status),
+            ),
             button(
               id="open-catalogue-picker",
               class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
@@ -62,6 +88,27 @@ fn planner_view(
       )
     None => ()
   }
+  if state.storage_status == @app.StorageStatus::LoadFailed {
+    content.insert(
+      1,
+      div(
+        id="storage-readonly-warning",
+        class="mx-4 mb-3 flex flex-col gap-2 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-text sm:flex-row sm:items-center sm:justify-between",
+        attrs=@html.Attrs::build().role("alert"),
+        [
+          span(
+            "読み込みに失敗したため、変更は保存されません。",
+          ),
+          button(
+            id="discard-storage-button",
+            class="min-h-9 shrink-0 rounded-md bg-danger-text px-3 font-medium text-white hover:bg-danger-text/90",
+            on_click=emit(@app.PlannerMsg::DiscardStoredPlan),
+            "保存データを破棄して再開",
+          ),
+        ],
+      ),
+    )
+  }
   div(class="min-h-screen bg-canvas p-0 md:p-6", [
     a(
       href="#main-content",
@@ -82,10 +129,15 @@ fn planner_view(
 }
 
 ///|
+fn initial_planner_state() -> @app.PlannerState {
+  @app.sample_state()
+}
+
+///|
 fn app() -> Val[Html] {
-  let (state, emit) = @rabbita.create_pure_state(
-    @app.sample_state(),
-    update=@app.update_planner,
+  let (state, emit) = @rabbita.create_state_with_init(
+    init=app_init,
+    update=app_update,
   )
   state.view(state => planner_view(state, emit))
 }

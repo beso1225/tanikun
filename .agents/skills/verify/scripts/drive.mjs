@@ -7,6 +7,7 @@ import {
   assertSummaryTotals,
   auditAccessibility,
   startStaticServer,
+  waitForPersistence,
 } from "../../../../tests/integration/planner-harness.mjs";
 
 const feature = process.argv[2] ?? "all";
@@ -57,6 +58,23 @@ try {
     waitUntil: "load",
   });
   await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+  await waitForPersistence(page);
+  const clearPersistence = () =>
+    page.evaluate(
+      () =>
+        new Promise((finish, reject) => {
+          const request = indexedDB.deleteDatabase("tanikun-planner");
+          request.addEventListener("success", () => finish(), { once: true });
+          request.addEventListener("error", () => reject(request.error), {
+            once: true,
+          });
+          request.addEventListener(
+            "blocked",
+            () => reject(new Error("delete blocked")),
+            { once: true },
+          );
+        }),
+    );
   const openCourse = async (name) => {
     await page.locator("#timetable").getByText(name, { exact: true }).click();
     await page.locator("#course-detail-dialog").waitFor();
@@ -66,9 +84,12 @@ try {
     await page.locator("#course-detail-dialog").waitFor({ state: "detached" });
   };
   for (const mode of feature === "all" ? modes : [feature]) {
-    // Reload is the production reset for the Phase 2 in-memory planner.
+    // Each mapped journey starts from the seed, not the previous mode's saved
+    // document. Clear IndexedDB before the reload that begins the journey.
+    await clearPersistence();
     await page.reload();
     await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+    await waitForPersistence(page);
     await page.setViewportSize({ width: 1280, height: 900 });
     await assertSummaryTotals(page, "0単位", "0単位", "6単位");
     if (mode === "timetable") {

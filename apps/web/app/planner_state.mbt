@@ -5,6 +5,21 @@ pub struct UndoRemoval {
 }
 
 ///|
+/// Local persistence status shown in the shell. Persistence remains a Phase 3
+/// concern; the planner model only exposes the observable state.
+pub(all) enum StorageStatus {
+  Loading
+  Saving
+  Saved
+  Unsaved
+  LoadFailed
+  Failed
+} derive(Eq)
+
+///|
+pub extend StorageStatus with Eq::{not_equal, equal}
+
+///|
 /// In-memory Phase 2 planner state. Derived credits and requirements are not
 /// stored here; they are computed from this state.
 pub struct PlannerState {
@@ -33,14 +48,16 @@ pub struct PlannerState {
   next_custom_course_number : Int
   visible_days : Int
   visible_periods : Int
+  storage_status : StorageStatus
   revision : Int
 }
 
 ///|
-/// Equality drives the Rabbita view refresh. Every state change increments the
-/// revision, so the large nested planner state does not need structural Eq.
+/// Equality drives the Rabbita view refresh. Content changes increment the
+/// revision; persistence-status changes are included separately, so the large
+/// nested planner state does not need structural Eq.
 pub impl Eq for PlannerState with fn equal(self, other) {
-  self.revision == other.revision
+  self.revision == other.revision && self.storage_status == other.storage_status
 }
 
 ///|
@@ -82,6 +99,7 @@ pub fn PlannerState::new(
     next_custom_course_number: 1,
     visible_days: 5,
     visible_periods: 6,
+    storage_status: Loading,
     revision: 0,
   }
 }

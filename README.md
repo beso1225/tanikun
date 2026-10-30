@@ -6,8 +6,8 @@ requirements. It is built with MoonBit.
 Phase 1 is complete. It implements the pure domain model, credit summaries, and
 requirement evaluation. Phase 2 adds the in-memory planner UI; its contract and
 evidence are in [docs/PHASE_2.md](docs/PHASE_2.md) and
-[docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md). Persistence and sync come
-later.
+[docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md). Phase 3 adds local
+persistence; Automerge convergence and sync come next.
 
 **日本語版:** [README.ja.md](README.ja.md)
 
@@ -20,7 +20,9 @@ later.
 - Phase 2: complete. The planner UI contract is
   [docs/PHASE_2.md](docs/PHASE_2.md), and the evidence is in
   [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md).
-- Later phases: Phase 3 persistence and Phase 4 sync. Not started.
+- Phase 3: in progress. Local IndexedDB persistence and save/reload recovery are
+  implemented; see [ADR-0011](docs/adr/0011-local-planner-persistence.md).
+  Automerge convergence and Phase 4 sync are not started.
 
 ## Stack
 
