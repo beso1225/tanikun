@@ -6,13 +6,15 @@ import {
 
 async fn main {
   let root = ".cache/allocation-fixture"
+  // Recreate this generated workspace so stale sources and dependency links
+  // cannot hide missing setup on a fresh checkout.
+  if @fs.exists(root) {
+    @fs.rmdir(root, recursive=true)
+  }
   @fs.mkdir(root + "/apps", recursive=true, allow_exist=true)
   @shell.Cmd("cp", ["-R", "apps/web", root + "/apps/"]).run()
   @shell.Cmd("cp", ["-R", "packages", root + "/"]).run()
   @fs.write_file(root + "/moon.work", "members = [\"./apps/web\", \"./packages/domain\", \"./packages/requirements\"]\n")
-  if !@fs.exists(root + "/.mooncakes") {
-    @fs.symlink(target="../../.mooncakes", root + "/.mooncakes")
-  }
   let fixture = @fs.read_file("tests/integration/fixtures/allocations.mbt")
   @fs.write_file(root + "/apps/web/app/allocation_fixture.mbt", fixture.text())
   let source = @fs.read_file("apps/web/cmd/browser/main.mbt")
