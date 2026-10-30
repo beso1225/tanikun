@@ -135,7 +135,37 @@ test "persistence status updates do not expire the undo barrier" {
   assert_true(state.undo_available())
   let state = @app.update_planner(
     state,
-    @app.PlannerMsg::StorageStatusChanged(status=@app.StorageStatus::Saving),
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saving,
+      revision=state.revision,
+    ),
   )
   assert_true(state.undo_available())
+}
+
+///|
+test "stale storage status updates do not overwrite newer edits" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::RemoveEnrollment(
+      offering_id=planner_offering_id("phy101-s1"),
+    ),
+  )
+  let stale = @app.update_planner(
+    state,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saved,
+      revision=state.revision - 1,
+    ),
+  )
+  assert_true(stale.storage_status == @app.StorageStatus::Loading)
+  let current = @app.update_planner(
+    stale,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saved,
+      revision=stale.revision,
+    ),
+  )
+  assert_true(current.storage_status == @app.StorageStatus::Saved)
+  assert_true(current.undo_available())
 }

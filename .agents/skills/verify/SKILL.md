@@ -53,9 +53,10 @@ nix develop -c node .agents/skills/verify/scripts/drive.mjs all
 
 Pass a feature filename stem instead of `all` to isolate a failure. Supported
 modes are `timetable`, `enrollment-status`, `custom-courses`, `overrides`, and
-`summary-profile-year`. Each mode reloads the production page to reset Phase 2
-in-memory state. The map also lists extended checks; a mode proves its executed
-path, not every sub-feature. Run `nix develop -c just test-browser` for broader
+`summary-profile-year`. Each mode clears the persisted planner document from
+IndexedDB and reloads, because Phase 3 restores local edits after reload. It then
+waits for hydration before asserting the seed. The map also lists extended
+checks; a mode proves its executed path, not every sub-feature. Run `nix develop -c just test-browser` for broader
 regression coverage. Timetable also checks 390px overflow and keyboard dismissal
 with focus restoration.
 

@@ -87,7 +87,7 @@ test("save failures keep the edit visible and report the failure", async (t) => 
       await page.goto(origin);
       await waitForPersistence(page);
       await page.evaluate(() => {
-        globalThis["__tanikunStorage"].save = () =>
+        globalThis["tanikunStorage"].save = () =>
           Promise.reject(new Error("quota exceeded"));
       });
       await page.locator("#open-catalogue-picker").click();

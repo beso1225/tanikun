@@ -1,10 +1,10 @@
 ///|
 extern "js" fn storage_load_ffi() -> @js_async.Promise[String] =
-  #| () => globalThis.__tanikunStorage.load()
+  #| () => globalThis.tanikunStorage.load()
 
 ///|
 extern "js" fn storage_save_ffi(text : String) -> @js_async.Promise[Unit] =
-  #| (text) => globalThis.__tanikunStorage.save(text)
+  #| (text) => globalThis.tanikunStorage.save(text)
 
 ///|
 pub async fn storage_load() -> String {

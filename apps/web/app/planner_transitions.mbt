@@ -109,7 +109,7 @@ pub(all) enum PlannerMsg {
   DecreaseVisiblePeriods
   DismissError
   Hydrate(text~ : String)
-  StorageStatusChanged(status~ : StorageStatus)
+  StorageStatusChanged(status~ : StorageStatus, revision~ : Int)
 }
 
 ///|
@@ -254,7 +254,12 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
             ),
           })
       }
-    StorageStatusChanged(status~) => { ..state, storage_status: status, }
+    StorageStatusChanged(status~, revision~) =>
+      if revision == state.revision {
+        { ..state, storage_status: status, }
+      } else {
+        state
+      }
   }
 }
 
