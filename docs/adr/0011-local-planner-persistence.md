@@ -36,8 +36,9 @@ plan with an empty seed.
   landmarks available while loading. A load that does not settle within five
   seconds fails visibly and falls back to the seed. Auto-save stays suppressed
   while the load state is failed, so a timeout or unavailable store cannot
-  overwrite an existing document with the seed. A later successful load or an
-  explicit recovery path may resume saving.
+  overwrite an existing document with the seed. The shell keeps a persistent
+  warning and offers an explicit "discard stored data and restart" action; only
+  that confirmation resumes saving and overwrites the failed document.
 - A missing document uses the seed. A parse error, unsupported version, scalar
   invalid value, or broken reference reports `読み込み失敗`, keeps the current
   seed, and surfaces an error instead of applying a partial document. Validate

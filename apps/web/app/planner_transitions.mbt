@@ -108,6 +108,7 @@ pub(all) enum PlannerMsg {
   IncreaseVisiblePeriods
   DecreaseVisiblePeriods
   DismissError
+  DiscardStoredPlan
   Hydrate(text~ : String)
   StorageLoadFailed(message~ : String)
   StorageStatusChanged(status~ : StorageStatus, text~ : String)
@@ -239,6 +240,8 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         state
       }
     DismissError => bump({ ..state, error: None, })
+    DiscardStoredPlan =>
+      bump({ ..state, storage_status: Unsaved, error: None, })
     Hydrate(text~) =>
       match decode_planner_state(state, text) {
         Ok(value) => { ..value, storage_status: Saved, }

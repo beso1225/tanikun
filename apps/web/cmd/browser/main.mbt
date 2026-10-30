@@ -88,6 +88,26 @@ fn planner_view(
       )
     None => ()
   }
+  if state.storage_status == @app.StorageStatus::LoadFailed {
+    content.push(
+      div(
+        id="storage-readonly-warning",
+        class="mx-4 mb-3 flex flex-col gap-2 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-text sm:flex-row sm:items-center sm:justify-between",
+        attrs=@html.Attrs::build().role("alert"),
+        [
+          span(
+            "読み込みに失敗したため、変更は保存されません。",
+          ),
+          button(
+            id="discard-storage-button",
+            class="min-h-9 shrink-0 rounded-md bg-danger-text px-3 font-medium text-white hover:bg-danger-text/90",
+            on_click=emit(@app.PlannerMsg::DiscardStoredPlan),
+            "保存データを破棄して再開",
+          ),
+        ],
+      ),
+    )
+  }
   div(class="min-h-screen bg-canvas p-0 md:p-6", [
     a(
       href="#main-content",

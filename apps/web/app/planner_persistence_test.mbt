@@ -257,3 +257,18 @@ test "planner persistence rejects broken document references" {
     ),
   )
 }
+
+///|
+test "storage load failure is reported and explicit discard resumes saving" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::StorageLoadFailed(
+      message="保存データを読み込めません",
+    ),
+  )
+  assert_true(state.storage_status == @app.StorageStatus::LoadFailed)
+  assert_true(state.error is Some(_))
+  let discarded = @app.update_planner(state, @app.PlannerMsg::DiscardStoredPlan)
+  assert_true(discarded.storage_status == @app.StorageStatus::Unsaved)
+  assert_true(discarded.error is None)
+}

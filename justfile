@@ -16,6 +16,7 @@ lint: check
     pnpm exec oxfmt --check
     editorconfig-checker
     markdownlint-cli2 "**/*.md"
+    node scripts/check-message-catalog.mjs
     stylelint "apps/web/styles/**/*.css"
     actionlint
     zizmor .

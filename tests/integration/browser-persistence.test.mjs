@@ -224,6 +224,32 @@ test("a load failure does not overwrite the stored document", async (t) => {
           }),
       );
       assert.equal(stored, "{broken");
+      await page.locator("#storage-readonly-warning").waitFor();
+      await page.locator("#discard-storage-button").click();
+      await waitForPersistence(page);
+      const recovered = await page.evaluate(
+        () =>
+          new Promise((finish, reject) => {
+            const request = indexedDB.open("tanikun-planner", 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const transaction = database.transaction("documents", "readonly");
+              const get = transaction.objectStore("documents").get("planner");
+              transaction.oncomplete = () => {
+                database.close();
+                finish(get.result);
+              };
+              transaction.onerror = () => reject(transaction.error);
+              transaction.onabort = () => reject(transaction.error);
+            };
+          }),
+      );
+      assert.notEqual(recovered, "{broken");
+      assert.match(recovered, /"version":1/);
+      await page.reload();
+      await waitForPersistence(page);
+      assert.match(await page.locator("#off-grid").innerText(), /Seminar S2/);
       assert.deepEqual(errors, []);
     },
   );

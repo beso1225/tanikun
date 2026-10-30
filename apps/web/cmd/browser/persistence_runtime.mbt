@@ -5,6 +5,7 @@ let last_saved_text : @ref.Ref[String] = @ref.Ref("")
 let pending_text : @ref.Ref[String] = @ref.Ref("")
 
 ///|
+// Keep this prefix in sync with apps/web/public/persistence.js.
 let storage_error_prefix = "__tanikun_storage_error__"
 
 ///|
@@ -62,13 +63,22 @@ fn app_update(
   emit : Emit[@app.PlannerMsg],
 ) -> (@app.PlannerState, @rabbita.Cmd) {
   let next = @app.update_planner(state, message)
+  let discarding = match message {
+    @app.PlannerMsg::DiscardStoredPlan => true
+    _ => false
+  }
+  if discarding {
+    last_saved_text.val = ""
+    pending_text.val = ""
+  }
   match message {
     @app.PlannerMsg::Hydrate(_) | @app.PlannerMsg::StorageStatusChanged(_) =>
       (next, @rabbita.none)
     _ =>
       if next.revision == state.revision {
         (next, @rabbita.none)
-      } else if state.storage_status == @app.StorageStatus::LoadFailed {
+      } else if !discarding &&
+        state.storage_status == @app.StorageStatus::LoadFailed {
         (next, @rabbita.none)
       } else {
         let text = @app.encode_planner_state(next)

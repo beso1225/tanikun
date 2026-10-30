@@ -1,3 +1,5 @@
+// Keep this prefix in sync with
+// apps/web/cmd/browser/persistence_runtime.mbt.
 const storageErrorPrefix = "__tanikun_storage_error__";
 const withTimeout = (promise, message) =>
   new Promise((resolve, reject) => {
