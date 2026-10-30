@@ -31,6 +31,7 @@ pub struct RequirementNode {
   standard : RequirementMode
   optimistic : RequirementMode
   children : Array[RequirementNode]
+  missing_courses : Array[String]
 }
 
 ///|
@@ -54,7 +55,9 @@ fn requirement_label(
   } else if rule.category_ids() is Some(_) {
     "区分単位数"
   } else if rule.course_ids() is Some(_) {
-    if rule.min_credits() is Some(_) {
+    if rule.is_mandatory_courses() {
+      "必修"
+    } else if rule.min_credits() is Some(_) {
       "科目群の単位数"
     } else {
       "全科目合格"
@@ -68,6 +71,7 @@ fn requirement_label(
 
 ///|
 fn requirement_node(
+  state : PlannerState,
   rule : @tanikun-requirements.Rule,
   confirmed : @tanikun-requirements.RuleResult,
   standard : @tanikun-requirements.RuleResult,
@@ -84,6 +88,7 @@ fn requirement_node(
         if index < confirmed_children.length() {
           children.push(
             requirement_node(
+              state,
               child_rules[index],
               confirmed_children[index],
               if index < standard_children.length() {
@@ -132,7 +137,46 @@ fn requirement_node(
     standard: requirement_mode(standard, standard_status),
     optimistic: requirement_mode(optimistic, optimistic_status),
     children,
+    missing_courses: missing_mandatory_courses(state, rule),
   }
+}
+
+///|
+fn missing_mandatory_courses(
+  state : PlannerState,
+  rule : @tanikun-requirements.Rule,
+) -> Array[String] {
+  if !rule.is_mandatory_courses() {
+    return []
+  }
+  let ids = rule.course_ids().unwrap()
+  ids.sort_by(fn(a, b) { a.compare(b) })
+  let missing = []
+  for id in ids {
+    let included = state.enrollments.any(enrollment => {
+      let active = enrollment.is_passed() ||
+        (match enrollment.status {
+          @tanikun-domain.EnrollmentStatus::InProgress
+          | @tanikun-domain.EnrollmentStatus::Planned => true
+          _ => false
+        })
+      active &&
+      (match find_offering(state.offerings, enrollment.offering_id) {
+        Some(offering) => offering.course_id == id
+        None => false
+      })
+    })
+    if !included {
+      match find_course(state.catalogue, id) {
+        Some(course) =>
+          missing.push(
+            @tanikun-domain.effective_course_name(course, state.overrides),
+          )
+        None => ()
+      }
+    }
+  }
+  missing
 }
 
 ///|
@@ -214,7 +258,7 @@ fn progress_label(progress : @tanikun-requirements.Progress) -> String {
     @tanikun-requirements.Progress::Credits(achieved~, required~) =>
       "\{credits_label(achieved)} / \{credits_label(required)}単位"
     @tanikun-requirements.Progress::Courses(passed~, total~) =>
-      "合格 \{passed} / \{total}科目"
+      "\{passed} / \{total}科目"
     @tanikun-requirements.Progress::Children(satisfied~, partial~, total~) =>
       "要件 \{satisfied} / \{total}件（部分 \{partial}）"
   }
@@ -272,6 +316,7 @@ pub fn PlannerState::planner_summary(
     optimistic: evaluation.credits.optimistic.total,
     categories,
     requirement_root: requirement_node(
+      self,
       requirement_set.rule(),
       evaluation.requirements.confirmed,
       evaluation.requirements.standard,
