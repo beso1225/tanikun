@@ -1,3 +1,4 @@
+const storageErrorPrefix = "__tanikun_storage_error__";
 const withTimeout = (promise, message) =>
   new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), 5000);
@@ -20,7 +21,7 @@ const withTimeout = (promise, message) =>
   const openDatabase = () =>
     new Promise((resolve, reject) => {
       if (!globalThis.indexedDB) {
-        reject(new Error("IndexedDB is unavailable"));
+        reject(new Error("保存領域を利用できません"));
         return;
       }
       const request = indexedDB.open(databaseName, 1);
@@ -73,7 +74,12 @@ const withTimeout = (promise, message) =>
             );
           }),
       ),
-      "IndexedDB load timed out",
+      "保存データの読み込みがタイムアウトしました",
+    ).catch(
+      (error) =>
+        `${storageErrorPrefix}${
+          error instanceof Error ? error.message : String(error)
+        }`,
     );
   const writeDocument = (text) =>
     withTimeout(
@@ -108,7 +114,7 @@ const withTimeout = (promise, message) =>
             );
           }),
       ),
-      "IndexedDB save timed out",
+      "保存データの書き込みがタイムアウトしました",
     );
   const enqueueWrite = (text) => {
     const operation = writeQueue.then(

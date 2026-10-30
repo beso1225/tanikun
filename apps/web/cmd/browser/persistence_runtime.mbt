@@ -5,10 +5,13 @@ let last_saved_text : @ref.Ref[String] = @ref.Ref("")
 let pending_text : @ref.Ref[String] = @ref.Ref("")
 
 ///|
+let storage_error_prefix = "__tanikun_storage_error__"
+
+///|
 enum StorageLoadResult {
   Loaded(String)
   Missing
-  Failed
+  Failed(String)
 }
 
 ///|
@@ -31,25 +34,21 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
               text=initial_text,
             ),
           )
-        Failed =>
-          emit(
-            @app.PlannerMsg::StorageStatusChanged(
-              status=@app.StorageStatus::LoadFailed,
-              text=initial_text,
-            ),
-          )
+        Failed(message) => emit(@app.PlannerMsg::StorageLoadFailed(message~))
       }
     },
     async fn() noraise {
       try {
         let text = storage_load()
-        if text.is_empty() {
+        if text.has_prefix(storage_error_prefix) {
+          Failed(text[storage_error_prefix.length():].to_owned())
+        } else if text.is_empty() {
           Missing
         } else {
           Loaded(text)
         }
       } catch {
-        _ => Failed
+        _ => Failed("保存データを読み込めません")
       }
     },
   )
@@ -69,9 +68,13 @@ fn app_update(
     _ =>
       if next.revision == state.revision {
         (next, @rabbita.none)
+      } else if state.storage_status == @app.StorageStatus::LoadFailed {
+        (next, @rabbita.none)
       } else {
         let text = @app.encode_planner_state(next)
-        if text == last_saved_text.val || text == pending_text.val {
+        let queued = text == pending_text.val
+        let up_to_date = text == last_saved_text.val && pending_text.val == ""
+        if queued || up_to_date {
           (next, @rabbita.none)
         } else {
           pending_text.val = text
@@ -81,6 +84,8 @@ fn app_update(
               text~,
             ),
           )
+          // Delay only the label: the write below starts immediately, while
+          // the short window lets the Unsaved label paint.
           let saving = @rabbita.delay(
             emit(
               @app.PlannerMsg::StorageStatusChanged(
@@ -90,42 +95,39 @@ fn app_update(
             ),
             100,
           )
-          let save = @rabbita.delay(
-            @rabbita.perform(
-              saved => {
-                if saved {
-                  if pending_text.val == text {
-                    pending_text.val = ""
-                    last_saved_text.val = text
-                  }
-                  emit(
-                    @app.PlannerMsg::StorageStatusChanged(
-                      status=@app.StorageStatus::Saved,
-                      text~,
-                    ),
-                  )
-                } else {
-                  if pending_text.val == text {
-                    pending_text.val = ""
-                  }
-                  emit(
-                    @app.PlannerMsg::StorageStatusChanged(
-                      status=@app.StorageStatus::Failed,
-                      text~,
-                    ),
-                  )
+          let save = @rabbita.perform(
+            saved => {
+              if saved {
+                if pending_text.val == text {
+                  pending_text.val = ""
+                  last_saved_text.val = text
                 }
-              },
-              async fn() noraise {
-                try {
-                  storage_save(text)
-                  true
-                } catch {
-                  _ => false
+                emit(
+                  @app.PlannerMsg::StorageStatusChanged(
+                    status=@app.StorageStatus::Saved,
+                    text~,
+                  ),
+                )
+              } else {
+                if pending_text.val == text {
+                  pending_text.val = ""
                 }
-              },
-            ),
-            100,
+                emit(
+                  @app.PlannerMsg::StorageStatusChanged(
+                    status=@app.StorageStatus::Failed,
+                    text~,
+                  ),
+                )
+              }
+            },
+            async fn() noraise {
+              try {
+                storage_save(text)
+                true
+              } catch {
+                _ => false
+              }
+            },
           )
           (next, @rabbita.batch([unsaved, saving, save]))
         }

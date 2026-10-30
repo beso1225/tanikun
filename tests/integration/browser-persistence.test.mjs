@@ -154,3 +154,77 @@ test("UI-only changes do not write the planner document", async (t) => {
     assert.deepEqual(errors, []);
   });
 });
+
+test("quick undo wins over a pending removed document", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(browser, "persistence-quick-undo", async (page, errors) => {
+    await page.goto(origin);
+    await waitForPersistence(page);
+    await page.evaluate(() => {
+      const save = globalThis["tanikunStorage"].save;
+      globalThis["tanikunStorage"].save = (text) =>
+        new Promise((finish) => setTimeout(finish, 800)).then(() => save(text));
+    });
+    await page
+      .locator("#timetable")
+      .getByText("Physics I", { exact: true })
+      .click();
+    await page.locator("#remove-detail").click();
+    await page.locator("#undo-removal-button").click();
+    await waitForPersistence(page);
+    await page.reload();
+    await waitForPersistence(page);
+    assert.equal(
+      await page
+        .locator("#timetable")
+        .getByText("Physics I", { exact: true })
+        .count(),
+      1,
+    );
+    assert.deepEqual(errors, []);
+  });
+});
+
+test("a load failure does not overwrite the stored document", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-load-failure",
+    async (page, errors) => {
+      await page.goto(origin);
+      await waitForPersistence(page);
+      await saveInvalidDocument(page);
+      await page.reload();
+      await waitForPersistence(page, "読み込み失敗");
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator("#add-offering-phy302-s").click();
+      await page.locator("#close-picker").click();
+      const stored = await page.evaluate(
+        () =>
+          new Promise((finish, reject) => {
+            const request = indexedDB.open("tanikun-planner", 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const transaction = database.transaction("documents", "readonly");
+              const get = transaction.objectStore("documents").get("planner");
+              transaction.oncomplete = () => {
+                database.close();
+                finish(get.result);
+              };
+              transaction.onerror = () => reject(transaction.error);
+              transaction.onabort = () => reject(transaction.error);
+            };
+          }),
+      );
+      assert.equal(stored, "{broken");
+      assert.deepEqual(errors, []);
+    },
+  );
+});

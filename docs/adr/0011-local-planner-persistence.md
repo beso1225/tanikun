@@ -34,7 +34,10 @@ plan with an empty seed.
   overwrite a newer edit.
 - Restore on startup before the first user interaction. Keep the shell
   landmarks available while loading. A load that does not settle within five
-  seconds fails visibly and falls back to the seed.
+  seconds fails visibly and falls back to the seed. Auto-save stays suppressed
+  while the load state is failed, so a timeout or unavailable store cannot
+  overwrite an existing document with the seed. A later successful load or an
+  explicit recovery path may resume saving.
 - A missing document uses the seed. A parse error, unsupported version, scalar
   invalid value, or broken reference reports `読み込み失敗`, keeps the current
   seed, and surfaces an error instead of applying a partial document. Validate
