@@ -54,6 +54,8 @@ pub struct CourseOffering {
   priv schedule : OfferingSchedule
   status : OfferingStatus
   priv slots : Array[Slot]
+  priv term_slots : Array[(Term, Array[Slot])]
+  coordinated_allocation : CoordinatedAllocation?
 }
 
 ///|
@@ -83,7 +85,16 @@ pub fn CourseOffering::new(
     Err(error) => return Err(error)
     Ok(_) => ()
   }
-  Ok({ id, course_id, academic_year, schedule, status, slots, })
+  Ok({
+    id,
+    course_id,
+    academic_year,
+    schedule,
+    status,
+    slots,
+    term_slots: [],
+    coordinated_allocation: None,
+  })
 }
 
 ///|
@@ -100,6 +111,92 @@ pub fn CourseOffering::schedule(self : CourseOffering) -> OfferingSchedule {
 /// Returns a copy of the offering's slots.
 pub fn CourseOffering::slots(self : CourseOffering) -> Array[Slot] {
   self.slots.copy()
+}
+
+///|
+/// Replaces the weekly allocation with complete, term-specific phases. The
+/// offering ID and enrollment identity stay unchanged. Inputs are copied.
+pub fn CourseOffering::with_term_slots(
+  self : CourseOffering,
+  phases : Array[(Term, Array[Slot])],
+) -> Result[CourseOffering, DomainError] {
+  let terms = match self.schedule {
+    Regular(terms~) => terms
+    YearLong => [S1, S2, A1, A2]
+    Intensive(_) => return Err(DomainError::UnexpectedOfferingSlots)
+  }
+  let copied : Array[(Term, Array[Slot])] = []
+  let union = []
+  for phase in phases {
+    if !terms.contains(phase.0) {
+      return Err(DomainError::UnexpectedOfferingPhase(term=phase.0))
+    }
+    if copied.any(other => other.0 == phase.0) {
+      return Err(DomainError::DuplicateOfferingTerm(term=phase.0))
+    }
+    match validate_slots(self.schedule, self.status, phase.1) {
+      Err(error) => return Err(error)
+      Ok(_) => ()
+    }
+    copied.push((phase.0, phase.1.copy()))
+    for slot in phase.1 {
+      if !union.contains(slot) {
+        union.push(slot)
+      }
+    }
+  }
+  for term in terms {
+    if !copied.any(phase => phase.0 == term) {
+      return Err(DomainError::MissingOfferingPhase(term~))
+    }
+  }
+  Ok({ ..self, term_slots: copied, slots: union, coordinated_allocation: None, })
+}
+
+///|
+/// Returns a copy of the allocation in one active term, or no slots outside it.
+pub fn CourseOffering::slots_in_term(
+  self : CourseOffering,
+  term : Term,
+) -> Array[Slot] {
+  let active = match self.schedule {
+    Regular(terms~) => terms.contains(term)
+    YearLong => true
+    Intensive(_) => return []
+  }
+  if !active {
+    return []
+  }
+  for phase in self.term_slots {
+    if phase.0 == term {
+      return phase.1.copy()
+    }
+  }
+  self.slots()
+}
+
+///|
+/// Attaches source-backed coordination evidence. Callers must verify that the
+/// source establishes coordinated, non-simultaneous use of the allocation.
+pub fn CourseOffering::with_coordinated_allocation(
+  self : CourseOffering,
+  allocation : CoordinatedAllocation,
+) -> CourseOffering {
+  { ..self, coordinated_allocation: Some(allocation), }
+}
+
+///|
+/// Coordination applies only to distinct offerings in the same academic year.
+pub fn CourseOffering::coordinates_with(
+  self : CourseOffering,
+  other : CourseOffering,
+) -> Bool {
+  self.id != other.id &&
+  self.academic_year == other.academic_year &&
+  (match (self.coordinated_allocation, other.coordinated_allocation) {
+    (Some(a), Some(b)) => a.group == b.group && a.source == b.source
+    _ => false
+  })
 }
 
 ///|

@@ -252,6 +252,17 @@ unknown offering; it converts to `UiError`.
 
 ## Passed enrollments, overrides, and removal
 
+One offering may have a different slot set in each active term. The timetable,
+picker, detail, and conflict checks use the selected phase; addition checks every
+phase atomically. It remains one enrollment with one status, grade, snapshot,
+removal, and Undo. An offering-wide slot override replaces all active phases.
+
+Distinct same-year offerings may share periods only with matching verified
+coordination metadata and unchanged stored slots for the affected term.
+Changing either allocation triggers ordinary conflict checks. Shared cells show
+every enrollment, and detail identifies the verification source and the need to
+check actual meeting dates. See [ADR-0009](adr/0009-term-specific-and-coordinated-allocations.md).
+
 Passing an enrollment freezes its effective name and credits in
 `PassedCourseSnapshot`. Later master edits and name/credit overrides do not
 change the frozen values. The timetable, detail popup, catalogue, and summary
@@ -285,6 +296,13 @@ affects category credits and display. `未分類` is the default. Deleting the
 custom course removes the assignment.
 
 ## Requirement profile and summary
+
+`MandatoryCourses` appears as `必修`. It counts distinct passed courses in
+confirmed mode, adds in-progress courses in standard mode, and adds planned
+courses in optimistic mode. Failed and not-taken enrollments do not count.
+The summary lists mandatory courses absent from the optimistic plan and
+propagates each mode's result through parent rules. `AllCoursesPassed` keeps
+its confirmed-only semantics. See [ADR-0010](adr/0010-mandatory-course-planning.md).
 
 Available program and advancement-year choices come from
 `RequirementSets::keys()`. They live in the settings dialog; the timetable grade
@@ -342,13 +360,17 @@ is derived, not cached.
   profile/year mapping, summary, and error paths.
 - Playwright regressions live in
   `tests/integration/browser-display.test.mjs`,
-  `tests/integration/browser.test.mjs`, and
-  `tests/integration/browser-phase2.test.mjs`. The shared harness is
+  `tests/integration/browser.test.mjs`,
+  `tests/integration/browser-phase2.test.mjs`, and
+  `tests/integration/browser-allocations.test.mjs`. The allocation suite uses
+  an isolated fictional fixture to check term-specific slots, shared cells,
+  mandatory projections, removal, Undo, and the 390px layout. The shared harness is
   `tests/integration/planner-harness.mjs`.
 - `.agents/skills/verify/` drives the built page in Chromium and captures
   evidence under `.cache/verify/`.
-- Browser tests fail on page errors and console errors. The Phase 2 journey
-  captures a screenshot and trace on failure.
+- The shell, Phase 2 journey, and allocation suites fail on page errors and
+  console errors. The Phase 2 and allocation journeys capture a screenshot and
+  trace on failure.
 
 Run:
 

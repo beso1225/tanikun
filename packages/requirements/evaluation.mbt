@@ -208,6 +208,16 @@ fn evaluate_leaf(rule : Rule, context : RuleContext) -> RuleResult? {
         children: [],
       })
     }
+    MandatoryCourses(courses~) => {
+      let included = courses
+        .filter(course => context.by_course.any(entry => entry.0 == course))
+        .length()
+      Some({
+        satisfaction: courses_satisfaction(included, courses.length()),
+        progress: Courses(passed=included, total=courses.length()),
+        children: [],
+      })
+    }
     CourseSetMinimum(courses~, min_credits~) => {
       let mut achieved = @tanikun-domain.Credits::zero()
       for course in courses {

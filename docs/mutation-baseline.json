@@ -3,35 +3,35 @@
   "packages": {
     "domain": {
       "summary": {
-        "killed": 138,
-        "kills_by_kind": {
-          "assertion": 2203,
-          "doc_test": 0,
-          "property": 0,
-          "snapshot": 0
-        },
-        "property_only_kills": 0,
-        "reused": 0,
-        "score": 99.28057553956835,
-        "score_private": {
-          "killed": 88,
-          "mutants": 88,
-          "score": 100,
-          "survived": 0,
-          "timeout": 0,
-          "unviable": 0
-        },
-        "score_public": {
-          "killed": 50,
-          "mutants": 51,
-          "score": 98.03921568627452,
-          "survived": 0,
-          "timeout": 1,
-          "unviable": 0
-        },
+        "killed": 166,
         "survived": 0,
         "timeout": 1,
-        "unviable": 0
+        "unviable": 0,
+        "reused": 0,
+        "score": 99.40119760479043,
+        "kills_by_kind": {
+          "property": 0,
+          "snapshot": 0,
+          "doc_test": 0,
+          "assertion": 2500
+        },
+        "property_only_kills": 0,
+        "score_public": {
+          "mutants": 79,
+          "killed": 78,
+          "survived": 0,
+          "timeout": 1,
+          "unviable": 0,
+          "score": 98.73417721518987
+        },
+        "score_private": {
+          "mutants": 88,
+          "killed": 88,
+          "survived": 0,
+          "timeout": 0,
+          "unviable": 0,
+          "score": 100
+        }
       },
       "survivors": [
         {
@@ -48,17 +48,17 @@
     },
     "requirements": {
       "summary": {
-        "killed": 221,
+        "killed": 222,
         "survived": 15,
         "timeout": 1,
         "unviable": 0,
         "reused": 0,
-        "score": 93.24894514767932,
+        "score": 93.27731092436974,
         "kills_by_kind": {
           "property": 0,
           "snapshot": 0,
           "doc_test": 0,
-          "assertion": 1427
+          "assertion": 1502
         },
         "property_only_kills": 0,
         "score_public": {
@@ -70,12 +70,12 @@
           "score": 98.55072463768116
         },
         "score_private": {
-          "mutants": 168,
-          "killed": 153,
+          "mutants": 169,
+          "killed": 154,
           "survived": 15,
           "timeout": 0,
           "unviable": 0,
-          "score": 91.07142857142857
+          "score": 91.12426035502959
         }
       },
       "survivors": [
@@ -242,7 +242,7 @@
       ]
     }
   },
-  "recorded_at": "2026-10-28",
+  "recorded_at": "2026-10-30",
   "target": "js",
   "tool": "turtles 0.4.5"
 }

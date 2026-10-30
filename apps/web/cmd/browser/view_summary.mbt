@@ -181,6 +181,15 @@ fn requirement_tree_node(node : @app.RequirementNode) -> Html {
       summary_mode_info("履修中込", node.standard),
       summary_mode_info("履修予定込", node.optimistic),
     ]),
+    if node.missing_courses.is_empty() {
+      div(([] : Array[Html]))
+    } else {
+      p(
+        class="break-words text-xs text-muted",
+        "予定に含まれていない必修：" +
+        node.missing_courses.join("、"),
+      )
+    },
     if children.is_empty() {
       div(([] : Array[Html]))
     } else {

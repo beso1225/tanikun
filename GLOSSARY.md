@@ -1,6 +1,7 @@
 # 用語集 (Glossary)
 
-Tanikun の Phase 1 で使う用語をまとめます。Phase 1 は純粋なドメインと要件評価だけを扱い、UI、永続化、同期は含みません。
+This glossary covers Tanikun's pure domain, requirement evaluation, and Phase 2
+planner vocabulary. Persistence and sync remain outside these phases.
 
 ## 学習期間
 
@@ -47,6 +48,17 @@ _Avoid_: 開講形態、授業形態
 **開講状態 (OfferingStatus)**.
 開講するか、開講しないかの二値です。開講しない場合は、科目は存在してもその年度には実施しません。
 _Avoid_: 実施状態、ステータス
+
+**ターム別曜限 (Term-specific slots / offering phase)**.
+The slots reserved by one offering during a particular active term, which may
+differ between terms while remaining part of one offering and enrollment.
+_Avoid_: Separate course, separate enrollment
+
+**共用枠 (CoordinatedAllocation)**.
+An allocation shared by distinct offerings in the same academic year, supported
+by a common coordination group and a verification source for their meeting dates.
+Matching printed slots alone do not establish coordination.
+_Avoid_: Unrestricted overlap, duplicate course
 
 **過去科目 (RetiredCourse)**.
 マスタの改訂で使わなくなった科目です。参照を壊さないため削除せず、過去のものとして残します。
@@ -150,6 +162,17 @@ _Avoid_: 条件、式
 UI のステータスは充足を「達成」、それ以外を「不足」と表示します。
 履修中まで含めて満たす場合は「履修中で充足見込」、履修予定まで含めて満たす場合は「計画上充足」とします。
 _Avoid_: 達成度、進捗
+
+**必修 (MandatoryCourses)**.
+A requirement for every listed course to belong to the selected projection,
+labeled `必修` in the UI. Confirmed counts passes, standard adds in-progress
+courses, and optimistic adds planned courses, excluding failed and not-taken courses.
+_Avoid_: All courses passed, confirmed-only requirement
+
+**全科目合格 (AllCoursesPassed)**.
+A requirement for confirmed passes in every listed course, with the same
+confirmed-only meaning in all projection modes.
+_Avoid_: Mandatory-course plan, planned pass
 
 **要件結果 (RuleResult)**.
 1 つのルールを 1 つの投影モードで評価した結果です。充足状況、進捗、子の結果を持ちます。

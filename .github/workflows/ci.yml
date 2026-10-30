@@ -103,6 +103,13 @@ jobs:
         run: |
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" node .agents/skills/verify/scripts/doctor.mjs
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" node .agents/skills/verify/scripts/drive.mjs all
+      - name: Verify phased and coordinated allocations
+        run: |
+          nix develop path:. -c bash -eu <<'SCRIPT'
+            just setup-web
+            moon run scripts/build-allocation-fixture.mbtx
+            node --test tests/integration/browser-allocations.test.mjs
+          SCRIPT
       - name: Exercise local Workers runtime and Phase 0 spikes
         run: |
           nix build path:.#mooncakes --out-link result-mooncakes

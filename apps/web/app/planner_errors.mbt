@@ -44,6 +44,12 @@ pub fn UiError::from_domain(
   target : UiErrorTarget,
 ) -> UiError {
   let message = match error {
+    @tanikun-domain.DomainError::MissingOfferingPhase(_) =>
+      "ターム別の授業枠が不足しています"
+    @tanikun-domain.DomainError::UnexpectedOfferingPhase(_) =>
+      "開講しないタームの授業枠があります"
+    @tanikun-domain.DomainError::InvalidAllocationEvidence =>
+      "共用枠の確認元を指定してください"
     @tanikun-domain.DomainError::InvalidCredits(_) =>
       "単位数が正しくありません"
     @tanikun-domain.DomainError::InvalidAcademicYear(_) =>

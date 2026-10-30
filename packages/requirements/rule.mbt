@@ -27,6 +27,7 @@ priv enum RuleKind {
   )
   TotalMinimum(min_credits~ : @tanikun-domain.Credits)
   AllCoursesPassed(courses~ : Array[@tanikun-domain.CourseId])
+  MandatoryCourses(courses~ : Array[@tanikun-domain.CourseId])
   CourseSetMinimum(
     courses~ : Array[@tanikun-domain.CourseId],
     min_credits~ : @tanikun-domain.Credits
@@ -72,6 +73,23 @@ pub fn Rule::all_courses_passed(
     Ok(_) => ()
   }
   Ok({ kind: AllCoursesPassed(courses=courses.copy()), })
+}
+
+///|
+/// Every specified course must contribute to the selected planning mode.
+/// Unlike AllCoursesPassed, in-progress and planned membership is projected.
+pub fn Rule::mandatory_courses(
+  courses : Array[@tanikun-domain.CourseId],
+) -> Result[Rule, @tanikun-domain.DomainError] {
+  match validate_rule_courses(courses) {
+    Err(error) => Err(error)
+    Ok(_) => Ok({ kind: MandatoryCourses(courses=courses.copy()), })
+  }
+}
+
+///|
+pub fn Rule::is_mandatory_courses(self : Rule) -> Bool {
+  self.kind is MandatoryCourses(_)
 }
 
 ///|
@@ -145,7 +163,8 @@ pub fn Rule::category_ids(self : Rule) -> Array[@tanikun-domain.CategoryId]? {
 /// Returns a copy of the course IDs for a course-based leaf.
 pub fn Rule::course_ids(self : Rule) -> Array[@tanikun-domain.CourseId]? {
   match self.kind {
-    AllCoursesPassed(courses~) => Some(courses.copy())
+    AllCoursesPassed(courses~) | MandatoryCourses(courses~) =>
+      Some(courses.copy())
     CourseSetMinimum(courses~, ..) => Some(courses.copy())
     _ => None
   }
@@ -234,7 +253,7 @@ pub fn Rule::reference_errors(
           }
         }
       TotalMinimum(_) => ()
-      AllCoursesPassed(courses~) =>
+      AllCoursesPassed(courses~) | MandatoryCourses(courses~) =>
         for course in courses {
           if !scope.contains_course(course) {
             course_failures.push(

@@ -2,6 +2,9 @@
 
 ## Sub-features
 
+- projected mandatory membership and the list of courses absent from the plan;
+  covered by `browser-allocations.test.mjs` with the isolated fictional fixture
+
 - three cumulative projection labels: 修得済, 履修中込, 履修予定込
 - category credits and a requirement tree with all three projections
 - program and advancement-year selectors in the settings dialog
