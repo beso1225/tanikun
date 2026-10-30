@@ -91,15 +91,12 @@ pub fn PlannerState::offering_display_with(
         @tanikun-domain.effective_course_credits(course, self.overrides),
       )
   }
-  let slots = match self.enrollment_for(offering_id) {
-    Some(enrollment) =>
-      if enrollment.is_passed() {
-        offering.slots()
-      } else {
-        effective_slots_or(offering, self.overrides)
-      }
-    None => effective_slots_or(offering, self.overrides)
-  }
+  let slots = enrollment_slots_in_term(
+    self,
+    offering,
+    self.overrides,
+    self.selected_term,
+  )
   Some({
     name,
     credits,
@@ -140,7 +137,7 @@ pub fn PlannerState::catalogue_entries_with(
                     course,
                     self.overrides,
                   ),
-                  offering.slots(),
+                  enrollment_slots_in_term(self, offering, self.overrides, term),
                 )
               } else {
                 (
@@ -149,14 +146,14 @@ pub fn PlannerState::catalogue_entries_with(
                     course,
                     self.overrides,
                   ),
-                  effective_slots_or(offering, self.overrides),
+                  enrollment_slots_in_term(self, offering, self.overrides, term),
                 )
               }
             None =>
               (
                 @tanikun-domain.effective_course_name(course, self.overrides),
                 @tanikun-domain.effective_course_credits(course, self.overrides),
-                effective_slots_or(offering, self.overrides),
+                enrollment_slots_in_term(self, offering, self.overrides, term),
               )
           }
           if self.catalogue_query.is_empty() ||
@@ -243,11 +240,12 @@ pub fn PlannerState::scheduled_blocks_with(
           offering_occupies_term(offering, term) {
           match find_course(self.catalogue, offering.course_id) {
             Some(course) => {
-              let slots = if enrollment.is_passed() {
-                offering.slots()
-              } else {
-                effective_slots_or(offering, self.overrides)
-              }
+              let slots = enrollment_slots_in_term(
+                self,
+                offering,
+                self.overrides,
+                term,
+              )
               for slot in slots {
                 blocks.push({
                   offering_id: offering.id,

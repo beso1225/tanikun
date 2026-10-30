@@ -39,6 +39,9 @@ pub(all) enum DomainError {
   MissingOfferingSlots
   UnexpectedOfferingSlots
   DuplicateOfferingSlot(slot~ : Slot)
+  MissingOfferingPhase(term~ : Term)
+  UnexpectedOfferingPhase(term~ : Term)
+  InvalidAllocationEvidence
   DuplicateOverride(target~ : OverrideTarget, attribute~ : OverrideAttribute)
   InvalidOverrideCombination(
     target~ : OverrideTarget,

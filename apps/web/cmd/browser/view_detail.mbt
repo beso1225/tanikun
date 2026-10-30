@@ -291,6 +291,14 @@ fn course_detail(
                   )
               }
               let detail = "\{credits_label(display_credits)}単位 · 区分 \{display_category} · \{schedule_label(offering.schedule())} · \{slots_label(display_slots)}"
+              let detail = match offering.coordinated_allocation {
+                Some(allocation) =>
+                  detail +
+                  " · 共用枠（確認元：" +
+                  allocation.source +
+                  "）。実施日は授業案内を確認してください。変更した授業枠には共用扱いを適用しません。"
+                None => detail
+              }
               let current = state.enrollment_status(offering_id)
               let body : Array[Html] = [
                 div(class="px-4 py-4", [p(class="text-sm text-muted", detail)]),

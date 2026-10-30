@@ -32,49 +32,52 @@ fn timetable_grid(
       ),
     ]
     for day in days {
-      let cell = match find_block(blocks, day, period) {
-        Some(block) =>
-          td(
-            class="h-20 border-b border-rule p-0.5 align-top sm:h-16 sm:p-1.5",
-            [
-              button(
-                id="open-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
-                class="flex h-full w-full items-start justify-start rounded-md bg-primary-soft px-0.5 py-1 text-left hover:bg-primary-soft/80 sm:px-2 sm:py-1.5",
-                on_click=emit(
-                  @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
-                ),
-                div(class="flex h-full w-full flex-col justify-between", [
-                  span(
-                    class="block break-words text-[0.6875rem] font-medium leading-tight tracking-tight text-ink sm:text-sm",
-                    block.course_name,
-                  ),
-                  div(
-                    class="flex flex-col items-start sm:flex-row sm:items-end sm:justify-between sm:gap-1",
-                    [
-                      span(
-                        class="sr-only truncate text-[0.625rem] leading-tight text-muted sm:not-sr-only",
-                        "\{credits_label(block.credits)}単位 · \{block.category_name}",
-                      ),
-                      enrollment_status_badge(block.status),
-                    ],
-                  ),
-                ]),
-              ),
-            ],
-          )
-        None =>
-          td(class="h-20 border-b border-rule p-0 align-middle sm:h-16", [
+      let matching = find_blocks(blocks, day, period)
+      let cell = if !matching.is_empty() {
+        let items : Array[Html] = []
+        for block in matching {
+          items.push(
             button(
-              id=slot_id(day, period),
-              title="\{day_label(day)}\{period}限に科目を追加",
-              attrs=@html.Attrs::build().aria_label(
-                "\{day_label(day)}\{period}限に科目を追加",
+              id="open-detail-\{block.offering_id.value}-\{day_label(block.day)}-\{block.period.value()}",
+              class="flex min-h-11 w-full items-start justify-start rounded-md bg-primary-soft px-0.5 py-1 text-left hover:bg-primary-soft/80 sm:px-2 sm:py-1.5",
+              on_click=emit(
+                @app.PlannerMsg::SelectOffering(offering_id=block.offering_id),
               ),
-              class="h-full w-full bg-transparent p-0 hover:bg-primary-soft/40",
-              on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
-              ([] : Array[Html]),
+              div(class="flex h-full w-full flex-col justify-between", [
+                span(
+                  class="block break-words text-[0.6875rem] font-medium leading-tight tracking-tight text-ink sm:text-sm",
+                  block.course_name,
+                ),
+                div(
+                  class="flex flex-col items-start sm:flex-row sm:items-end sm:justify-between sm:gap-1",
+                  [
+                    span(
+                      class="sr-only truncate text-[0.625rem] leading-tight text-muted sm:not-sr-only",
+                      "\{credits_label(block.credits)}単位 · \{block.category_name}",
+                    ),
+                    enrollment_status_badge(block.status),
+                  ],
+                ),
+              ]),
             ),
-          ])
+          )
+        }
+        td(class="h-20 border-b border-rule p-0.5 align-top sm:h-16 sm:p-1.5", [
+          div(class="flex h-full flex-col gap-1", items),
+        ])
+      } else {
+        td(class="h-20 border-b border-rule p-0 align-middle sm:h-16", [
+          button(
+            id=slot_id(day, period),
+            title="\{day_label(day)}\{period}限に科目を追加",
+            attrs=@html.Attrs::build().aria_label(
+              "\{day_label(day)}\{period}限に科目を追加",
+            ),
+            class="h-full w-full bg-transparent p-0 hover:bg-primary-soft/40",
+            on_click=emit(@app.PlannerMsg::OpenSlotPicker(day~, period~)),
+            ([] : Array[Html]),
+          ),
+        ])
       }
       cells.push(cell)
     }

@@ -95,3 +95,24 @@ pub fn effective_slots(
     None => Ok(offering.slots())
   }
 }
+
+///|
+/// An offering-wide slot override replaces every active term's allocation.
+pub fn effective_slots_in_term(
+  offering : CourseOffering,
+  overrides : Overrides,
+  term : Term,
+) -> Result[Array[Slot], DomainError] {
+  let original = offering.slots_in_term(term)
+  if original.is_empty() {
+    return Ok([])
+  }
+  match
+    overrides.find(
+      OverrideTarget::Offering(offering.id),
+      OverrideAttribute::Slots,
+    ) {
+    Some(_) => effective_slots(offering, overrides)
+    None => Ok(original)
+  }
+}

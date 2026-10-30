@@ -328,18 +328,11 @@ fn find_slot_conflict_with_overrides(
   overrides : @tanikun-domain.Overrides,
   excluded_offering : @tanikun-domain.OfferingId?,
 ) -> @tanikun-domain.Slot? {
-  let target_enrollment = find_enrollment(state.enrollments, offering.id)
-  let slots = match target_enrollment {
-    Some(enrollment) =>
-      if enrollment.is_passed() {
-        offering.slots()
-      } else {
-        effective_slots_or(offering, overrides)
-      }
-    None => effective_slots_or(offering, overrides)
-  }
   for planner_term in PlannerTerm::values() {
     if offering_occupies_term(offering, planner_term) {
+      let slots = enrollment_slots_in_term(
+        state, offering, overrides, planner_term,
+      )
       for enrollment in state.enrollments {
         let excluded = match excluded_offering {
           Some(id) => enrollment.offering_id == id
@@ -350,14 +343,19 @@ fn find_slot_conflict_with_overrides(
             Some(other) =>
               if other.academic_year == offering.academic_year &&
                 offering_occupies_term(other, planner_term) {
-                let other_slots = if enrollment.is_passed() {
-                  other.slots()
-                } else {
-                  effective_slots_or(other, overrides)
+                let other_slots = enrollment_slots_in_term(
+                  state, other, overrides, planner_term,
+                )
+                let coordinated = match planner_term.term() {
+                  Some(term) =>
+                    offering.coordinates_with(other) &&
+                    slots == offering.slots_in_term(term) &&
+                    other_slots == other.slots_in_term(term)
+                  None => false
                 }
                 for slot in slots {
                   for other_slot in other_slots {
-                    if slot == other_slot {
+                    if slot == other_slot && !coordinated {
                       return Some(slot)
                     }
                   }
@@ -370,6 +368,28 @@ fn find_slot_conflict_with_overrides(
     }
   }
   None
+}
+
+///|
+/// The same allocation path serves rendering and conflict checks. Passed
+/// enrollments use the offering's stored phase, ignoring later slot overrides.
+fn enrollment_slots_in_term(
+  state : PlannerState,
+  offering : @tanikun-domain.CourseOffering,
+  overrides : @tanikun-domain.Overrides,
+  planner_term : PlannerTerm,
+) -> Array[@tanikun-domain.Slot] {
+  let term = match planner_term.term() {
+    Some(term) => term
+    None => return []
+  }
+  if state.enrollment_is_passed(offering.id) {
+    return offering.slots_in_term(term)
+  }
+  match @tanikun-domain.effective_slots_in_term(offering, overrides, term) {
+    Ok(slots) => slots
+    Err(_) => offering.slots_in_term(term)
+  }
 }
 
 ///|
@@ -479,17 +499,6 @@ fn find_enrollment(
     }
   }
   None
-}
-
-///|
-fn effective_slots_or(
-  offering : @tanikun-domain.CourseOffering,
-  overrides : @tanikun-domain.Overrides,
-) -> Array[@tanikun-domain.Slot] {
-  match @tanikun-domain.effective_slots(offering, overrides) {
-    Ok(slots) => slots
-    Err(_) => offering.slots()
-  }
 }
 
 ///|

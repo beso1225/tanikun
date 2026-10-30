@@ -151,17 +151,12 @@ fn app_mark() -> Html {
 }
 
 ///|
-fn find_block(
+fn find_blocks(
   blocks : Array[@app.ScheduledBlock],
   day : @tanikun-domain.DayOfWeek,
   period : Int,
-) -> @app.ScheduledBlock? {
-  for block in blocks {
-    if block.day == day && block.period.value() == period {
-      return Some(block)
-    }
-  }
-  None
+) -> Array[@app.ScheduledBlock] {
+  blocks.filter(block => block.day == day && block.period.value() == period)
 }
 
 ///|
