@@ -89,7 +89,8 @@ fn planner_view(
     None => ()
   }
   if state.storage_status == @app.StorageStatus::LoadFailed {
-    content.push(
+    content.insert(
+      1,
       div(
         id="storage-readonly-warning",
         class="mx-4 mb-3 flex flex-col gap-2 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-text sm:flex-row sm:items-center sm:justify-between",

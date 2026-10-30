@@ -224,7 +224,21 @@ test("a load failure does not overwrite the stored document", async (t) => {
           }),
       );
       assert.equal(stored, "{broken");
-      await page.locator("#storage-readonly-warning").waitFor();
+      const warning = page.locator("#storage-readonly-warning");
+      await warning.waitFor();
+      const desktopBox = await warning.boundingBox();
+      assert.ok(desktopBox);
+      assert.ok(
+        desktopBox.y < (await page.evaluate(() => innerHeight)),
+        "load warning must be above the fold",
+      );
+      await page.setViewportSize({ width: 390, height: 844 });
+      const phoneBox = await warning.boundingBox();
+      assert.ok(phoneBox);
+      assert.ok(
+        phoneBox.y < (await page.evaluate(() => innerHeight)),
+        "load warning must be above the fold on phone",
+      );
       await page.locator("#discard-storage-button").click();
       await waitForPersistence(page);
       const recovered = await page.evaluate(
