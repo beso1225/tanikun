@@ -4,6 +4,9 @@
 
 accepted
 
+[ADR-0012](0012-automerge-planner-document.md) extends this contract with an
+Automerge storage envelope, legacy JSON migration, and local change exchange.
+
 ## Context
 
 The Phase 2 planner is in memory, so reloads discard enrollment edits. Phase 3

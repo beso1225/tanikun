@@ -46,6 +46,7 @@ pub struct PlannerState {
     (@tanikun-domain.CourseId, @tanikun-domain.CategoryId),
   ]
   next_custom_course_number : Int
+  custom_id_prefix : String
   visible_days : Int
   visible_periods : Int
   storage_status : StorageStatus
@@ -97,11 +98,22 @@ pub fn PlannerState::new(
     custom_course_ids: [],
     custom_categories,
     next_custom_course_number: 1,
+    custom_id_prefix: "",
     visible_days: 5,
     visible_periods: 6,
     storage_status: Loading,
     revision: 0,
   }
+}
+
+///|
+/// Set a fresh browser-session namespace before editing a restored document.
+/// The prefix is runtime identity; existing entity IDs remain persisted.
+pub fn PlannerState::with_custom_id_prefix(
+  self : PlannerState,
+  prefix : String,
+) -> PlannerState {
+  { ..self, custom_id_prefix: prefix, }
 }
 
 ///|

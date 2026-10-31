@@ -11,13 +11,15 @@ let storage_error_prefix = "__tanikun_storage_error__"
 ///|
 enum StorageLoadResult {
   Loaded(String)
-  Missing
+  SeedSaveFailed(String)
   Failed(String)
 }
 
 ///|
 fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
-  let state = initial_planner_state()
+  let seed = initial_planner_state()
+  let state = seed.with_custom_id_prefix(replica_id())
+  storage_configure(text => @app.decode_planner_state(state, text) is Ok(_))
   let initial_text = @app.encode_planner_state(state)
   last_saved_text.val = initial_text
   pending_text.val = ""
@@ -28,13 +30,10 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
           last_saved_text.val = text
           emit(@app.PlannerMsg::Hydrate(text~))
         }
-        Missing =>
-          emit(
-            @app.PlannerMsg::StorageStatusChanged(
-              status=@app.StorageStatus::Saved,
-              text=initial_text,
-            ),
-          )
+        SeedSaveFailed(message) => {
+          last_saved_text.val = ""
+          emit(@app.PlannerMsg::StorageSaveFailed(message~, text=initial_text))
+        }
         Failed(message) => emit(@app.PlannerMsg::StorageLoadFailed(message~))
       }
     },
@@ -44,7 +43,28 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
         if text.has_prefix(storage_error_prefix) {
           Failed(text[storage_error_prefix.length():].to_owned())
         } else if text.is_empty() {
-          Missing
+          try {
+            let message = storage_save(initial_text)
+            if message.is_empty() {
+              Loaded(initial_text)
+            } else {
+              // Another first-open tab may already have committed the seed
+              // (or a newer plan). Adopt that complete document before editing.
+              let winner = storage_load()
+              if winner.has_prefix(storage_error_prefix) {
+                Failed(winner[storage_error_prefix.length():].to_owned())
+              } else if winner.is_empty() {
+                SeedSaveFailed(message)
+              } else {
+                Loaded(winner)
+              }
+            }
+          } catch {
+            _ =>
+              SeedSaveFailed(
+                "保存できません。再読み込みしてください",
+              )
+          }
         } else {
           Loaded(text)
         }
@@ -72,8 +92,15 @@ fn app_update(
     pending_text.val = ""
   }
   match message {
-    @app.PlannerMsg::Hydrate(_) | @app.PlannerMsg::StorageStatusChanged(_) =>
+    @app.PlannerMsg::Hydrate(_) => {
+      if next.storage_status == @app.StorageStatus::Saved {
+        last_saved_text.val = @app.encode_planner_state(next)
+      }
       (next, @rabbita.none)
+    }
+    @app.PlannerMsg::StorageStatusChanged(_)
+    | @app.PlannerMsg::StorageLoadFailed(_)
+    | @app.PlannerMsg::StorageSaveFailed(_) => (next, @rabbita.none)
     _ =>
       if next.revision == state.revision {
         (next, @rabbita.none)
@@ -83,7 +110,9 @@ fn app_update(
       } else {
         let text = @app.encode_planner_state(next)
         let queued = text == pending_text.val
-        let up_to_date = text == last_saved_text.val && pending_text.val == ""
+        let up_to_date = state.storage_status == @app.StorageStatus::Saved &&
+          text == last_saved_text.val &&
+          pending_text.val == ""
         if queued || up_to_date {
           (next, @rabbita.none)
         } else {
@@ -106,8 +135,8 @@ fn app_update(
             100,
           )
           let save = @rabbita.perform(
-            saved => {
-              if saved {
+            (message : String) => {
+              if message.is_empty() {
                 if pending_text.val == text {
                   pending_text.val = ""
                   last_saved_text.val = text
@@ -122,20 +151,12 @@ fn app_update(
                 if pending_text.val == text {
                   pending_text.val = ""
                 }
-                emit(
-                  @app.PlannerMsg::StorageStatusChanged(
-                    status=@app.StorageStatus::Failed,
-                    text~,
-                  ),
-                )
+                emit(@app.PlannerMsg::StorageSaveFailed(message~, text~))
               }
             },
             async fn() noraise {
-              try {
-                storage_save(text)
-                true
-              } catch {
-                _ => false
+              storage_save(text, replace=discarding) catch {
+                _ => "保存できません。再読み込みしてください"
               }
             },
           )

@@ -111,6 +111,7 @@ pub(all) enum PlannerMsg {
   DiscardStoredPlan
   Hydrate(text~ : String)
   StorageLoadFailed(message~ : String)
+  StorageSaveFailed(message~ : String, text~ : String)
   StorageStatusChanged(status~ : StorageStatus, text~ : String)
 }
 
@@ -264,6 +265,16 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         storage_status: LoadFailed,
         error: Some(UiError::new(General, General, message)),
       })
+    StorageSaveFailed(message~, text~) =>
+      if encode_planner_state(state) == text {
+        {
+          ..state,
+          storage_status: Failed,
+          error: Some(UiError::new(General, General, message)),
+        }
+      } else {
+        state
+      }
     StorageStatusChanged(status~, text~) => {
       let current = state.storage_status
       let allowed = match (current, status) {

@@ -20,8 +20,8 @@ submit. The picker returns to the context that opened it. A custom row exposes
   `#open-custom-course`
 - fill `#custom-name`, choose `#custom-year` and `#custom-category`, submit with
   `#custom-submit`
-- add `#add-offering-user-offering-1`
-- open `#edit-custom-user-offering-1` to edit; use `#delete-custom-course`
+- add `[id^="add-offering-user-offering-"]`
+- open `[id^="edit-custom-user-offering-"]` to edit; use `#delete-custom-course`
   only after removing any enrollment
 - an empty cell uses `#slot-0-3` and returns to a slot picker
 

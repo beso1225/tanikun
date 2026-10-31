@@ -91,6 +91,22 @@ test("phased schedules, coordinated cells, and mandatory planning", async (t) =>
     );
     await bar.waitFor();
     assert.deepEqual(await auditAccessibility(page), []);
+    await waitForPersistence(page);
+    const source = JSON.parse(
+      await page.evaluate(() => globalThis.tanikunStorage.load()),
+    );
+    await page.reload();
+    await waitForPersistence(page);
+    assert.deepEqual(
+      JSON.parse(await page.evaluate(() => globalThis.tanikunStorage.load())),
+      source,
+    );
+    await bar.waitFor();
+    await expectDesignCount(4);
+    await page.locator("#term-S2").click();
+    await expectDesignCount(6);
+    await page.locator("#term-S1").click();
+    await expectDesignCount(4);
     await mkdir(".cache/verify", { recursive: true });
     await page.screenshot({
       path: ".cache/verify/allocations-desktop.png",

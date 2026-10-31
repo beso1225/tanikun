@@ -222,7 +222,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
       match
         @tanikun-domain.CourseId::new(
           "user",
-          "course-\{state.next_custom_course_number}",
+          "course-\{state.custom_id_prefix}\{state.next_custom_course_number}",
         ) {
         Ok(id) => id
         Err(_) =>
@@ -239,7 +239,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     None =>
       match
         @tanikun-domain.OfferingId::new(
-          "user-offering-\{state.next_custom_course_number}",
+          "user-offering-\{state.custom_id_prefix}\{state.next_custom_course_number}",
         ) {
         Ok(id) => id
         Err(_) =>
@@ -680,6 +680,25 @@ fn delete_custom_course(
       custom_categories.push(item)
     }
   }
+  let entries = state.overrides
+    .entries()
+    .filter(entry => {
+      match entry.target {
+        @tanikun-domain.OverrideTarget::Course(id) => id != course_id
+        @tanikun-domain.OverrideTarget::Offering(id) =>
+          !state.offerings.any(offering => {
+            offering.course_id == course_id && offering.id == id
+          })
+      }
+    })
+  let overrides = match @tanikun-domain.Overrides::new(entries) {
+    Ok(value) => value
+    Err(error) =>
+      return with_error(
+        state,
+        UiError::from_domain(error, UiErrorTarget::Course(course_id~)),
+      )
+  }
   let picker = match state.custom_form {
     Some(form) => form.return_picker
     None => None
@@ -688,6 +707,7 @@ fn delete_custom_course(
     ..state,
     catalogue,
     offerings,
+    overrides,
     custom_course_ids,
     custom_categories,
     selected_offering: None,

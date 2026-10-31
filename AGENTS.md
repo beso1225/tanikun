@@ -47,9 +47,10 @@ just fmt
 nix flake check path:.
 ```
 
-`just test` covers domain, requirements, API, Web, and the JavaScript export
-test. Pure tests need MoonBit only. Web, browser, Worker, and D1 tests need
-`pnpm install --frozen-lockfile`.
+`just test` covers domain, requirements, API, Web, the JavaScript export, and
+Automerge document tests. It needs `pnpm install --frozen-lockfile`.
+Standalone pure-package tests need MoonBit only. Web tooling, browser, Worker,
+and D1 tests also need the installed packages.
 
 `just mutate` runs the local mutation baseline. It is not a required CI gate.
 Load `tanikun-mutation-refresh` before updating the baseline.

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>応物単位くん</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="./automerge.js"></script>
+    <script src="./planner-document.js"></script>
     <script src="./persistence.js"></script>
     <script type="module" src="./index.js"></script>
   </head>
@@ -82,7 +84,11 @@
           if (panel || !returnFocus) return;
           const target = returnFocus;
           returnFocus = null;
-          if (target.isConnected) target.focus();
+          // A delayed render or save-status mutation must not steal focus
+          // that the user has already moved outside the dismissed dialog.
+          if (target.isConnected && document.activeElement === document.body) {
+            target.focus();
+          }
         }).observe(document.querySelector("#app"), {
           childList: true,
           subtree: true,

@@ -721,9 +721,9 @@ test(
     );
     await page.locator("#custom-submit").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#add-offering-user-offering-1").waitFor();
-    await page.locator("#add-offering-user-offering-1").click();
-    await page.locator("#add-offering-user-offering-1").waitFor({
+    await page.locator('[id^="add-offering-user-offering-"]').waitFor();
+    await page.locator('[id^="add-offering-user-offering-"]').click();
+    await page.locator('[id^="add-offering-user-offering-"]').waitFor({
       state: "detached",
     });
     await page.locator("#close-picker").click();
@@ -736,7 +736,7 @@ test(
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#edit-custom-user-offering-1").click();
+    await page.locator('[id^="edit-custom-user-offering-"]').click();
     await page.locator("#custom-course").waitFor();
     await page.locator("#custom-name").fill("Linear Algebra II");
     await page.locator("#custom-submit").click();
@@ -759,7 +759,7 @@ test(
 
     await page.locator("#open-catalogue-picker").click();
     await page.locator("#picker").waitFor();
-    await page.locator("#edit-custom-user-offering-1").click();
+    await page.locator('[id^="edit-custom-user-offering-"]').click();
     await page.locator("#custom-course").waitFor();
     await page.locator("#delete-custom-course").click();
     await page.locator("#picker").waitFor();
@@ -784,8 +784,8 @@ test(
       await page.locator("#picker-title").innerText(),
       "月3限に追加",
     );
-    await page.locator("#add-offering-user-offering-2").click();
-    await page.locator("#add-offering-user-offering-2").waitFor({
+    await page.locator('[id^="add-offering-user-offering-"]').click();
+    await page.locator('[id^="add-offering-user-offering-"]').waitFor({
       state: "detached",
     });
     await page
@@ -804,8 +804,8 @@ test(
       await page.locator("#picker-title").innerText(),
       "集中講義を追加",
     );
-    await page.locator("#add-offering-user-offering-3").click();
-    await page.locator("#add-offering-user-offering-3").waitFor({
+    await page.locator('[id^="add-offering-user-offering-"]').click();
+    await page.locator('[id^="add-offering-user-offering-"]').waitFor({
       state: "detached",
     });
     await page.locator("#close-picker").click();
