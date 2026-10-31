@@ -560,13 +560,14 @@ test("invalid peer changes never replace the committed document", async (t) => {
           try {
             await storage.merge(batch);
             failures.push(false);
-          } catch {
-            failures.push(true);
+          } catch (error) {
+            failures.push(error.message);
           }
         }
         return failures;
       });
-      assert.deepEqual(result, [true, true, true]);
+      assert.ok(result.every((message) => typeof message === "string"));
+      assert.match(result[1], /履歴が不足/);
       assert.deepEqual(await storedValue(page), original);
       await page.reload();
       await waitForPersistence(page);
@@ -591,6 +592,185 @@ test("unavailable IndexedDB has a visible read-only outcome", async (t) => {
       /保存領域を利用できません/,
     );
     await page.locator("#storage-readonly-warning").waitFor();
+    assert.deepEqual(errors, []);
+  });
+});
+
+test("a failed initial seed write reports save failure and a later edit retries", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-seed-failure",
+    async (page, errors) => {
+      await page.addInitScript(() => {
+        const put = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function (...args) {
+          IDBObjectStore.prototype.put = put;
+          const request = put.apply(this, args);
+          this.transaction.abort();
+          return request;
+        };
+      });
+      await page.goto(origin);
+      await waitForPersistence(page, "保存失敗");
+      assert.equal(await page.locator("#storage-readonly-warning").count(), 0);
+      await page.locator("#term-S2").click();
+      await waitForPersistence(page);
+      await page.reload();
+      await waitForPersistence(page);
+      assert.equal(JSON.parse(await sourceText(page)).selected_term, "S2");
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
+for (const edit of ["name", "allocation"]) {
+  test(`custom deletion converges with a concurrent ${edit} edit`, async (t) => {
+    const { server, origin } = await startStaticServer(dist);
+    t.after(() => new Promise((done) => server.close(done)));
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const left = await browser.newPage();
+    const right = await browser.newPage();
+    const errors = [];
+    for (const page of [left, right])
+      page.on("pageerror", (error) => errors.push(error.message));
+    await left.goto(origin);
+    await waitForPersistence(left);
+    await left.locator("#open-catalogue-picker").click();
+    await left.locator("#open-custom-course").click();
+    await left.locator("#custom-name").fill("Concurrent custom");
+    await left.locator("#custom-category").selectOption("lab");
+    await left.locator("#custom-submit").click();
+    await left.locator("#close-picker").click();
+    await waitForPersistence(left);
+    await right.goto(origin);
+    await waitForPersistence(right);
+    await storedValue(right, await storedValue(left));
+    await right.reload();
+    await waitForPersistence(right);
+    for (const page of [left, right]) {
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator('[id^="edit-custom-user-offering-"]').click();
+    }
+    await left.locator("#delete-custom-course").click();
+    await left.locator("#close-picker").click();
+    if (edit === "name")
+      await right.locator("#custom-name").fill("Edited custom");
+    else {
+      await right.locator("#custom-day").selectOption("4");
+      await right.locator("#custom-period").selectOption("5");
+    }
+    await right.locator("#custom-submit").click();
+    await right.locator("#close-picker").click();
+    for (const page of [left, right]) await waitForPersistence(page);
+    const leftChanges = await changes(left);
+    const rightChanges = await changes(right);
+    await merge(left, rightChanges);
+    await merge(right, leftChanges);
+    assert.deepEqual(
+      JSON.parse(await sourceText(left)),
+      JSON.parse(await sourceText(right)),
+    );
+    for (const page of [left, right]) {
+      await page.reload();
+      await waitForPersistence(page);
+      const restored = JSON.parse(await sourceText(page));
+      assert.deepEqual(restored.custom_course_ids, []);
+      assert.deepEqual(restored.custom_categories, []);
+      assert.equal(
+        restored.catalogue.filter((row) => row.id.namespace_part === "user")
+          .length,
+        0,
+      );
+      assert.equal(
+        restored.offerings.filter(
+          (row) => row.course_id.namespace_part === "user",
+        ).length,
+        0,
+      );
+      await page.locator("#open-catalogue-picker").click();
+      assert.equal(
+        await page.locator('[id^="edit-custom-user-offering-"]').count(),
+        0,
+      );
+    }
+    await merge(right, leftChanges);
+    assert.deepEqual(errors, []);
+  });
+}
+
+test("a stale tab cannot overwrite a newer committed plan", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const context = await browser.newContext();
+  const left = await context.newPage();
+  const right = await context.newPage();
+  await left.goto(origin);
+  await waitForPersistence(left);
+  await right.goto(origin);
+  await waitForPersistence(right);
+  await left.locator("#open-catalogue-picker").click();
+  await left.locator("#add-offering-phy302-s").click();
+  await left.locator("#close-picker").click();
+  await waitForPersistence(left);
+  const committed = await storedValue(left);
+  await right.locator("#term-S2").click();
+  await waitForPersistence(right, "保存失敗");
+  assert.deepEqual(await storedValue(left), committed);
+  assert.equal(await right.locator("#storage-readonly-warning").count(), 0);
+  await right.reload();
+  await waitForPersistence(right);
+  assert.match(await right.locator("#off-grid").innerText(), /Seminar S2/);
+  assert.equal(JSON.parse(await sourceText(right)).selected_term, "S1");
+});
+
+test("a timed-out database open cannot write after a later save", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(browser, "persistence-late-open", async (page, errors) => {
+    await page.goto(origin);
+    await waitForPersistence(page);
+    const committed = await storedValue(page);
+    await page.evaluate(() => {
+      const open = indexedDB.open;
+      const schedule = globalThis.setTimeout;
+      // Shorten the adapter timeout and delay just one real IDB open success.
+      // A later save uses the normal database while that callback is pending.
+      globalThis.setTimeout = (callback, delay, ...args) =>
+        schedule(callback, delay === 5000 ? 100 : delay, ...args);
+      indexedDB.open = function (...args) {
+        const request = open.apply(this, args);
+        const listen = request.addEventListener.bind(request);
+        request.addEventListener = (name, callback, options) =>
+          listen(
+            name,
+            name === "success" ? () => schedule(callback, 1000) : callback,
+            options,
+          );
+        indexedDB.open = open;
+        globalThis.setTimeout = schedule;
+        return request;
+      };
+    });
+    await page.locator("#term-S2").click();
+    await waitForPersistence(page, "保存失敗");
+    assert.deepEqual(await storedValue(page), committed);
+    await page.locator("#term-A1").click();
+    await waitForPersistence(page);
+    const later = await storedValue(page);
+    await page.waitForTimeout(1100);
+    assert.deepEqual(await storedValue(page), later);
+    await page.reload();
+    await waitForPersistence(page);
+    assert.equal(JSON.parse(await sourceText(page)).selected_term, "A1");
     assert.deepEqual(errors, []);
   });
 });

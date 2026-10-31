@@ -1,5 +1,16 @@
 // Keep this prefix in sync with persistence_runtime.mbt.
 const storageErrorPrefix = "__tanikun_storage_error__";
+const sameStoredPlan = (left, right) => {
+  if (left === right) return true;
+  return (
+    left?.storageVersion === 2 &&
+    right?.storageVersion === 2 &&
+    left.bytes instanceof Uint8Array &&
+    right.bytes instanceof Uint8Array &&
+    left.bytes.length === right.bytes.length &&
+    left.bytes.every((byte, index) => byte === right.bytes[index])
+  );
+};
 // Abort transactions on timeout. A late open is closed without running work,
 // so a timed-out write can never overwrite a later successful write.
 const transact = (mode, operation) =>
@@ -66,7 +77,10 @@ const transact = (mode, operation) =>
               finish(transaction.error ?? new Error("保存が中断されました")),
             { once: true },
           );
-          request = operation(transaction.objectStore("documents"));
+          request = operation(transaction.objectStore("documents"), (error) => {
+            transaction.abort();
+            finish(error);
+          });
         } catch (error) {
           transaction?.abort();
           finish(error);
@@ -79,6 +93,7 @@ const transact = (mode, operation) =>
   const A = globalThis.Automerge;
   const codec = globalThis.tanikunDocument;
   let document = null;
+  let lastRecord;
   let validate;
   let writeQueue = Promise.resolve();
   const enqueue = (operation) => {
@@ -86,11 +101,29 @@ const transact = (mode, operation) =>
     writeQueue = result.catch(() => {});
     return result;
   };
-  const persist = async (next) => {
-    await transact("readwrite", (store) =>
-      store.put({ storageVersion: 2, bytes: A.save(next) }, "planner"),
-    );
+  const persist = async (next, replace = false) => {
+    const record = { storageVersion: 2, bytes: A.save(next) };
+    await transact("readwrite", (store, fail) => {
+      const get = store.get("planner");
+      get.addEventListener(
+        "success",
+        () => {
+          if (!replace && !sameStoredPlan(get.result, lastRecord)) {
+            fail(new Error("別のタブで保存されました。再読み込みしてください"));
+            return;
+          }
+          try {
+            store.put(record, "planner");
+          } catch (error) {
+            fail(error);
+          }
+        },
+        { once: true },
+      );
+      return get;
+    });
     document = next;
+    lastRecord = record;
   };
   globalThis.tanikunStorage = {
     configure: (validator) => {
@@ -101,6 +134,7 @@ const transact = (mode, operation) =>
         const stored = await transact("readonly", (store) =>
           store.get("planner"),
         );
+        lastRecord = stored;
         if (stored === undefined) return "";
         // Version 1 JSON is validated by MoonBit before any migration write.
         // The next successful source edit upgrades it atomically to version 2.
@@ -126,10 +160,10 @@ const transact = (mode, operation) =>
         return `${storageErrorPrefix}${error instanceof Error ? error.message : String(error)}`;
       }
     },
-    save: (text) =>
+    save: (text, replace = false) =>
       enqueue(() => {
         if (!validate?.(text)) throw new Error("保存データが正しくありません");
-        return persist(codec.update(document, text));
+        return persist(codec.update(document, text), replace);
       }),
     // Device-local exchange boundary, with no transport or background sync.
     // Validate the complete merged source through the configured app model
@@ -137,13 +171,24 @@ const transact = (mode, operation) =>
     changes: () => (document ? A.getAllChanges(document) : []),
     merge: (changes) =>
       enqueue(async () => {
+        const incoming = changes.map((change) => A.decodeChange(change));
+        const known = new Set([
+          ...A.getAllChanges(document ?? A.init()).map(
+            (change) => A.decodeChange(change).hash,
+          ),
+          ...incoming.map((change) => change.hash),
+        ]);
+        if (
+          incoming.some((change) =>
+            change.deps.some((dependency) => !known.has(dependency)),
+          )
+        ) {
+          throw new Error("統合する変更の履歴が不足しています");
+        }
         const next = A.applyChanges(
           document ? A.clone(document) : A.init(),
           changes,
         )[0];
-        if (A.getMissingDeps(next, []).length !== 0) {
-          throw new Error("統合する変更の履歴が不足しています");
-        }
         const text = codec.text(next);
         if (validate?.(text) !== true)
           throw new Error("統合した保存データが正しくありません");

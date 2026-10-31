@@ -11,8 +11,11 @@ extern "js" fn storage_load_ffi() -> @js_async.Promise[String] =
   #| () => globalThis.tanikunStorage.load()
 
 ///|
-extern "js" fn storage_save_ffi(text : String) -> @js_async.Promise[Unit] =
-  #| (text) => globalThis.tanikunStorage.save(text)
+extern "js" fn storage_save_ffi(
+  text : String,
+  replace : Bool,
+) -> @js_async.Promise[Unit] =
+  #| (text, replace) => globalThis.tanikunStorage.save(text, replace)
 
 ///|
 pub async fn storage_load() -> String {
@@ -20,6 +23,6 @@ pub async fn storage_load() -> String {
 }
 
 ///|
-pub async fn storage_save(text : String) -> Unit {
-  storage_save_ffi(text).wait()
+pub async fn storage_save(text : String, replace? : Bool = false) -> Unit {
+  storage_save_ffi(text, replace).wait()
 }

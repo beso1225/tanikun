@@ -84,7 +84,11 @@
           if (panel || !returnFocus) return;
           const target = returnFocus;
           returnFocus = null;
-          if (target.isConnected) target.focus();
+          // A delayed render or save-status mutation must not steal focus
+          // that the user has already moved outside the dismissed dialog.
+          if (target.isConnected && document.activeElement === document.body) {
+            target.focus();
+          }
         }).observe(document.querySelector("#app"), {
           childList: true,
           subtree: true,

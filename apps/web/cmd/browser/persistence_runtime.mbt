@@ -11,6 +11,7 @@ let storage_error_prefix = "__tanikun_storage_error__"
 ///|
 enum StorageLoadResult {
   Loaded(String)
+  SeedSaveFailed
   Failed(String)
 }
 
@@ -29,6 +30,15 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
           last_saved_text.val = text
           emit(@app.PlannerMsg::Hydrate(text~))
         }
+        SeedSaveFailed => {
+          last_saved_text.val = ""
+          emit(
+            @app.PlannerMsg::StorageStatusChanged(
+              status=@app.StorageStatus::Failed,
+              text=initial_text,
+            ),
+          )
+        }
         Failed(message) => emit(@app.PlannerMsg::StorageLoadFailed(message~))
       }
     },
@@ -38,8 +48,12 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
         if text.has_prefix(storage_error_prefix) {
           Failed(text[storage_error_prefix.length():].to_owned())
         } else if text.is_empty() {
-          storage_save(initial_text)
-          Loaded(initial_text)
+          try {
+            storage_save(initial_text)
+            Loaded(initial_text)
+          } catch {
+            _ => SeedSaveFailed
+          }
         } else {
           Loaded(text)
         }
@@ -132,7 +146,7 @@ fn app_update(
             },
             async fn() noraise {
               try {
-                storage_save(text)
+                storage_save(text, replace=discarding)
                 true
               } catch {
                 _ => false
