@@ -84,7 +84,7 @@ test(
       await page.locator("#custom-category").selectOption("lab");
       await page.locator("#custom-submit").click();
       await page.locator("#picker").waitFor();
-      await page.locator("#add-offering-user-offering-1").click();
+      await page.locator('[id^="add-offering-user-offering-"]').click();
       await page.locator("#close-picker").click();
       await page.locator("#picker").waitFor({ state: "detached" });
       await page
@@ -136,6 +136,24 @@ test(
       assert.match(
         await page.locator("#summary-requirements").innerText(),
         /達成/,
+      );
+      await waitForPersistence(page);
+      const source = JSON.parse(
+        await page.evaluate(() => globalThis.tanikunStorage.load()),
+      );
+      const requirements = await page
+        .locator("#summary-requirements")
+        .innerText();
+      await page.reload();
+      await waitForPersistence(page);
+      assert.deepEqual(
+        JSON.parse(await page.evaluate(() => globalThis.tanikunStorage.load())),
+        source,
+      );
+      await assertSummaryTotals(page, "2単位", "2単位", "9単位");
+      assert.equal(
+        await page.locator("#summary-requirements").innerText(),
+        requirements,
       );
       assert.deepEqual(errors, []);
     });

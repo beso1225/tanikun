@@ -222,7 +222,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
       match
         @tanikun-domain.CourseId::new(
           "user",
-          "course-\{state.next_custom_course_number}",
+          "course-\{state.custom_id_prefix}\{state.next_custom_course_number}",
         ) {
         Ok(id) => id
         Err(_) =>
@@ -239,7 +239,7 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     None =>
       match
         @tanikun-domain.OfferingId::new(
-          "user-offering-\{state.next_custom_course_number}",
+          "user-offering-\{state.custom_id_prefix}\{state.next_custom_course_number}",
         ) {
         Ok(id) => id
         Err(_) =>

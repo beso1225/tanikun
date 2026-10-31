@@ -329,3 +329,22 @@ fn update_override(
 }
 
 ///|
+test "replica custom IDs stay distinct after restoring a common plan" {
+  let base = planner_state()
+  let left = create_named_custom_course(
+    base.with_custom_id_prefix("left-"),
+    "Left",
+  )
+  let right = create_named_custom_course(
+    base.with_custom_id_prefix("right-"),
+    "Right",
+  )
+  assert_false(left.catalogue[1].id == right.catalogue[1].id)
+  assert_false(left.offerings[1].id == right.offerings[1].id)
+  let restored = @app.decode_planner_state(
+    base.with_custom_id_prefix("next-"),
+    @app.encode_planner_state(left),
+  ).unwrap()
+  let next = create_named_custom_course(restored, "Next")
+  assert_eq(next.catalogue[2].id.local_part, "course-next-2")
+}

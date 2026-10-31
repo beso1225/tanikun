@@ -1,4 +1,12 @@
 ///|
+extern "js" fn storage_configure(validate : (String) -> Bool) -> Unit =
+  #| (validate) => globalThis.tanikunStorage.configure(validate)
+
+///|
+extern "js" fn replica_id() -> String =
+  #| () => crypto.randomUUID() + "-"
+
+///|
 extern "js" fn storage_load_ffi() -> @js_async.Promise[String] =
   #| () => globalThis.tanikunStorage.load()
 

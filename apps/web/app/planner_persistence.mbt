@@ -1045,6 +1045,7 @@ pub fn decode_planner_state(
     visible_periods: dto.visible_periods,
     custom_course_ids,
     next_custom_course_number: dto.next_custom_course_number,
+    custom_id_prefix: base.custom_id_prefix,
     revision: 1,
   })
 }

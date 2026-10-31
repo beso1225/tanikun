@@ -11,13 +11,14 @@ let storage_error_prefix = "__tanikun_storage_error__"
 ///|
 enum StorageLoadResult {
   Loaded(String)
-  Missing
   Failed(String)
 }
 
 ///|
 fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
-  let state = initial_planner_state()
+  let seed = initial_planner_state()
+  let state = seed.with_custom_id_prefix(replica_id())
+  storage_configure(text => @app.decode_planner_state(state, text) is Ok(_))
   let initial_text = @app.encode_planner_state(state)
   last_saved_text.val = initial_text
   pending_text.val = ""
@@ -28,13 +29,6 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
           last_saved_text.val = text
           emit(@app.PlannerMsg::Hydrate(text~))
         }
-        Missing =>
-          emit(
-            @app.PlannerMsg::StorageStatusChanged(
-              status=@app.StorageStatus::Saved,
-              text=initial_text,
-            ),
-          )
         Failed(message) => emit(@app.PlannerMsg::StorageLoadFailed(message~))
       }
     },
@@ -44,7 +38,8 @@ fn app_init(emit : Emit[@app.PlannerMsg]) -> (@app.PlannerState, @rabbita.Cmd) {
         if text.has_prefix(storage_error_prefix) {
           Failed(text[storage_error_prefix.length():].to_owned())
         } else if text.is_empty() {
-          Missing
+          storage_save(initial_text)
+          Loaded(initial_text)
         } else {
           Loaded(text)
         }
@@ -72,8 +67,13 @@ fn app_update(
     pending_text.val = ""
   }
   match message {
-    @app.PlannerMsg::Hydrate(_) | @app.PlannerMsg::StorageStatusChanged(_) =>
+    @app.PlannerMsg::Hydrate(_) => {
+      if next.storage_status == @app.StorageStatus::Saved {
+        last_saved_text.val = @app.encode_planner_state(next)
+      }
       (next, @rabbita.none)
+    }
+    @app.PlannerMsg::StorageStatusChanged(_) => (next, @rabbita.none)
     _ =>
       if next.revision == state.revision {
         (next, @rabbita.none)

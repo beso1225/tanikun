@@ -40,6 +40,7 @@ test: build
         -p beso1225/tanikun-requirements \
         -p beso1225/tanikun-web/app
     node --test tests/integration/moonbit-export.test.mjs
+    node --test tests/integration/planner-document.test.mjs
 
 # Serve the API with local workerd; Wrangler rebuilds MoonBit on changes.
 dev-api:
@@ -55,7 +56,7 @@ setup-web:
     moon install moonbit-community/warren@0.4.4
 
 # Build CSS and preview the page with Tailwind/Warren watchers.
-dev-web:
+dev-web: build-automerge
     node scripts/dev-web.mjs
 
 # Generate the stylesheet Warren copies from public/.
@@ -66,8 +67,13 @@ build-css:
 test-css:
     node --test tests/integration/tailwind.test.mjs
 
+# Copy the pinned, self-contained browser Automerge bundle without a CDN.
+build-automerge:
+    cp node_modules/@automerge/automerge/dist/iife/iife.js apps/web/public/automerge.js
+    cp node_modules/@automerge/automerge/LICENSE apps/web/public/automerge.LICENSE.txt
+
 # Build static browser assets into apps/web/dist.
-build-web: build-css
+build-web: build-css build-automerge
     warren -C apps/web build
 
 # Verify the built page in Chromium; run inside `nix develop` for Playwright.
