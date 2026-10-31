@@ -3,6 +3,18 @@
 const plannerCourseKey = (id) => [id.namespace_part, id.local_part];
 {
   const A = globalThis.Automerge;
+  const deletionPrefix = "deleted_custom_course:";
+  // Keep tombstones in the existing shared fields map. Lazily creating a new
+  // map on each replica would itself conflict when upgrading older documents.
+  const deletedCourses = (doc) =>
+    Object.fromEntries(
+      Object.keys(doc.fields)
+        .filter((key) => key.startsWith(deletionPrefix))
+        .map((key) => [
+          key.slice(deletionPrefix.length),
+          JSON.parse(String(doc.fields[key])),
+        ]),
+    );
   const collections = {
     catalogue: (row) => plannerCourseKey(row.id),
     offerings: (row) => row.id,
@@ -53,7 +65,33 @@ const plannerCourseKey = (id) => [id.namespace_part, id.local_part];
     const doc =
       previous ??
       A.from({ version: 1, fields: {}, collections: {}, orders: {} });
+    const tombstones = deletedCourses(doc);
+    if (
+      Object.keys(source.custom_course_ids ?? {}).some((key) =>
+        Object.hasOwn(tombstones, key),
+      )
+    ) {
+      throw new Error(
+        "削除済みの独自科目を再保存できません。再読み込みしてください",
+      );
+    }
+    const removed = Object.keys(doc.collections.custom_course_ids ?? {}).filter(
+      (key) => !Object.hasOwn(source.custom_course_ids, key),
+    );
     return A.change(A.clone(doc), (draft) => {
+      for (const key of removed) {
+        const offeringIds = Object.values(doc.collections.offerings)
+          .map((value) => JSON.parse(String(value)))
+          .filter(
+            (row) =>
+              row.course_id &&
+              JSON.stringify(plannerCourseKey(row.course_id)) === key,
+          )
+          .map((row) => row.id);
+        draft.fields[deletionPrefix + key] = atomic(
+          JSON.stringify(offeringIds),
+        );
+      }
       for (const [field, value] of Object.entries(source)) {
         if (Object.hasOwn(collections, field)) {
           if (!draft.collections[field]) draft.collections[field] = {};
@@ -77,6 +115,7 @@ const plannerCourseKey = (id) => [id.namespace_part, id.local_part];
     if (doc.version !== 1) throw new Error("未対応の保存データ形式です");
     const source = {};
     for (const key of Object.keys(doc.fields).toSorted()) {
+      if (key.startsWith(deletionPrefix)) continue;
       if (!scalarFields.has(key)) throw new Error("未対応の保存項目です");
       source[key] = JSON.parse(String(doc.fields[key]));
     }
@@ -92,6 +131,42 @@ const plannerCourseKey = (id) => [id.namespace_part, id.local_part];
           .toSorted(),
       ];
       source[field] = keys.map((key) => JSON.parse(String(rows[key])));
+    }
+    // Delete wins across the entire custom entity, including records edited or
+    // enrolled concurrently. Keep the tombstone in history to prevent revival.
+    const tombstones = deletedCourses(doc);
+    const deleted = new Set(Object.keys(tombstones));
+    if (deleted.size > 0) {
+      const courseDeleted = (id) =>
+        deleted.has(JSON.stringify(plannerCourseKey(id)));
+      const offerings = new Set(Object.values(tombstones).flat());
+      for (const row of source.offerings) {
+        if (row.course_id && courseDeleted(row.course_id))
+          offerings.add(row.id);
+      }
+      source.catalogue = source.catalogue.filter(
+        (row) => !courseDeleted(row.id),
+      );
+      source.offerings = source.offerings.filter(
+        (row) => !offerings.has(row.id),
+      );
+      source.enrollments = source.enrollments.filter(
+        (row) => !offerings.has(row.offering_id),
+      );
+      source.custom_course_ids = source.custom_course_ids.filter(
+        (id) => !courseDeleted(id),
+      );
+      source.custom_categories = source.custom_categories.filter(
+        (row) => !courseDeleted(row.course),
+      );
+      source.overrides = source.overrides.filter(
+        (row) =>
+          !offerings.has(row.offering_id) &&
+          !courseDeleted({
+            namespace_part: row.course_namespace,
+            local_part: row.course_local,
+          }),
+      );
     }
     return JSON.stringify(source);
   };

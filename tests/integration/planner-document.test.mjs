@@ -120,3 +120,44 @@ test("derived fields are rejected and source collection order survives reload", 
     /未対応の保存項目/,
   );
 });
+
+test("custom course deletion wins over concurrent edits without orphan records", async () => {
+  const api = await adapter();
+  const custom = { namespace_part: "user", local_part: "course-fictional-1" };
+  const initial = structuredClone(source);
+  initial.catalogue.push({ id: custom, name: "Custom", credits: 2 });
+  initial.offerings.push({
+    id: "custom-offering",
+    course_id: custom,
+    term_slots: [],
+  });
+  initial.custom_course_ids.push(custom);
+  initial.custom_categories.push({ course: custom, category: "science" });
+  const base = api.update(null, JSON.stringify(initial));
+  for (const field of ["catalogue", "offerings"]) {
+    const edited = structuredClone(initial);
+    edited[field][1].name = "Concurrent edit";
+    edited.enrollments.push({
+      offering_id: "custom-offering",
+      status: "planned",
+    });
+    edited.overrides.push({
+      target_kind: "course",
+      course_namespace: "user",
+      course_local: custom.local_part,
+      offering_id: "",
+      value_kind: "name",
+      text: "Custom override",
+    });
+    const left = api.update(Automerge.clone(base), JSON.stringify(source));
+    const right = api.update(Automerge.clone(base), JSON.stringify(edited));
+    const merged = Automerge.merge(left, right);
+    const a = api.text(merged);
+    const b = api.text(Automerge.merge(right, left));
+    assert.equal(a, b);
+    assert.deepEqual(JSON.parse(a), source);
+    assert.throws(() => api.update(merged, JSON.stringify(edited)), /削除済み/);
+    const reloaded = Automerge.load(Automerge.save(merged));
+    assert.deepEqual(JSON.parse(api.text(reloaded)), source);
+  }
+});

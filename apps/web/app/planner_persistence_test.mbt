@@ -272,3 +272,17 @@ test "storage load failure is reported and explicit discard resumes saving" {
   assert_true(discarded.storage_status == @app.StorageStatus::Unsaved)
   assert_true(discarded.error is None)
 }
+
+///|
+test "restore rejects custom catalogue rows without membership or an offering" {
+  let state = create_named_custom_course(planner_state(), "Custom")
+  let text = @app.encode_planner_state(state)
+  let dto : @app.PersistedPlan = @json.from_json(@json.parse(text))
+  let missing_membership = { ..dto, custom_course_ids: [], }
+  persistence_expect_decode_error(
+    state,
+    missing_membership.to_json().stringify(),
+  )
+  let missing_offering = { ..dto, offerings: [dto.offerings[0]], }
+  persistence_expect_decode_error(state, missing_offering.to_json().stringify())
+}
