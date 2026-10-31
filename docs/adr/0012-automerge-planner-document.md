@@ -20,6 +20,15 @@ and preserves term-specific phases and coordination evidence together. Separate
 records merge independently. This costs field-level merging within one record:
 concurrent edits to the same record use Automerge's deterministic winner.
 
+Custom course deletion takes precedence over concurrent edits and enrollment.
+Deletion records a permanent `deleted_custom_course:<course key>` tombstone in
+the shared `fields` map, with the deleted offering IDs. Materialization removes
+the course, its offerings, membership, category assignments, enrollments, and
+overrides together. Later saves cannot revive a tombstoned ID. Keeping metadata
+in the existing shared map also supports older documents without creating a
+new map independently on each replica. Restore rejects user-namespace catalogue
+rows without custom membership and custom members without offerings.
+
 Collection order is an atomic list of keys. Materialization retains existing
 order, omits removed keys, and appends concurrent additions absent from that
 list in sorted key order. Scalars use the same atomic conflict policy. Derived
@@ -39,6 +48,10 @@ envelope in one transaction. A missing document commits the seed before showing
 untouched until explicit discard. An invalid stored value is never treated as
 an absent document.
 
+If the initial seed write fails after a successful empty-store read, show
+`保存失敗` and keep editing and save retries available. Read-only load recovery
+is reserved for a failed read or an invalid existing document.
+
 Writes remain serialized and commit the in-memory Automerge handle only after
 IndexedDB transaction completion. An aborted write leaves the last committed
 handle and stored plan intact. A five-second timeout aborts an active transaction;
@@ -46,11 +59,18 @@ a late database open closes without starting a transaction. Existing shell
 statuses, read-only recovery after a failed load, and stale-status rejection
 continue to apply.
 
+Each write compares the stored value with the last value read or committed by
+this tab in the same IndexedDB read/write transaction. A stale tab reports a
+save failure and keeps its local edit visible instead of overwriting a newer
+plan from another tab. Reload it to use the newer plan. Only explicit discard
+can bypass this comparison. This is conflict detection, not automatic tab sync.
+
 ## Local change exchange
 
 `tanikunStorage.changes()` exports local Automerge changes, including their
-history. `merge(changes)` applies them to a candidate handle, rejects missing
-dependencies, and validates the complete materialized source with
+history. `merge(changes)` checks that every incoming dependency hash is present
+in local history or the incoming batch, applies changes to a candidate handle,
+and validates the complete materialized source with
 `decode_planner_state` before committing it. Corrupt changes or a merge that
 breaks references leave the committed plan intact. Callers reload the planner
 after a successful exchange. Repeated delivery is idempotent.
@@ -65,8 +85,9 @@ Workers, HTTP, authentication, background peer discovery, or remote storage.
 
 `just test` exercises record convergence, source-only encoding, and custom ID
 allocation. `just test-browser` covers isolated browser contexts, offline edits,
-reload before exchange, repeated exchange, JSON migration, interrupted writes,
-and unsupported storage. The Phase 2 journey reloads a plan with passed grades,
+reload before exchange, repeated exchange, concurrent custom deletion and edits,
+JSON migration, interrupted writes, timed-out opens, stale tabs, initial save
+failures, and unsupported storage. The Phase 2 journey reloads a plan with passed grades,
 snapshots, custom categories, and overrides and checks recomputed summaries.
 The allocation journey covers term-specific and coordinated offerings.
 

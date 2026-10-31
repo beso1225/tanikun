@@ -65,8 +65,9 @@ just fmt                # apply the available formatters
 nix flake check path:.  # sandboxed checks, including pure domain tests
 ```
 
-`just test` needs the MoonBit toolchain. `pnpm install` is required for web
-tooling and for the browser, Worker, and D1 tests. The `just` file also defines
+`just test` needs the MoonBit toolchain and `pnpm install --frozen-lockfile`
+for the Automerge document tests. Web tooling and browser, Worker, and D1 tests
+also need the installed packages. The `just` file defines
 `test-css`, `test-browser`, `test-worker`, `test-automerge`, and `test-d1`.
 
 Mutation testing is optional and is not a CI gate:

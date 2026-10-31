@@ -65,8 +65,10 @@ just fmt                # 利用可能な formatter を適用
 nix flake check path:.  # pure domain を含む sandbox チェック
 ```
 
-`just test` には MoonBit のツールチェーンが必要です。Web のツール、ブラウザ、
-Worker、D1 のテストには `pnpm install` が必要です。`just` には `test-css`、
+`just test` には MoonBit のツールチェーンと、Automerge の文書テストに使うパッケージが
+必要です。`pnpm install --frozen-lockfile` でインストールしてください。
+Web のツール、ブラウザ、Worker、D1 のテストにもこれらのパッケージが必要です。
+`just` には `test-css`、
 `test-browser`、`test-worker`、`test-automerge`、`test-d1` もあります。
 
 Mutation testing は任意で、CI の必須チェックではありません。
