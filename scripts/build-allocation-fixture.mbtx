@@ -15,6 +15,9 @@ async fn main {
   }
   @fs.mkdir(root + "/apps", recursive=true, allow_exist=true)
   @shell.Cmd("cp", ["-R", "apps/web", root + "/apps/"]).run()
+  if @fs.exists(root + "/apps/web/dist") {
+    @fs.rmdir(root + "/apps/web/dist", recursive=true)
+  }
   @shell.Cmd("cp", ["-R", "packages", root + "/"]).run()
   @fs.write_file(
     root + "/moon.work",
@@ -41,5 +44,6 @@ async fn main {
     root + "/apps/web/public/styles.css",
     "--minify",
   ]).run()
+  @shell.Cmd("just", ["build-automerge", root + "/apps/web/public"]).run()
   @shell.Cmd("warren", ["-C", root + "/apps/web", "build"]).run()
 }

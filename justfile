@@ -68,9 +68,9 @@ test-css:
     node --test tests/integration/tailwind.test.mjs
 
 # Copy the pinned, self-contained browser Automerge bundle without a CDN.
-build-automerge:
-    cp node_modules/@automerge/automerge/dist/iife/iife.js apps/web/public/automerge.js
-    cp node_modules/@automerge/automerge/LICENSE apps/web/public/automerge.LICENSE.txt
+build-automerge public_dir="apps/web/public":
+    cp node_modules/@automerge/automerge/dist/iife/iife.js "{{ public_dir }}/automerge.js"
+    cp node_modules/@automerge/automerge/LICENSE "{{ public_dir }}/automerge.LICENSE.txt"
 
 # Build static browser assets into apps/web/dist.
 build-web: build-css build-automerge

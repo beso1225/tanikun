@@ -102,6 +102,11 @@ test("phased schedules, coordinated cells, and mandatory planning", async (t) =>
       source,
     );
     await bar.waitFor();
+    await expectDesignCount(4);
+    await page.locator("#term-S2").click();
+    await expectDesignCount(6);
+    await page.locator("#term-S1").click();
+    await expectDesignCount(4);
     await mkdir(".cache/verify", { recursive: true });
     await page.screenshot({
       path: ".cache/verify/allocations-desktop.png",
