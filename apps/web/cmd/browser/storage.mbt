@@ -14,8 +14,11 @@ extern "js" fn storage_load_ffi() -> @js_async.Promise[String] =
 extern "js" fn storage_save_ffi(
   text : String,
   replace : Bool,
-) -> @js_async.Promise[Unit] =
-  #| (text, replace) => globalThis.tanikunStorage.save(text, replace)
+) -> @js_async.Promise[String] =
+  #| (text, replace) => globalThis.tanikunStorage.save(text, replace).then(
+  #|   () => "",
+  #|   error => error instanceof Error ? error.message : "保存できません。再読み込みしてください",
+  #| )
 
 ///|
 pub async fn storage_load() -> String {
@@ -23,6 +26,6 @@ pub async fn storage_load() -> String {
 }
 
 ///|
-pub async fn storage_save(text : String, replace? : Bool = false) -> Unit {
+pub async fn storage_save(text : String, replace? : Bool = false) -> String {
   storage_save_ffi(text, replace).wait()
 }

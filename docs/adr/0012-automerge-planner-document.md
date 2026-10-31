@@ -28,6 +28,8 @@ overrides together. Later saves cannot revive a tombstoned ID. Keeping metadata
 in the existing shared map also supports older documents without creating a
 new map independently on each replica. Restore rejects user-namespace catalogue
 rows without custom membership and custom members without offerings.
+The deleting app transition removes existing course and offering overrides
+before validation, so its own save is a complete valid document as well.
 
 Collection order is an atomic list of keys. Materialization retains existing
 order, omits removed keys, and appends concurrent additions absent from that
@@ -51,6 +53,8 @@ an absent document.
 If the initial seed write fails after a successful empty-store read, show
 `保存失敗` and keep editing and save retries available. Read-only load recovery
 is reserved for a failed read or an invalid existing document.
+If a competing first-open tab has already stored a valid document, hydrate that
+winning document instead of leaving the losing tab in a save-failed state.
 
 Writes remain serialized and commit the in-memory Automerge handle only after
 IndexedDB transaction completion. An aborted write leaves the last committed
@@ -58,6 +62,14 @@ handle and stored plan intact. A five-second timeout aborts an active transactio
 a late database open closes without starting a transaction. Existing shell
 statuses, read-only recovery after a failed load, and stale-status rejection
 continue to apply.
+
+A timeout does not prove that a transaction failed to commit. Track attempted
+write bytes and reconcile them with IndexedDB before a later save or merge.
+Adopt a matching local attempt with its full Automerge history; a different
+tab's unknown document still fails the comparison. Commit callbacks also update
+this tracking after a timeout, with operation versions preventing an older
+delayed event from replacing newer state. Save errors carry their recovery
+message into the shell, matched to the current source document.
 
 Each write compares the stored value with the last value read or committed by
 this tab in the same IndexedDB read/write transaction. A stale tab reports a

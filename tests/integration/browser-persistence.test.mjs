@@ -722,6 +722,11 @@ test("a stale tab cannot overwrite a newer committed plan", async (t) => {
   const committed = await storedValue(left);
   await right.locator("#term-S2").click();
   await waitForPersistence(right, "保存失敗");
+  assert.equal(await right.locator("#planner-error").count(), 1);
+  assert.match(
+    await right.locator("#planner-error").innerText(),
+    /別のタブ.*再読み込み/,
+  );
   assert.deepEqual(await storedValue(left), committed);
   assert.equal(await right.locator("#storage-readonly-warning").count(), 0);
   await right.reload();
@@ -774,3 +779,199 @@ test("a timed-out database open cannot write after a later save", async (t) => {
     assert.deepEqual(errors, []);
   });
 });
+
+test("deleting a custom course with existing overrides survives reload", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-delete-overrides",
+    async (page, errors) => {
+      await page.goto(origin);
+      await waitForPersistence(page);
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator("#open-custom-course").click();
+      await page.locator("#custom-name").fill("Override deletion");
+      await page.locator("#custom-submit").click();
+      await page.locator('[id^="add-offering-user-offering-"]').click();
+      await page.locator("#close-picker").click();
+      await page
+        .locator("#timetable")
+        .getByText("Override deletion", { exact: true })
+        .click();
+      await page.locator("#open-override-editor").click();
+      await page.locator("#override-name").fill("Renamed custom");
+      await page.locator("#override-credits").selectOption("6");
+      await page.locator("#override-slots-enabled").click();
+      await page.locator("#override-submit").click();
+      await page.locator("#remove-detail").click();
+      await waitForPersistence(page);
+      assert.equal(JSON.parse(await sourceText(page)).overrides.length, 3);
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator('[id^="edit-custom-user-offering-"]').click();
+      await page.locator("#delete-custom-course").click();
+      await page.locator("#close-picker").click();
+      await waitForPersistence(page);
+      await page.reload();
+      await waitForPersistence(page);
+      const restored = JSON.parse(await sourceText(page));
+      assert.deepEqual(restored.custom_course_ids, []);
+      assert.deepEqual(restored.overrides, []);
+      await page.locator("#open-catalogue-picker").click();
+      assert.equal(
+        await page.locator('[id^="edit-custom-user-offering-"]').count(),
+        0,
+      );
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
+test("a late commit is reconciled before retry and cannot regress a newer save", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(browser, "persistence-late-commit", async (page, errors) => {
+    await page.goto(origin);
+    await waitForPersistence(page);
+    const before = await storedValue(page);
+    await page.evaluate(() => {
+      const listen = IDBTransaction.prototype.addEventListener;
+      const schedule = globalThis.setTimeout;
+      globalThis.setTimeout = (callback, delay, ...args) =>
+        schedule(callback, delay === 5000 ? 100 : delay, ...args);
+      IDBTransaction.prototype.addEventListener = function (
+        type,
+        callback,
+        options,
+      ) {
+        if (type === "complete" && this.mode === "readwrite") {
+          IDBTransaction.prototype.addEventListener = listen;
+          globalThis.setTimeout = schedule;
+          return listen.call(
+            this,
+            type,
+            () => schedule(callback, 1000),
+            options,
+          );
+        }
+        return listen.call(this, type, callback, options);
+      };
+    });
+    await page.locator("#term-S2").click();
+    await waitForPersistence(page, "保存失敗");
+    assert.notDeepEqual(await storedValue(page), before);
+    // Returning to the last acknowledged content still needs a write: the
+    // timed-out S2 save may already have committed.
+    await page.locator("#term-S1").click();
+    await waitForStoredTerm(page, "S1");
+    await page.waitForTimeout(1100);
+    await page.locator("#term-A2").click();
+    await waitForStoredTerm(page, "A2");
+    await page.reload();
+    await waitForPersistence(page);
+    assert.equal(JSON.parse(await sourceText(page)).selected_term, "A2");
+    assert.deepEqual(errors, []);
+  });
+});
+
+test("simultaneous first-open tabs hydrate the winning seed and can edit", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const context = await browser.newContext();
+  const pending = [];
+  await context.exposeBinding(
+    "seedRead",
+    () =>
+      new Promise((resolveRead) => {
+        pending.push(resolveRead);
+        if (pending.length >= 2) for (const finish of pending) finish();
+      }),
+  );
+  await context.addInitScript(() => {
+    const create = IDBDatabase.prototype.transaction;
+    const abort = IDBTransaction.prototype.abort;
+    let firstRead = true;
+    globalThis.seedAborts = 0;
+    IDBTransaction.prototype.abort = function (...args) {
+      globalThis.seedAborts += 1;
+      return abort.apply(this, args);
+    };
+    IDBDatabase.prototype.transaction = function (...args) {
+      const tx = create.apply(this, args);
+      if (tx.mode === "readonly" && firstRead) {
+        firstRead = false;
+        const listen = tx.addEventListener.bind(tx);
+        tx.addEventListener = (type, callback, options) =>
+          listen(
+            type,
+            type === "complete"
+              ? async () => {
+                  await globalThis.seedRead();
+                  callback();
+                }
+              : callback,
+            options,
+          );
+      }
+      return tx;
+    };
+  });
+  const left = await context.newPage();
+  const right = await context.newPage();
+  await Promise.all([left.goto(origin), right.goto(origin)]);
+  await Promise.all([waitForPersistence(left), waitForPersistence(right)]);
+  const tabs = [left, right];
+  const aborts = await Promise.all(
+    tabs.map((page) => page.evaluate(() => globalThis.seedAborts)),
+  );
+  assert.equal(
+    aborts.reduce((sum, value) => sum + value, 0),
+    1,
+  );
+  const loser = tabs[aborts.findIndex((count) => count === 1)];
+  await loser.locator("#term-S2").click();
+  await waitForStoredTerm(loser, "S2");
+  await loser.reload();
+  // The startup read barrier is only for the initial navigation.
+  await waitForPersistence(loser);
+  assert.equal(JSON.parse(await sourceText(loser)).selected_term, "S2");
+});
+
+async function waitForStoredTerm(page, term) {
+  await page.waitForFunction(
+    (expected) =>
+      new Promise((finish, reject) => {
+        const opening = indexedDB.open("tanikun-planner", 1);
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const db = opening.result;
+          const tx = db.transaction("documents", "readonly");
+          const get = tx.objectStore("documents").get("planner");
+          tx.oncomplete = () => {
+            db.close();
+            const stored = get.result;
+            const text =
+              stored?.storageVersion === 2
+                ? globalThis.tanikunDocument.text(
+                    globalThis.Automerge.load(stored.bytes),
+                  )
+                : stored;
+            finish(text ? JSON.parse(text).selected_term === expected : false);
+          };
+          tx.onabort = tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+          };
+        };
+      }),
+    term,
+    { timeout: 10000 },
+  );
+  await waitForPersistence(page);
+}

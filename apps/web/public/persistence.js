@@ -13,7 +13,7 @@ const sameStoredPlan = (left, right) => {
 };
 // Abort transactions on timeout. A late open is closed without running work,
 // so a timed-out write can never overwrite a later successful write.
-const transact = (mode, operation) =>
+const transact = (mode, operation, onCommit) =>
   new Promise((resolve, reject) => {
     if (!globalThis.indexedDB) {
       reject(new Error("保存領域を利用できません"));
@@ -60,7 +60,12 @@ const transact = (mode, operation) =>
           transaction = database.transaction("documents", mode);
           transaction.addEventListener(
             "complete",
-            () => finish(null, request?.result),
+            () => {
+              // A commit can precede its event handler and the timeout. Track
+              // the durable outcome even if the promise already timed out.
+              onCommit?.();
+              finish(null, request?.result);
+            },
             { once: true },
           );
           transaction.addEventListener(
@@ -94,6 +99,26 @@ const transact = (mode, operation) =>
   const codec = globalThis.tanikunDocument;
   let document = null;
   let lastRecord;
+  let nextVersion = 0;
+  let adoptedVersion = 0;
+  const attempts = new Map();
+  const adopt = (next, record, version) => {
+    if (version < adoptedVersion) return;
+    document = next;
+    lastRecord = record;
+    adoptedVersion = version;
+    for (const key of attempts.keys()) if (key <= version) attempts.delete(key);
+  };
+  const reconcile = async () => {
+    if (attempts.size === 0) return;
+    const stored = await transact("readonly", (store) => store.get("planner"));
+    for (const [version, attempt] of attempts) {
+      if (sameStoredPlan(stored, attempt.record)) {
+        adopt(attempt.next, stored, version);
+        return;
+      }
+    }
+  };
   let validate;
   let writeQueue = Promise.resolve();
   const enqueue = (operation) => {
@@ -102,46 +127,55 @@ const transact = (mode, operation) =>
     return result;
   };
   const persist = async (next, replace = false) => {
+    const version = ++nextVersion;
     const record = { storageVersion: 2, bytes: A.save(next) };
-    await transact("readwrite", (store, fail) => {
-      const get = store.get("planner");
-      get.addEventListener(
-        "success",
-        () => {
-          if (!replace && !sameStoredPlan(get.result, lastRecord)) {
-            fail(new Error("別のタブで保存されました。再読み込みしてください"));
-            return;
-          }
-          try {
-            store.put(record, "planner");
-          } catch (error) {
-            fail(error);
-          }
-        },
-        { once: true },
-      );
-      return get;
-    });
-    document = next;
-    lastRecord = record;
+    await transact(
+      "readwrite",
+      (store, fail) => {
+        const get = store.get("planner");
+        get.addEventListener(
+          "success",
+          () => {
+            if (!replace && !sameStoredPlan(get.result, lastRecord)) {
+              fail(
+                new Error("別のタブで保存されました。再読み込みしてください"),
+              );
+              return;
+            }
+            try {
+              store.put(record, "planner");
+              attempts.set(version, { next, record });
+            } catch (error) {
+              fail(error);
+            }
+          },
+          { once: true },
+        );
+        return get;
+      },
+      () => adopt(next, record, version),
+    );
   };
   globalThis.tanikunStorage = {
     configure: (validator) => {
       validate = validator;
     },
     load: async () => {
+      const version = ++nextVersion;
       try {
         const stored = await transact("readonly", (store) =>
           store.get("planner"),
         );
-        lastRecord = stored;
-        if (stored === undefined) return "";
+        if (stored === undefined) {
+          adopt(null, stored, version);
+          return "";
+        }
         // Version 1 JSON is validated by MoonBit before any migration write.
         // The next successful source edit upgrades it atomically to version 2.
         if (typeof stored === "string") {
           if (!validate?.(stored))
             throw new Error("保存データを読み込めません");
-          document = codec.update(null, stored);
+          adopt(codec.update(null, stored), stored, version);
           return stored;
         }
         if (
@@ -153,16 +187,20 @@ const transact = (mode, operation) =>
         const next = A.load(stored.bytes);
         const text = codec.text(next);
         if (!validate?.(text)) throw new Error("保存データを読み込めません");
-        document = next;
+        adopt(next, stored, version);
         return text;
       } catch (error) {
-        document = null;
+        if (version >= adoptedVersion) {
+          document = null;
+          adoptedVersion = version;
+        }
         return `${storageErrorPrefix}${error instanceof Error ? error.message : String(error)}`;
       }
     },
     save: (text, replace = false) =>
-      enqueue(() => {
+      enqueue(async () => {
         if (!validate?.(text)) throw new Error("保存データが正しくありません");
+        if (!replace) await reconcile();
         return persist(codec.update(document, text), replace);
       }),
     // Device-local exchange boundary, with no transport or background sync.
@@ -171,6 +209,7 @@ const transact = (mode, operation) =>
     changes: () => (document ? A.getAllChanges(document) : []),
     merge: (changes) =>
       enqueue(async () => {
+        await reconcile();
         const incoming = changes.map((change) => A.decodeChange(change));
         const known = new Set([
           ...A.getAllChanges(document ?? A.init()).map(
