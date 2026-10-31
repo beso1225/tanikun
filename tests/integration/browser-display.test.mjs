@@ -24,13 +24,18 @@ test("hidden courses name their slots and link to display settings", async (t) =
   await page.locator("#custom-day").selectOption("5");
   await page.locator("#custom-period").selectOption("7");
   await page.locator("#custom-submit").click();
-  await page.locator("#add-offering-user-offering-1").click();
+  await page.locator('[id^="add-offering-user-offering-"]').click();
   await page.locator("#close-picker").click();
   assert.match(
     await page.locator("#hidden-blocks").innerText(),
     /土7限 · Hidden course/,
   );
+  await waitForPersistence(page);
   await page.locator("#open-hidden-settings").focus();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    "open-hidden-settings",
+  );
   await page.keyboard.press("Enter");
   await page.locator("#add-day").click();
   await page.locator("#close-settings").click();
@@ -76,7 +81,7 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
   await page.locator("#custom-credits").selectOption("1");
   await page.locator("#custom-day").selectOption("1");
   await page.locator("#custom-submit").click();
-  await page.locator("#add-offering-user-offering-1").click();
+  await page.locator('[id^="add-offering-user-offering-"]').click();
   await page.locator("#close-picker").click();
   const bar = page
     .locator("#summary-requirements [data-requirement-bar]")
@@ -111,7 +116,7 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
     2,
   );
   assert.ok(
-    await page.locator('[id^="mobile-detail-user-offering-1"]').isVisible(),
+    await page.locator('[id^="mobile-detail-user-offering-"]').isVisible(),
   );
   await page.setViewportSize({ width: 1280, height: 720 });
   await page
@@ -135,7 +140,7 @@ test("half-credit requirement labels match the displayed totals", async (t) => {
   await page.locator("#close-override-editor").click();
   await page.locator("#close-detail").click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('[id^="mobile-detail-user-offering-1"]').click();
+  await page.locator('[id^="mobile-detail-user-offering-"]').click();
   await page.locator("#remove-detail").click();
   await page.locator("#undo-removal").waitFor();
   await page.setViewportSize({ width: 1280, height: 720 });

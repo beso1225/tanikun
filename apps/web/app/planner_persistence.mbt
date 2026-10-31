@@ -988,6 +988,15 @@ pub fn decode_planner_state(
     if !found {
       return Err("独自科目IDが catalogue にありません")
     }
+    if !offerings.any(offering => offering.course_id == id) {
+      return Err("独自科目の開講がありません")
+    }
+  }
+  for course in catalogue {
+    if course.id.namespace_part == "user" &&
+      !custom_course_ids.contains(course.id) {
+      return Err("独自科目が独自科目IDにありません")
+    }
   }
   let categories = requirement_set.categories()
   for assignment in custom_categories {
@@ -1045,6 +1054,7 @@ pub fn decode_planner_state(
     visible_periods: dto.visible_periods,
     custom_course_ids,
     next_custom_course_number: dto.next_custom_course_number,
+    custom_id_prefix: base.custom_id_prefix,
     revision: 1,
   })
 }

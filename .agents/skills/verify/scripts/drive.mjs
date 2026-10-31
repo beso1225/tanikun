@@ -142,7 +142,7 @@ try {
       );
       await page.locator("#custom-name").fill("Verification course");
       await page.locator("#custom-submit").click();
-      await page.locator("#add-offering-user-offering-1").click();
+      await page.locator('[id^="add-offering-user-offering-"]').click();
       await page.locator("#close-picker").click();
       await page
         .locator("#timetable")

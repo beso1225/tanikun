@@ -7,7 +7,8 @@ Phase 1 is complete. It implements the pure domain model, credit summaries, and
 requirement evaluation. Phase 2 adds the in-memory planner UI; its contract and
 evidence are in [docs/PHASE_2.md](docs/PHASE_2.md) and
 [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md). Phase 3 adds local
-persistence; Automerge convergence and sync come next.
+persistence and local Automerge replica convergence. Network sync follows in
+Phase 4.
 
 **日本語版:** [README.ja.md](README.ja.md)
 
@@ -20,9 +21,10 @@ persistence; Automerge convergence and sync come next.
 - Phase 2: complete. The planner UI contract is
   [docs/PHASE_2.md](docs/PHASE_2.md), and the evidence is in
   [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md).
-- Phase 3: in progress. Local IndexedDB persistence and save/reload recovery are
-  implemented; see [ADR-0011](docs/adr/0011-local-planner-persistence.md).
-  Automerge convergence and Phase 4 sync are not started.
+- Phase 3: in progress. Automerge/IndexedDB persistence, save/reload recovery,
+  and local replica convergence are implemented; see
+  [ADR-0012](docs/adr/0012-automerge-planner-document.md).
+  Phase 4 network sync is not started.
 
 ## Stack
 
@@ -63,8 +65,9 @@ just fmt                # apply the available formatters
 nix flake check path:.  # sandboxed checks, including pure domain tests
 ```
 
-`just test` needs the MoonBit toolchain. `pnpm install` is required for web
-tooling and for the browser, Worker, and D1 tests. The `just` file also defines
+`just test` needs the MoonBit toolchain and `pnpm install --frozen-lockfile`
+for the Automerge document tests. Web tooling and browser, Worker, and D1 tests
+also need the installed packages. The `just` file defines
 `test-css`, `test-browser`, `test-worker`, `test-automerge`, and `test-d1`.
 
 Mutation testing is optional and is not a CI gate:

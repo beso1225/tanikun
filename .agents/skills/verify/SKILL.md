@@ -25,6 +25,9 @@ Ready means these files exist:
 - `apps/web/dist/index.html`
 - `apps/web/dist/index.js`
 - `apps/web/dist/styles.css`
+- `apps/web/dist/automerge.js`
+- `apps/web/dist/planner-document.js`
+- `apps/web/dist/persistence.js`
 
 The driver starts its own loopback HTTP server for that directory, opens the
 page in Chromium, and closes both before exiting. Do not start a second server
@@ -38,7 +41,7 @@ Run this before driving when the build or Chromium environment is uncertain:
 node .agents/skills/verify/scripts/doctor.mjs
 ```
 
-It checks the three dist files, requires `PLAYWRIGHT_CORE`, launches Chromium,
+It checks the dist files above, requires `PLAYWRIGHT_CORE`, launches Chromium,
 serves the page, and waits for the app heading. It prints one JSON object and
 exits nonzero on failure.
 
