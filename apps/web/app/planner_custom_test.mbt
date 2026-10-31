@@ -348,3 +348,39 @@ test "replica custom IDs stay distinct after restoring a common plan" {
   let next = create_named_custom_course(restored, "Next")
   assert_eq(next.catalogue[2].id.local_part, "course-next-2")
 }
+
+///|
+test "custom deletion removes its course and offering overrides only" {
+  let state = create_named_custom_course(planner_state(), "Custom")
+  let course_id = state.catalogue[1].id
+  let offering_id = state.offerings[1].id
+  let state = open_override_form(state, state.offerings[0].id)
+  let state = update_override(
+    state,
+    @app.OverrideField::Name,
+    "Keep master override",
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  let state = open_override_form(state, offering_id)
+  let state = update_override(
+    state,
+    @app.OverrideField::Name,
+    "Custom override",
+  )
+  let state = update_override(state, @app.OverrideField::Credits, "6")
+  let state = @app.update_planner(state, @app.PlannerMsg::ToggleOverrideSlots)
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitOverride)
+  assert_eq(state.overrides.len(), 4)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::DeleteCustomCourse(course_id~),
+  )
+  assert_eq(state.overrides.len(), 1)
+  assert_eq(
+    state.overrides.entries()[0].text().unwrap(),
+    "Keep master override",
+  )
+  assert_true(
+    @app.decode_planner_state(state, @app.encode_planner_state(state)) is Ok(_),
+  )
+}
