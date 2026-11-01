@@ -181,6 +181,9 @@ fn PersistenceModel::update(
             return (next, None)
           }
           let text = @app.encode_planner_state(planner)
+          if !discarding && text == @app.encode_planner_state(self.planner) {
+            return (next, None)
+          }
           let queued = self.pending_text == Some(text)
           let up_to_date = self.planner.storage_status ==
             @app.StorageStatus::Saved &&

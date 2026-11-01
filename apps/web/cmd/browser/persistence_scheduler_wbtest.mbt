@@ -299,3 +299,22 @@ test "scheduler view equality includes changed recovery guidance without expirin
   assert_eq(second.planner.revision, first.planner.revision)
   assert_true(second.planner.undo_available())
 }
+
+///|
+test "UI-only edits do not retry a failed save of unchanged source" {
+  let (edited, _) = ready_scheduler().update(
+    Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
+  )
+  let (failed, _) = edited.update(
+    WriteFinished(text=scheduler_text(edited), result=Err("Quota")),
+  )
+  for
+    message in [
+      @app.PlannerMsg::OpenSettings,
+      @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+    ] {
+    let (unchanged, request) = failed.update(Planner(message))
+    assert_eq(scheduler_text(unchanged), scheduler_text(failed))
+    assert_eq(request, None)
+  }
+}
