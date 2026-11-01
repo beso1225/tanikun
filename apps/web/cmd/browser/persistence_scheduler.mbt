@@ -4,7 +4,8 @@
 struct PersistenceModel {
   planner : @app.PlannerState
   last_saved_text : String?
-  pending_text : String?
+  pending_write : PersistenceWrite?
+  next_sequence : Int
   startup : PersistenceStartup
 }
 
@@ -20,18 +21,49 @@ enum PersistenceStartup {
 enum PersistenceEvent {
   Planner(@app.PlannerMsg)
   ReadFinished(Result[String, String])
-  WriteFinished(text~ : String, result~ : Result[Unit, String])
+  WriteFinished(PersistenceWrite, Result[Unit, String])
+  WriteStatus(PersistenceWrite, @app.StorageStatus)
 }
+
+///|
+struct PersistenceWrite {
+  sequence : Int
+  text : String
+  replace : Bool
+} derive(Eq, Debug)
 
 ///|
 enum PersistenceRequest {
   Read
-  Write(text~ : String, replace~ : Bool)
+  Write(PersistenceWrite)
 } derive(Eq, Debug)
 
 ///|
 fn PersistenceModel::new(planner : @app.PlannerState) -> PersistenceModel {
-  { planner, last_saved_text: None, pending_text: None, startup: Reading, }
+  {
+    planner,
+    last_saved_text: None,
+    pending_write: None,
+    next_sequence: 1,
+    startup: Reading,
+  }
+}
+
+///|
+fn PersistenceModel::write(
+  self : PersistenceModel,
+  text : String,
+  replace : Bool,
+) -> (PersistenceModel, PersistenceRequest?) {
+  let write = { sequence: self.next_sequence, text, replace, }
+  (
+    {
+      ..self,
+      pending_write: Some(write),
+      next_sequence: self.next_sequence + 1,
+    },
+    Some(Write(write)),
+  )
 }
 
 ///|
@@ -51,13 +83,14 @@ fn PersistenceModel::hydrate(
     @app.PlannerMsg::Hydrate(text~),
   )
   {
+    ..self,
     planner,
     last_saved_text: if planner.storage_status == @app.StorageStatus::Saved {
       Some(@app.encode_planner_state(planner))
     } else {
       None
     },
-    pending_text: None,
+    pending_write: None,
     startup: Ready,
   }
 }
@@ -96,7 +129,7 @@ fn PersistenceModel::update(
                   {
                     ..self,
                     startup: Ready,
-                    pending_text: None,
+                    pending_write: None,
                     planner: @app.update_planner(
                       self.planner,
                       @app.PlannerMsg::StorageSaveFailed(
@@ -109,38 +142,51 @@ fn PersistenceModel::update(
                 )
               _ => {
                 let text = @app.encode_planner_state(self.planner)
-                (
-                  { ..self, startup: Seeding, pending_text: Some(text), },
-                  Some(Write(text~, replace=false)),
-                )
+                { ..self, startup: Seeding, }.write(text, false)
               }
             }
           }
       }
     }
-    WriteFinished(text~, result~) => {
+    WriteStatus(write, status) => {
+      if self.pending_write != Some(write) {
+        return (self, None)
+      }
+      (
+        {
+          ..self,
+          planner: @app.update_planner(
+            self.planner,
+            @app.PlannerMsg::StorageStatusChanged(status~, text=write.text),
+          ),
+        },
+        None,
+      )
+    }
+    WriteFinished(write, result) => {
+      // Content can repeat while several writes are in flight. Only the
+      // latest request may acknowledge a save or change its visible outcome.
+      if self.pending_write != Some(write) {
+        return (self, None)
+      }
+      let text = write.text
       if self.startup is Seeding {
         return match result {
           Ok(_) => (self.hydrate(text), None)
           Err(message) =>
             (
-              { ..self, startup: RecoveringSeed(message), pending_text: None, },
+              { ..self, startup: RecoveringSeed(message), pending_write: None, },
               Some(Read),
             )
         }
       }
-      let current = self.pending_text == Some(text)
-      let next = if current {
-        {
-          ..self,
-          pending_text: None,
-          last_saved_text: match result {
-            Ok(_) => Some(text)
-            Err(_) => self.last_saved_text
-          },
-        }
-      } else {
-        self
+      let next = {
+        ..self,
+        pending_write: None,
+        last_saved_text: match result {
+          Ok(_) => Some(text)
+          Err(_) => self.last_saved_text
+        },
       }
       let message = match result {
         Ok(_) =>
@@ -184,26 +230,22 @@ fn PersistenceModel::update(
           if !discarding && text == @app.encode_planner_state(self.planner) {
             return (next, None)
           }
-          let queued = self.pending_text == Some(text)
+          let queued = self.pending_write.map(write => write.text) == Some(text)
           let up_to_date = self.planner.storage_status ==
             @app.StorageStatus::Saved &&
             self.last_saved_text == Some(text) &&
-            self.pending_text is None
+            self.pending_write is None
           if !discarding && (queued || up_to_date) {
             (next, None)
           } else {
-            (
-              {
-                ..next,
-                last_saved_text: if discarding {
-                  None
-                } else {
-                  self.last_saved_text
-                },
-                pending_text: Some(text),
+            {
+              ..next,
+              last_saved_text: if discarding {
+                None
+              } else {
+                self.last_saved_text
               },
-              Some(Write(text~, replace=discarding)),
-            )
+            }.write(text, discarding)
           }
         }
       }

@@ -24,12 +24,12 @@ fn persistence_command(
           _ => Err("保存データを読み込めません")
         }
       })
-    Some(Write(text~, replace~)) => {
+    Some(Write(write)) => {
       let save = @rabbita.perform(
-        result => emit(WriteFinished(text~, result~)),
+        result => emit(WriteFinished(write, result)),
         async fn() noraise {
           try {
-            let message = storage_save(text, replace~)
+            let message = storage_save(write.text, replace=write.replace)
             if message.is_empty() {
               Ok(())
             } else {
@@ -44,24 +44,10 @@ fn persistence_command(
       if model.startup is Seeding {
         return save
       }
-      let unsaved = emit(
-        Planner(
-          @app.PlannerMsg::StorageStatusChanged(
-            status=@app.StorageStatus::Unsaved,
-            text~,
-          ),
-        ),
-      )
+      let unsaved = emit(WriteStatus(write, @app.StorageStatus::Unsaved))
       // Delay only the label. The write starts in the same batch immediately.
       let saving = @rabbita.delay(
-        emit(
-          Planner(
-            @app.PlannerMsg::StorageStatusChanged(
-              status=@app.StorageStatus::Saving,
-              text~,
-            ),
-          ),
-        ),
+        emit(WriteStatus(write, @app.StorageStatus::Saving)),
         100,
       )
       @rabbita.batch([unsaved, saving, save])

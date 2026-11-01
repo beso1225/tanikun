@@ -77,11 +77,15 @@ save failure and keeps its local edit visible instead of overwriting a newer
 plan from another tab. Reload it to use the newer plan. Only explicit discard
 can bypass this comparison. This is conflict detection, not automatic tab sync.
 
-The browser keeps save acknowledgements, pending source text, and startup
+The browser keeps save acknowledgements, pending write requests, and startup
 recovery in one `PersistenceModel` per app instance. Its pure update function
 returns read/write requests; `persistence_runtime.mbt` executes them and sends
 completion events back. UI-only changes and storage notifications schedule no
 writes. Only the Saving label is delayed by 100 ms; writes start immediately.
+Each write has an increasing per-instance sequence number, retained through
+seed hydration and discard. Completion and status events carry that request;
+only the pending request may change acknowledgements or visible outcomes.
+This distinguishes repeated source text during rapid edits and Undo.
 
 ## Local change exchange
 
