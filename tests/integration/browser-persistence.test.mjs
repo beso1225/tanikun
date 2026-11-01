@@ -551,11 +551,17 @@ test("invalid peer changes never replace the committed document", async (t) => {
           null,
           await storage.load(),
         );
+        const missingReference = A.change(A.clone(base), (draft) => {
+          for (const key of Object.keys(draft.collections.offerings)) {
+            delete draft.collections.offerings[key];
+          }
+        });
         const failures = [];
         for (const batch of [
           A.getAllChanges(invalid),
           [A.getLastLocalChange(incomplete)],
           [new Uint8Array([1, 2, 3])],
+          A.getAllChanges(missingReference),
         ]) {
           try {
             await storage.merge(batch);
@@ -568,6 +574,7 @@ test("invalid peer changes never replace the committed document", async (t) => {
       });
       assert.ok(result.every((message) => typeof message === "string"));
       assert.match(result[1], /履歴が不足/);
+      assert.match(result[3], /統合した保存データが正しくありません/);
       assert.deepEqual(await storedValue(page), original);
       await page.reload();
       await waitForPersistence(page);

@@ -11,6 +11,7 @@ let
       ../apps/api
       ../apps/web/app
       ../apps/web/cmd
+      ../apps/web/fixtures
       ../apps/web/moon.mod
       ../apps/web/public/index.html
       ../apps/web/public/persistence-transactions.js

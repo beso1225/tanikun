@@ -18,7 +18,10 @@ offering, enrollment, override, or category-assignment identity. Each record is
 an immutable JSON string. This keeps a passed grade, status, and snapshot atomic,
 and preserves term-specific phases and coordination evidence together. Separate
 records merge independently. This costs field-level merging within one record:
-concurrent edits to the same record use Automerge's deterministic winner.
+concurrent edits to the same record use Automerge's deterministic winner. The
+JavaScript normalizer rejects duplicate override identities with the same
+target and attribute key as the domain, even though the stored collection key
+keeps compatibility fields that the domain ignores.
 
 Custom course deletion takes precedence over concurrent edits and enrollment.
 Deletion records a permanent `deleted_custom_course:<course key>` tombstone in
@@ -125,6 +128,12 @@ and validates the complete materialized source with
 breaks references leave the committed plan intact. Callers reload the planner
 after a successful exchange. Repeated delivery is idempotent.
 
+Each saved source edit creates a change with a fresh Automerge actor because the
+JavaScript adapter clones the document without an explicit actor. Convergence
+depends on unique change identities, not a stable replica actor. Tests that
+require deterministic conflict winners preserve the replica actor through a
+test-only clone wrapper.
+
 Replicas must branch from a shared Automerge history, copied as stored bytes.
 Independently creating two documents from the same JSON does not establish that
 history. A merge that creates an invalid plan is rejected as a whole; conflict
@@ -149,6 +158,10 @@ connection cleanup, aborted-attempt cleanup, and reconciliation with a matching
 or unrelated stored record. The suite records that `changes()` keeps the last
 adopted history immediately after a timeout. The attempted write appears after
 a late commit is adopted, or after reconciliation matches the stored bytes.
+The planner document suite validates its complete fictional fixtures through a
+MoonBit bridge. A fixed-actor delivery matrix checks both merge directions, valid
+batch permutations, repeated delivery, and save/load for scalar, atomic record,
+collection order, addition, deletion, and tombstone cases.
 `just test-browser` covers isolated browser contexts, offline edits,
 reload before exchange, repeated exchange, concurrent custom deletion and edits,
 JSON migration, interrupted writes, timed-out opens, stale tabs, initial save

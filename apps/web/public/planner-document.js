@@ -1,6 +1,10 @@
 // Atomic records keep grades and passed snapshots together. Collections use
 // stable entity keys so unrelated additions and deletions merge independently.
 const plannerCourseKey = (id) => [id.namespace_part, id.local_part];
+const overrideIdentity = (row) =>
+  row.target_kind === "course"
+    ? ["course", row.course_namespace, row.course_local, row.value_kind]
+    : ["offering", row.offering_id, row.value_kind];
 {
   const A = globalThis.Automerge;
   const deletionPrefix = "deleted_custom_course:";
@@ -45,10 +49,20 @@ const plannerCourseKey = (id) => [id.namespace_part, id.local_part];
     for (const [field, value] of Object.entries(source)) {
       if (Object.hasOwn(collections, field)) {
         const rows = {};
+        const identities = new Set();
         for (const row of value) {
           const key = JSON.stringify(collections[field](row));
           if (Object.hasOwn(rows, key))
             throw new Error("保存データのIDが重複しています");
+          // The domain identity ignores fields that the storage key keeps for
+          // compatibility. Reject a source the decoder would reject as a
+          // duplicate override before it reaches Automerge.
+          if (field === "overrides") {
+            const identity = JSON.stringify(overrideIdentity(row));
+            if (identities.has(identity))
+              throw new Error("上書きが重複しています");
+            identities.add(identity);
+          }
           rows[key] = JSON.stringify(row);
         }
         result[field] = rows;
