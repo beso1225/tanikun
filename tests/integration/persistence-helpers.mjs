@@ -168,11 +168,25 @@ export async function runBrowserJourney(
     await drive(pages, errors, origin, contexts);
     await stopTracing(contexts, name, false);
   } catch (error) {
-    await captureFailure(pages, name, error);
-    await stopTracing(contexts, name, true);
+    try {
+      await captureFailure(pages, name, error);
+    } catch {
+      // Keep the original journey failure.
+    }
+    try {
+      await stopTracing(contexts, name, true);
+    } catch {
+      // Keep the original journey failure.
+    }
     throw error;
   } finally {
-    for (const context of contexts) await context.close();
+    for (const context of contexts) {
+      try {
+        await context.close();
+      } catch {
+        // A closed or crashed page must not hide the journey result.
+      }
+    }
   }
 }
 

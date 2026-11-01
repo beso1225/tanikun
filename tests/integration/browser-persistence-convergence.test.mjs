@@ -91,7 +91,7 @@ test("isolated replicas retain offline edits across reload and converge", async 
       }
       await waitForCommittedSource(
         left,
-        'source.offerings.some((row) => row.id === "phy302-s") && source.custom_course_ids.length === 2',
+        'source.enrollments.some((row) => row.offering_id === "phy302-s") && source.custom_course_ids.length === 2',
         "left offline edits committed",
       );
       await waitForCommittedSource(
@@ -282,7 +282,7 @@ test("a stale tab cannot overwrite a newer committed plan", async (t) => {
       await left.locator("#close-picker").click();
       await waitForCommittedSource(
         left,
-        'source.offerings.some((row) => row.id === "phy302-s")',
+        'source.enrollments.some((row) => row.offering_id === "phy302-s")',
         "left tab edit committed",
       );
       await waitForPersistence(left);

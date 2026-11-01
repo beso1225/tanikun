@@ -41,7 +41,7 @@ test("local persistence restores edits after reload", async (t) => {
       await page.locator("#close-picker").click();
       await waitForCommittedSource(
         page,
-        'source.offerings.some((row) => row.id === "phy302-s")',
+        'source.enrollments.some((row) => row.offering_id === "phy302-s")',
         "added phy302 offering",
       );
       await waitForPersistence(page);
@@ -118,7 +118,7 @@ test("unsaved is visible while a source edit is queued", async (t) => {
       await releaseBarrier(page);
       await waitForCommittedSource(
         page,
-        'source.offerings.some((row) => row.id === "phy302-s")',
+        'source.enrollments.some((row) => row.offering_id === "phy302-s")',
         "queued save committed",
       );
       await waitForPersistence(page);
@@ -518,13 +518,18 @@ test("deleting a custom course with existing overrides survives reload", async (
       await page.locator("#override-credits").selectOption("6");
       await page.locator("#override-slots-enabled").click();
       await page.locator("#override-submit").click();
+      await waitForCommittedSource(
+        page,
+        "source.overrides.length === 3",
+        "custom overrides committed",
+      );
       const beforeOverrides = await readStored(page);
       await page.locator("#remove-detail").click();
       await waitForCommittedSourceAfter(
         page,
         "source.overrides.length === 3",
         beforeOverrides,
-        "custom overrides committed",
+        "detail removal committed",
       );
       await waitForPersistence(page);
       await page.locator("#open-catalogue-picker").click();
