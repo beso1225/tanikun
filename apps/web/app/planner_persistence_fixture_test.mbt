@@ -390,6 +390,8 @@ test "encoded source excludes UI state and restore resets it" {
     @app.PlannerMsg::StorageLoadFailed(message="boom"),
   )
   assert_true(failing.error is Some(_))
+  assert_true(failing.storage_status == @app.StorageStatus::LoadFailed)
+  let reset_base = failing.with_custom_id_prefix("next-session-")
   for
     dirty in [
       settings, queried, picking, selected, overriding, customizing, failing,
@@ -407,7 +409,7 @@ test "encoded source excludes UI state and restore resets it" {
     Err(message) => fail("expected a restored removed state: \{message}")
   }
   assert_true(!restored_undo.undo_available())
-  let restored = match @app.decode_planner_state(state, text) {
+  let restored = match @app.decode_planner_state(reset_base, text) {
     Ok(value) => value
     Err(message) => fail("expected a restored state: \{message}")
   }
@@ -421,7 +423,7 @@ test "encoded source excludes UI state and restore resets it" {
   assert_true(restored.error is None)
   assert_true(restored.storage_status == @app.StorageStatus::Loading)
   assert_eq(restored.revision, 1)
-  assert_eq(restored.custom_id_prefix, state.custom_id_prefix)
+  assert_eq(restored.custom_id_prefix, "next-session-")
 }
 
 ///|
