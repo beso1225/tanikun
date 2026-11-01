@@ -139,7 +139,9 @@ fn app() -> Val[Html] {
     init=app_init,
     update=app_update,
   )
-  state.view(state => planner_view(state, emit))
+  state.view(model => {
+    planner_view(model.planner, message => emit(Planner(message)))
+  })
 }
 
 ///|

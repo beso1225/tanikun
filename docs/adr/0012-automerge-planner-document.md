@@ -77,6 +77,16 @@ save failure and keeps its local edit visible instead of overwriting a newer
 plan from another tab. Reload it to use the newer plan. Only explicit discard
 can bypass this comparison. This is conflict detection, not automatic tab sync.
 
+The browser keeps save acknowledgements, pending write requests, and startup
+recovery in one `PersistenceModel` per app instance. Its pure update function
+returns read/write requests; `persistence_runtime.mbt` executes them and sends
+completion events back. UI-only changes and storage notifications schedule no
+writes. Only the Saving label is delayed by 100 ms; writes start immediately.
+Each write has an increasing per-instance sequence number, retained through
+seed hydration and discard. Completion and status events carry that request;
+only the pending request may change acknowledgements or visible outcomes.
+This distinguishes repeated source text during rapid edits and Undo.
+
 ## Local change exchange
 
 `tanikunStorage.changes()` exports local Automerge changes, including their
@@ -96,7 +106,9 @@ Workers, HTTP, authentication, background peer discovery, or remote storage.
 ## Verification
 
 `just test` exercises record convergence, source-only encoding, and custom ID
-allocation. `just test-browser` covers isolated browser contexts, offline edits,
+allocation. It also runs browser-package scheduler tests without a browser or
+real timers, covering event order, independent instances, load/seed recovery,
+stale completions, and Undo. `just test-browser` covers isolated browser contexts, offline edits,
 reload before exchange, repeated exchange, concurrent custom deletion and edits,
 JSON migration, interrupted writes, timed-out opens, stale tabs, initial save
 failures, and unsupported storage. The Phase 2 journey reloads a plan with passed grades,

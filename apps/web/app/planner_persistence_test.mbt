@@ -315,3 +315,30 @@ test "save failure guidance matches the document and preserves undo" {
   assert_eq(failed.error.unwrap().message, "Reload this tab")
   assert_true(failed.undo_available())
 }
+
+///|
+test "changed save failure guidance refreshes the view without expiring Undo" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::RemoveEnrollment(
+      offering_id=planner_offering_id("phy101-s1"),
+    ),
+  )
+  let text = @app.encode_planner_state(state)
+  let first = @app.update_planner(
+    state,
+    @app.PlannerMsg::StorageSaveFailed(message="Timeout", text~),
+  )
+  let second = @app.update_planner(
+    first,
+    @app.PlannerMsg::StorageSaveFailed(message="Reload this tab", text~),
+  )
+  assert_true(first != second)
+  assert_eq(second.revision, first.revision)
+  assert_true(second.undo_available())
+  let repeated = @app.update_planner(
+    second,
+    @app.PlannerMsg::StorageSaveFailed(message="Reload this tab", text~),
+  )
+  assert_true(repeated == second)
+}

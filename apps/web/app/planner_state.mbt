@@ -55,10 +55,13 @@ pub struct PlannerState {
 
 ///|
 /// Equality drives the Rabbita view refresh. Content changes increment the
-/// revision; persistence-status changes are included separately, so the large
-/// nested planner state does not need structural Eq.
+/// revision; persistence status and recovery text are included separately so
+/// asynchronous notifications refresh the view without expiring Undo.
 pub impl Eq for PlannerState with fn equal(self, other) {
-  self.revision == other.revision && self.storage_status == other.storage_status
+  self.revision == other.revision &&
+  self.storage_status == other.storage_status &&
+  self.error.map(error => error.message) ==
+  other.error.map(error => error.message)
 }
 
 ///|
