@@ -11,6 +11,7 @@ for (const file of [
   "index.js",
   "automerge.js",
   "planner-document.js",
+  "persistence-transactions.js",
   "persistence.js",
   "styles.css",
 ]) {
