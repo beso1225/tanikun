@@ -165,7 +165,12 @@ collection order, addition, deletion, and tombstone cases.
 `just test-browser` covers isolated browser contexts, offline edits,
 reload before exchange, repeated exchange, concurrent custom deletion and edits,
 JSON migration, interrupted writes, timed-out opens, stale tabs, initial save
-failures, and unsupported storage. The Phase 2 journey reloads a plan with passed grades,
+failures, and unsupported storage. Browser persistence helpers inspect committed
+IndexedDB bytes without calling the production load path, wait for the intended
+committed source after edits, use explicit barriers instead of fixed delays, and
+retain per-page failure screenshots and traces for multi-page journeys. The
+suites run against both the local build and the Nix-built assets. The Phase 2
+journey reloads a plan with passed grades,
 snapshots, custom categories, and overrides and checks recomputed summaries.
 The allocation journey covers term-specific and coordinated offerings.
 

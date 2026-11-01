@@ -102,10 +102,11 @@ jobs:
       - name: Rebuild release packages with fetching disabled
         run: nix build path:.#web path:.#api --offline --rebuild --no-link
       - name: Verify the built page in Chromium
+        timeout-minutes: 10
         run: |
           nix build path:.#web --out-link result-web
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" \
-            node --test tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs
+            node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs
       - name: Verify mapped planner journeys
         run: |
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" node .agents/skills/verify/scripts/doctor.mjs
