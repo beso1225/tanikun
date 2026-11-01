@@ -240,6 +240,11 @@ function assertConverged(base, left, right, label) {
   const batches = [...interleavings(leftChanges, rightChanges)];
   const documents = batches.map((batch) => applyChanges(base, batch));
   const expected = text(documents[0]);
+  assert.equal(
+    bridge.validate_persisted_source(expected),
+    "ok",
+    `${label}: merged source`,
+  );
   const expectedHeads = heads(documents[0]);
   for (const [index, document] of documents.entries()) {
     assert.equal(text(document), expected, `${label}: delivery ${index}`);
@@ -341,6 +346,10 @@ test("derived fields and duplicate identities are rejected", () => {
   assert.throws(
     () => api.update(document, JSON.stringify(duplicate)),
     /IDが重複/,
+  );
+  assert.match(
+    bridge.validate_persisted_source(JSON.stringify(duplicate)),
+    /^error:科目IDが重複しています/,
   );
 });
 
@@ -465,6 +474,24 @@ test("missing references cross the transform and fail the decoder", () => {
   assert.match(
     bridge.validate_persisted_source(text(courseDocument)),
     /^error:開講の科目がありません/,
+  );
+  const missingOfferingOverride = structuredClone(source);
+  missingOfferingOverride.overrides.find(
+    (row) => row.offering_id === "user-offering-fixture-1",
+  ).offering_id = "missing-offering";
+  assert.match(
+    bridge.validate_persisted_source(
+      text(api.update(base, JSON.stringify(missingOfferingOverride))),
+    ),
+    /^error:上書き対象の開講がありません/,
+  );
+  const missingCourseOverride = structuredClone(source);
+  missingCourseOverride.overrides[0].course_local = "missing";
+  assert.match(
+    bridge.validate_persisted_source(
+      text(api.update(base, JSON.stringify(missingCourseOverride))),
+    ),
+    /^error:上書き対象の科目がありません/,
   );
 });
 
