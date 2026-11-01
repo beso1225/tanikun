@@ -1,5 +1,6 @@
 import {
   "beso1225/tanikun-domain",
   "beso1225/tanikun-requirements",
+  "moonbitlang/core/hashset",
   "moonbitlang/core/json",
 }
