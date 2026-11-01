@@ -478,9 +478,14 @@ test("competing collection orders keep surviving keys and append additions", () 
       coordinated_source: "",
     });
   }
+  const left = edit(base, leftSource, ORDER_ACTOR, "left order");
+  assert.equal(
+    Automerge.decodeChange(Automerge.getLastLocalChange(left)).actor,
+    ORDER_ACTOR,
+  );
   const merged = assertConverged(
     base,
-    edit(base, leftSource, ORDER_ACTOR, "left order"),
+    left,
     edit(base, rightSource, ACTOR_RIGHT, "right additions"),
     "order matrix",
   );
@@ -495,6 +500,54 @@ test("competing collection orders keep surviving keys and append additions", () 
       "zzz-added",
     ],
     "winning order retains surviving keys and appends unlisted additions sorted",
+  );
+});
+
+test("concurrent additions with the same identity keep one complete record", () => {
+  const base = openDocument(source);
+  const shared = { namespace_part: "fixture", local_part: "shared" };
+  const branch = (name, credits, day) => {
+    const draft = structuredClone(source);
+    draft.catalogue.push({
+      id: shared,
+      name,
+      credits,
+      status: "active",
+    });
+    draft.offerings.push({
+      id: `shared-${name}`,
+      course_id: shared,
+      academic_year: 2026,
+      schedule: "regular",
+      terms: ["A1"],
+      semester: "",
+      status: "offered",
+      slots: [{ day, period: 2 }],
+      term_slots: [{ term: "A1", slots: [{ day, period: 2 }] }],
+      coordinated_group: "",
+      coordinated_source: "",
+    });
+    return draft;
+  };
+  const leftSource = branch("Left shared", 2, "Saturday");
+  const rightSource = branch("Right shared", 4, "Sunday");
+  const merged = assertConverged(
+    base,
+    edit(base, leftSource, ACTOR_LEFT, "left shared addition"),
+    edit(base, rightSource, ACTOR_RIGHT, "right shared addition"),
+    "same-ID additions",
+  );
+  const rows = merged.catalogue.filter((row) => sameId(row.id, shared));
+  assert.equal(rows.length, 1, "one complete shared record");
+  assert.ok(
+    JSON.stringify(rows[0]) === JSON.stringify(leftSource.catalogue.at(-1)) ||
+      JSON.stringify(rows[0]) === JSON.stringify(rightSource.catalogue.at(-1)),
+    "shared record must be one complete branch record",
+  );
+  assert.equal(
+    merged.offerings.filter((row) => sameId(row.course_id, shared)).length,
+    2,
+    "distinct offerings from both branches survive",
   );
 });
 

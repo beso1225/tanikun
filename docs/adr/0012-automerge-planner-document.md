@@ -125,6 +125,12 @@ and validates the complete materialized source with
 breaks references leave the committed plan intact. Callers reload the planner
 after a successful exchange. Repeated delivery is idempotent.
 
+Each saved source edit creates a change with a fresh Automerge actor because the
+JavaScript adapter clones the document without an explicit actor. Convergence
+depends on unique change identities, not a stable replica actor. Tests that
+require deterministic conflict winners preserve the replica actor through a
+test-only clone wrapper.
+
 Replicas must branch from a shared Automerge history, copied as stored bytes.
 Independently creating two documents from the same JSON does not establish that
 history. A merge that creates an invalid plan is rejected as a whole; conflict
