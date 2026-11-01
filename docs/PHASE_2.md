@@ -67,9 +67,10 @@ effective display value is stored in `PlannerState`. The view calls the pure
 projection methods and `planner_summary()` from the current state.
 
 `revision` is not history. Every accepted state transition increments it, and
-`PlannerState` equality compares that revision plus `storage_status` so Rabbita
-refreshes the large nested record cheaply. Persistence status changes do not
-increment `revision`, so they cannot expire the one-step Undo barrier.
+`PlannerState` equality compares that revision, `storage_status`, and the displayed
+error message so Rabbita refreshes the large nested record cheaply. Persistence
+status changes do not increment `revision`, so they cannot expire the one-step
+Undo barrier.
 
 ## Terms and academic years
 
