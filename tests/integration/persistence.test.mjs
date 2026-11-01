@@ -300,16 +300,20 @@ function decodeStored(record) {
     : record;
 }
 
-test("missing storage reports a load error and rejects saves", async () => {
+test("missing storage reports explicit load and save failures", async () => {
   const timers = manualTimers();
   const storage = createAdapter({ indexedDB: undefined, timers, timeout: 25 });
-  assert.equal(
-    await storage.load(),
-    "__tanikun_storage_error__保存領域を利用できません",
-  );
+  const loadError = await settle(storage.load());
+  assert.match(loadError.error.message, /保存領域を利用できません/);
+  assert.deepEqual(await storage.loadResult(), [
+    "failed",
+    "保存領域を利用できません",
+  ]);
+  assert.deepEqual(await storage.saveResult(JSON.stringify(source)), [
+    "failed",
+    "保存領域を利用できません",
+  ]);
   assert.equal(timers.size, 0);
-  const outcome = await settle(storage.save(JSON.stringify(source)));
-  assert.match(outcome.error.message, /保存領域を利用できません/);
 });
 
 test("an opening failure surfaces through the storage adapter", async () => {
@@ -319,12 +323,18 @@ test("an opening failure surfaces through the storage adapter", async () => {
   const loading = storage.load();
   assert.equal(idb.openings[0].version, 1);
   idb.fail(new Error("データベースを開けません"));
-  assert.equal(
-    await loading,
-    "__tanikun_storage_error__データベースを開けません",
-  );
+  const outcome = await settle(loading);
+  assert.match(outcome.error.message, /データベースを開けません/);
   assert.equal(timers.size, 0);
   assert.equal(idb.database.closeCalls, 0);
+  const second = controlledIndexedDB();
+  const result = createAdapter({
+    indexedDB: second,
+    timers,
+    timeout: 25,
+  }).loadResult();
+  second.fail(new Error("データベースを開けません"));
+  assert.deepEqual(await result, ["failed", "データベースを開けません"]);
 });
 
 test("an opening exception clears its timer", async () => {
@@ -648,8 +658,8 @@ test("the adapter stores a version 2 envelope and rejects a stale writer", async
   const timers = manualTimers();
   const left = createAdapter({ indexedDB, timers, timeout: 25 });
   const right = createAdapter({ indexedDB, timers, timeout: 25 });
-  assert.equal(await left.load(), "");
-  assert.equal(await right.load(), "");
+  assert.equal(await left.load(), null);
+  assert.equal(await right.load(), null);
   const text = JSON.stringify(source);
   await left.save(text);
   const committed = await readStored(indexedDB);
@@ -661,13 +671,53 @@ test("the adapter stores a version 2 envelope and rejects a stale writer", async
   assert.deepEqual(await readStored(indexedDB), committed);
 });
 
+test("the adapter reports explicit load and save outcomes", async () => {
+  const indexedDB = new IDBFactory();
+  const timers = manualTimers();
+  const storage = createAdapter({ indexedDB, timers, timeout: 25 });
+  const stale = createAdapter({ indexedDB, timers, timeout: 25 });
+  assert.deepEqual(await storage.loadResult(), ["missing"]);
+  assert.deepEqual(await stale.loadResult(), ["missing"]);
+  const text = JSON.stringify(source);
+  assert.deepEqual(await storage.saveResult(text), ["saved"]);
+  assert.deepEqual(await storage.loadResult(), [
+    "loaded",
+    codec.text(codec.update(null, text)),
+  ]);
+  assert.deepEqual(await storage.saveResult("{broken"), [
+    "failed",
+    "保存データが正しくありません",
+  ]);
+  const conflict = await stale.saveResult(
+    JSON.stringify({ ...source, program_id: "stale" }),
+  );
+  assert.equal(conflict[0], "failed");
+  assert.match(conflict[1], /別のタブで保存されました/);
+});
+
+test("rejected and non-Error outcomes fail with localized guidance", async () => {
+  const { calls, transact } = scriptedTransact();
+  const storage = createAdapter({ transact });
+  const loading = storage.loadResult();
+  await flush();
+  calls.at(-1).reject("unexpected");
+  assert.deepEqual(await loading, ["failed", "保存データを読み込めません"]);
+  const saving = storage.saveResult(JSON.stringify(source));
+  await flush();
+  calls.at(-1).reject("unexpected");
+  assert.deepEqual(await saving, [
+    "failed",
+    "保存できません。再読み込みしてください",
+  ]);
+});
+
 test("a merge from another replica persists the converged plan", async () => {
   const leftIDB = new IDBFactory();
   const rightIDB = new IDBFactory();
   const timers = manualTimers();
   const left = createAdapter({ indexedDB: leftIDB, timers, timeout: 25 });
   const right = createAdapter({ indexedDB: rightIDB, timers, timeout: 25 });
-  assert.equal(await left.load(), "");
+  assert.equal(await left.load(), null);
   await left.save(JSON.stringify(source));
   const base = await readStored(leftIDB);
   await writeStored(rightIDB, base);
@@ -694,7 +744,7 @@ test("a rejected save does not poison later queued writes", async () => {
   const indexedDB = new IDBFactory();
   const timers = manualTimers();
   const storage = createAdapter({ indexedDB, timers, timeout: 25 });
-  assert.equal(await storage.load(), "");
+  assert.equal(await storage.load(), null);
   const rejected = await settle(storage.save("{broken"));
   assert.match(rejected.error.message, /保存データが正しくありません/);
   const text = JSON.stringify(source);
@@ -709,7 +759,7 @@ test("a definitively aborted write keeps committed bytes and history", async () 
   const indexedDB = new IDBFactory();
   const timers = manualTimers();
   const storage = createAdapter({ indexedDB, timers, timeout: 25 });
-  assert.equal(await storage.load(), "");
+  assert.equal(await storage.load(), null);
   await storage.save(JSON.stringify(source));
   const committed = await readStored(indexedDB);
   const history = storage.changes();
@@ -765,7 +815,7 @@ test("a late commit after a timeout is adopted for later changes", async () => {
   const loadCall = calls[0];
   answerGet(startOperation(loadCall), undefined);
   loadCall.resolve(undefined);
-  assert.equal(await loading, "");
+  assert.equal(await loading, null);
   const text = JSON.stringify(source);
   const saving = settle(storage.save(text));
   await flush();
@@ -791,7 +841,7 @@ test("changes after an ambiguous timeout wait for reconciliation", async () => {
   const loading = storage.load();
   answerGet(startOperation(calls[0]), undefined);
   calls[0].resolve(undefined);
-  assert.equal(await loading, "");
+  assert.equal(await loading, null);
   const text = JSON.stringify(source);
   const saving = settle(storage.save(text));
   await flush();
@@ -830,7 +880,7 @@ test("reconciliation rejects an unrelated tab record", async () => {
   const loading = storage.load();
   answerGet(startOperation(calls[0]), undefined);
   calls[0].resolve(undefined);
-  assert.equal(await loading, "");
+  assert.equal(await loading, null);
   const text = JSON.stringify(source);
   const first = settle(storage.save(text));
   await flush();
@@ -877,7 +927,7 @@ test("an aborted attempt is dropped before the next save", async () => {
   const loading = storage.load();
   answerGet(startOperation(calls[0]), undefined);
   calls[0].resolve(undefined);
-  assert.equal(await loading, "");
+  assert.equal(await loading, null);
   const text = JSON.stringify(source);
   const aborted = settle(storage.save(text));
   await flush();

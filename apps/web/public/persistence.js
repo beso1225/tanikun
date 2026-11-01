@@ -1,5 +1,3 @@
-// Keep this prefix in sync with persistence_runtime.mbt.
-const storageErrorPrefix = "__tanikun_storage_error__";
 const sameStoredPlan = (left, right) => {
   if (left === right) return true;
   return (
@@ -11,6 +9,8 @@ const sameStoredPlan = (left, right) => {
     left.bytes.every((byte, index) => byte === right.bytes[index])
   );
 };
+const storageErrorMessage = (error, fallback) =>
+  error instanceof Error ? error.message : fallback;
 {
   // Validation, CAS comparison, and handle adoption live here. The transaction
   // lifecycle is injected so isolated instances can share one database.
@@ -88,7 +88,7 @@ const sameStoredPlan = (left, right) => {
         );
         if (stored === undefined) {
           adopt(null, stored, version);
-          return "";
+          return null;
         }
         // Version 1 JSON is validated by MoonBit before any migration write.
         // The next successful source edit upgrades it atomically to version 2.
@@ -114,7 +114,7 @@ const sameStoredPlan = (left, right) => {
           document = null;
           adoptedVersion = version;
         }
-        return `${storageErrorPrefix}${error instanceof Error ? error.message : String(error)}`;
+        throw error;
       }
     };
     const save = (text, replace = false) =>
@@ -123,7 +123,7 @@ const sameStoredPlan = (left, right) => {
         if (!replace) await reconcile();
         return persist(codec.update(document, text), replace);
       });
-    return {
+    const storage = {
       configure: (validator) => {
         validate = validator;
       },
@@ -161,6 +161,32 @@ const sameStoredPlan = (left, right) => {
           return text;
         }),
     };
+    // Explicit wire results for the MoonBit boundary. `storage.mbt` decodes
+    // these arrays into variants, so no caller inspects messages for control
+    // flow. A failure keeps its localized recovery guidance. Call the public
+    // methods so a test or a future adapter can replace them.
+    storage.loadResult = async () => {
+      try {
+        const text = await storage.load();
+        if (text === null) return ["missing"];
+        if (typeof text === "string") return ["loaded", text];
+        return ["failed", "保存データを読み込めません"];
+      } catch (error) {
+        return [
+          "failed",
+          storageErrorMessage(error, "保存データを読み込めません"),
+        ];
+      }
+    };
+    storage.saveResult = (text, replace = false) =>
+      storage.save(text, replace).then(
+        () => ["saved"],
+        (error) => [
+          "failed",
+          storageErrorMessage(error, "保存できません。再読み込みしてください"),
+        ],
+      );
+    return storage;
   };
   const storage = createStorage({
     Automerge: globalThis.Automerge,

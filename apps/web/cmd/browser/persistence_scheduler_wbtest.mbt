@@ -7,7 +7,7 @@ fn scheduler_seed() -> @app.PlannerState {
 fn ready_scheduler() -> PersistenceModel raise {
   let seed = scheduler_seed()
   let (model, request) = PersistenceModel::new(seed).update(
-    ReadFinished(Ok(@app.encode_planner_state(seed))),
+    ReadFinished(Loaded(@app.encode_planner_state(seed))),
   )
   assert_true(request is None)
   model
@@ -21,7 +21,7 @@ fn scheduler_text(model : PersistenceModel) -> String {
 ///|
 fn finished(
   model : PersistenceModel,
-  result : Result[Unit, String],
+  result : StorageSaveResult,
 ) -> PersistenceEvent {
   WriteFinished(model.pending_write.unwrap(), result)
 }
@@ -45,7 +45,7 @@ fn assert_write(
 
 ///|
 test "an older failure with repeated source cannot suppress a later save" {
-  for outcome in [Err("Timeout"), Ok(())] {
+  for outcome in [StorageSaveResult::Failed("Timeout"), Saved] {
     let seed = ready_scheduler()
     let (first, _) = seed.update(
       Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
@@ -68,8 +68,8 @@ test "an older failure with repeated source cannot suppress a later save" {
     assert_eq(old_completed.pending_write, third.pending_write)
     assert_eq(old_completed.last_saved_text, seed.last_saved_text)
     assert_true(old_completed.planner.error is None)
-    let (middle_completed, _) = old_completed.update(finished(second, Ok(())))
-    let (latest_completed, _) = middle_completed.update(finished(third, Ok(())))
+    let (middle_completed, _) = old_completed.update(finished(second, Saved))
+    let (latest_completed, _) = middle_completed.update(finished(third, Saved))
     assert_eq(latest_completed.last_saved_text, Some(scheduler_text(third)))
     assert_true(
       latest_completed.planner.storage_status == @app.StorageStatus::Saved,
@@ -135,7 +135,7 @@ test "a pending removal requires a compensating write after Undo" {
 ///|
 test "failed loads protect edits until explicit discard" {
   let (failed, request) = PersistenceModel::new(scheduler_seed()).update(
-    ReadFinished(Err("Unreadable")),
+    ReadFinished(Failed("Unreadable")),
   )
   assert_eq(request, None)
   assert_true(failed.planner.storage_status == @app.StorageStatus::LoadFailed)
@@ -158,7 +158,7 @@ test "scheduler instances own their acknowledgements and pending writes" {
   let (left, _) = left.update(
     Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
   )
-  let (left, _) = left.update(finished(left, Ok(())))
+  let (left, _) = left.update(finished(left, Saved))
   assert_eq(left.last_saved_text, Some(scheduler_text(left)))
   assert_eq(right.last_saved_text, Some(scheduler_text(right)))
   assert_true(left.last_saved_text != right.last_saved_text)
@@ -190,7 +190,7 @@ test "unchanged source and a duplicate queued document do not write again" {
 
 ///|
 test "stale success and failure preserve the current pending document and Undo" {
-  for result in [Ok(()), Err("Old write failed")] {
+  for result in [Saved, StorageSaveResult::Failed("Old write failed")] {
     let seed = ready_scheduler()
     let (first, _) = seed.update(
       Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
@@ -219,7 +219,7 @@ test "stale success and failure preserve the current pending document and Undo" 
     assert_true(current.planner.error is None)
     assert_true(current.planner.undo_available())
     assert_eq(current.planner.revision, revision)
-    let (saved, _) = current.update(finished(current, Ok(())))
+    let (saved, _) = current.update(finished(current, Saved))
     assert_eq(saved.last_saved_text, Some(scheduler_text(saved)))
     assert_eq(saved.pending_write, None)
     assert_true(saved.planner.undo_available())
@@ -232,7 +232,7 @@ test "an ambiguous failed write requires saving the previously acknowledged sour
   let (edited, _) = seed.update(
     Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
   )
-  let (failed, _) = edited.update(finished(edited, Err("Timeout")))
+  let (failed, _) = edited.update(finished(edited, Failed("Timeout")))
   assert_true(failed.planner.storage_status == @app.StorageStatus::Failed)
   let (returned, request) = failed.update(
     Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S1)),
@@ -244,10 +244,10 @@ test "an ambiguous failed write requires saving the previously acknowledged sour
 ///|
 test "a missing document seeds before hydration" {
   let model = PersistenceModel::new(scheduler_seed())
-  let (seeding, request) = model.update(ReadFinished(Ok("")))
+  let (seeding, request) = model.update(ReadFinished(Missing))
   assert_write(request, scheduler_text(model))
   assert_true(seeding.planner.storage_status == @app.StorageStatus::Loading)
-  let (saved, request) = seeding.update(finished(seeding, Ok(())))
+  let (saved, request) = seeding.update(finished(seeding, Saved))
   assert_eq(request, None)
   assert_true(saved.planner.storage_status == @app.StorageStatus::Saved)
   assert_eq(saved.pending_write, None)
@@ -256,11 +256,11 @@ test "a missing document seeds before hydration" {
 ///|
 test "a failed seed re-reads storage and remains retryable if it is still empty" {
   let (seeding, _) = PersistenceModel::new(scheduler_seed()).update(
-    ReadFinished(Ok("")),
+    ReadFinished(Missing),
   )
-  let (recovering, request) = seeding.update(finished(seeding, Err("Quota")))
+  let (recovering, request) = seeding.update(finished(seeding, Failed("Quota")))
   assert_eq(request, Some(Read))
-  let (failed, request) = recovering.update(ReadFinished(Ok("")))
+  let (failed, request) = recovering.update(ReadFinished(Missing))
   assert_eq(request, None)
   assert_true(failed.planner.storage_status == @app.StorageStatus::Failed)
   assert_eq(failed.planner.error.unwrap().message, "Quota")
@@ -273,20 +273,20 @@ test "a failed seed re-reads storage and remains retryable if it is still empty"
 ///|
 test "seed recovery hydrates a winning document or protects a failed re-read" {
   let (seeding, _) = PersistenceModel::new(scheduler_seed()).update(
-    ReadFinished(Ok("")),
+    ReadFinished(Missing),
   )
-  let (recovering, _) = seeding.update(finished(seeding, Err("Conflict")))
+  let (recovering, _) = seeding.update(finished(seeding, Failed("Conflict")))
   let winner = @app.update_planner(
     scheduler_seed(),
     @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
   )
   let (saved, request) = recovering.update(
-    ReadFinished(Ok(@app.encode_planner_state(winner))),
+    ReadFinished(Loaded(@app.encode_planner_state(winner))),
   )
   assert_eq(request, None)
   assert_true(saved.planner.storage_status == @app.StorageStatus::Saved)
   assert_true(saved.planner.selected_term == @app.PlannerTerm::S2)
-  let (failed, request) = recovering.update(ReadFinished(Err("Read failed")))
+  let (failed, request) = recovering.update(ReadFinished(Failed("Read failed")))
   assert_eq(request, None)
   assert_true(failed.planner.storage_status == @app.StorageStatus::LoadFailed)
   let (_, request) = failed.update(Planner(@app.PlannerMsg::OpenSettings))
@@ -296,7 +296,7 @@ test "seed recovery hydrates a winning document or protects a failed re-read" {
 ///|
 test "a corrupt document never schedules a seed" {
   let (failed, request) = PersistenceModel::new(scheduler_seed()).update(
-    ReadFinished(Ok("{broken")),
+    ReadFinished(Loaded("{broken")),
   )
   assert_eq(request, None)
   assert_true(failed.planner.storage_status == @app.StorageStatus::LoadFailed)
@@ -305,7 +305,7 @@ test "a corrupt document never schedules a seed" {
 
 ///|
 test "delayed Saving labels cannot replace a completed write outcome" {
-  for result in [Ok(()), Err("Reload this tab")] {
+  for result in [Saved, StorageSaveResult::Failed("Reload this tab")] {
     let (edited, _) = ready_scheduler().update(
       Planner(
         @app.PlannerMsg::RemoveEnrollment(
@@ -326,7 +326,7 @@ test "delayed Saving labels cannot replace a completed write outcome" {
 
 ///|
 test "old outcomes and labels cannot replace the latest repeated-source outcome" {
-  for outcome in [Ok(()), Err("Latest write failed")] {
+  for outcome in [Saved, StorageSaveResult::Failed("Latest write failed")] {
     let (first, _) = ready_scheduler().update(
       Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
     )
@@ -353,10 +353,10 @@ test "old outcomes and labels cannot replace the latest repeated-source outcome"
     let (completed, _) = unsaved.update(finished(third, outcome))
     for
       event in [
-        finished(first, Err("Old timeout")),
-        finished(first, Ok(())),
-        finished(second, Ok(())),
-        finished(third, Err("Duplicate callback")),
+        finished(first, Failed("Old timeout")),
+        finished(first, Saved),
+        finished(second, Saved),
+        finished(third, Failed("Duplicate callback")),
         WriteStatus(first.pending_write.unwrap(), @app.StorageStatus::Unsaved),
         WriteStatus(third.pending_write.unwrap(), @app.StorageStatus::Saving),
       ] {
@@ -372,9 +372,9 @@ test "old outcomes and labels cannot replace the latest repeated-source outcome"
 ///|
 test "seed and discard requests keep a monotonic write identity" {
   let (seed, _) = PersistenceModel::new(scheduler_seed()).update(
-    ReadFinished(Ok("")),
+    ReadFinished(Missing),
   )
-  let (saved, _) = seed.update(finished(seed, Ok(())))
+  let (saved, _) = seed.update(finished(seed, Saved))
   let (edited, _) = saved.update(
     Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
   )
@@ -390,7 +390,7 @@ test "seed and discard requests keep a monotonic write identity" {
     discarded.pending_write.unwrap().sequence,
   )
   assert_write(request, scheduler_text(discarded), replace=true)
-  let (late, request) = discarded.update(finished(edited, Err("Old error")))
+  let (late, request) = discarded.update(finished(edited, Failed("Old error")))
   assert_eq(request, None)
   assert_eq(late.pending_write, discarded.pending_write)
   assert_true(late.planner.error is None)
@@ -406,7 +406,7 @@ test "scheduler view equality includes changed recovery guidance without expirin
     ),
   )
   let text = scheduler_text(edited)
-  let (first, _) = edited.update(finished(edited, Err("Timeout")))
+  let (first, _) = edited.update(finished(edited, Failed("Timeout")))
   let (second, request) = first.update(
     Planner(
       @app.PlannerMsg::StorageSaveFailed(message="Reload this tab", text~),
@@ -423,7 +423,7 @@ test "UI-only edits do not retry a failed save of unchanged source" {
   let (edited, _) = ready_scheduler().update(
     Planner(@app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2)),
   )
-  let (failed, _) = edited.update(finished(edited, Err("Quota")))
+  let (failed, _) = edited.update(finished(edited, Failed("Quota")))
   for
     message in [
       @app.PlannerMsg::OpenSettings,

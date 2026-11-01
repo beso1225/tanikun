@@ -1,9 +1,4 @@
 ///|
-// Keep this prefix in sync with apps/web/public/persistence.js until #124
-// replaces the string protocol at the FFI boundary.
-let storage_error_prefix = "__tanikun_storage_error__"
-
-///|
 fn persistence_command(
   model : PersistenceModel,
   request : PersistenceRequest?,
@@ -13,33 +8,12 @@ fn persistence_command(
     None => @rabbita.none
     Some(Read) =>
       @rabbita.perform(result => emit(ReadFinished(result)), async fn() noraise {
-        try {
-          let text = storage_load()
-          if text.has_prefix(storage_error_prefix) {
-            Err(text[storage_error_prefix.length():].to_owned())
-          } else {
-            Ok(text)
-          }
-        } catch {
-          _ => Err("保存データを読み込めません")
-        }
+        storage_load()
       })
     Some(Write(write)) => {
       let save = @rabbita.perform(
         result => emit(WriteFinished(write, result)),
-        async fn() noraise {
-          try {
-            let message = storage_save(write.text, replace=write.replace)
-            if message.is_empty() {
-              Ok(())
-            } else {
-              Err(message)
-            }
-          } catch {
-            _ =>
-              Err("保存できません。再読み込みしてください")
-          }
-        },
+        async fn() noraise { storage_save(write.text, replace=write.replace) },
       )
       if model.startup is Seeding {
         return save
