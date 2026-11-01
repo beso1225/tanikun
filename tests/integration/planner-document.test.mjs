@@ -162,6 +162,16 @@ const source = {
       credits: 0,
       slots: [{ day: "Tuesday", period: 4 }],
     },
+    {
+      target_kind: "offering",
+      course_namespace: "",
+      course_local: "",
+      offering_id: "user-offering-fixture-1",
+      value_kind: "slots",
+      text: "",
+      credits: 0,
+      slots: [{ day: "Thursday", period: 5 }],
+    },
   ],
   program_id: "fixture-program",
   advancement_year: 2026,
@@ -277,6 +287,7 @@ function deletedCustomSource() {
   );
   deleted.overrides = deleted.overrides.filter(
     (row) =>
+      row.offering_id !== "user-offering-fixture-1" &&
       !(
         row.course_namespace === custom.namespace_part &&
         row.course_local === custom.local_part
@@ -333,6 +344,130 @@ test("derived fields and duplicate identities are rejected", () => {
   );
 });
 
+test("collection identities agree between the transform and the decoder", () => {
+  const document = openDocument(source, "identity base");
+  const duplicateOffering = structuredClone(source);
+  duplicateOffering.offerings.push(
+    structuredClone(duplicateOffering.offerings[0]),
+  );
+  assert.throws(
+    () => api.update(document, JSON.stringify(duplicateOffering)),
+    /IDが重複/,
+  );
+  assert.match(
+    bridge.validate_persisted_source(JSON.stringify(duplicateOffering)),
+    /^error:開講IDが重複しています/,
+  );
+  const duplicateEnrollment = structuredClone(source);
+  duplicateEnrollment.enrollments.push(
+    structuredClone(duplicateEnrollment.enrollments[0]),
+  );
+  assert.throws(
+    () => api.update(document, JSON.stringify(duplicateEnrollment)),
+    /IDが重複/,
+  );
+  assert.match(
+    bridge.validate_persisted_source(JSON.stringify(duplicateEnrollment)),
+    /^error:履修が重複しています/,
+  );
+  const duplicateOverride = structuredClone(source);
+  duplicateOverride.overrides.push(
+    structuredClone(duplicateOverride.overrides[0]),
+  );
+  assert.throws(
+    () => api.update(document, JSON.stringify(duplicateOverride)),
+    /IDが重複/,
+  );
+  assert.match(
+    bridge.validate_persisted_source(JSON.stringify(duplicateOverride)),
+    /^error:上書きが重複しています/,
+  );
+  const ignoredField = structuredClone(source);
+  ignoredField.overrides.push({
+    target_kind: "course",
+    course_namespace: "fixture",
+    course_local: "retired",
+    offering_id: "ignored-a",
+    value_kind: "text",
+    text: "Retired rename",
+    credits: 0,
+    slots: [],
+  });
+  const differentIgnoredField = structuredClone(ignoredField);
+  differentIgnoredField.overrides.push({
+    ...ignoredField.overrides.at(-1),
+    offering_id: "ignored-b",
+  });
+  assert.throws(
+    () => api.update(document, JSON.stringify(differentIgnoredField)),
+    /上書きが重複しています/,
+  );
+  assert.match(
+    bridge.validate_persisted_source(JSON.stringify(differentIgnoredField)),
+    /^error:上書きが重複しています/,
+  );
+});
+
+test("concurrent offering phases keep one complete offering record", () => {
+  const base = openDocument(source);
+  const leftSource = structuredClone(source);
+  const leftOffering = leftSource.offerings[0];
+  leftOffering.slots = [
+    { day: "Monday", period: 3 },
+    { day: "Thursday", period: 2 },
+  ];
+  leftOffering.term_slots = [
+    { term: "S1", slots: [{ day: "Monday", period: 3 }] },
+    { term: "S2", slots: [{ day: "Thursday", period: 2 }] },
+  ];
+  const rightSource = structuredClone(source);
+  const rightOffering = rightSource.offerings[0];
+  rightOffering.slots = [
+    { day: "Monday", period: 1 },
+    { day: "Thursday", period: 4 },
+  ];
+  rightOffering.term_slots = [
+    { term: "S1", slots: [{ day: "Monday", period: 1 }] },
+    { term: "S2", slots: [{ day: "Thursday", period: 4 }] },
+  ];
+  const merged = assertConverged(
+    base,
+    edit(base, leftSource, ACTOR_LEFT, "left offering phases"),
+    edit(base, rightSource, ACTOR_RIGHT, "right offering phases"),
+    "offering phase matrix",
+  );
+  const offering = merged.offerings.find(
+    (row) => row.id === "fixture-offering-1",
+  );
+  assert.ok(
+    JSON.stringify(offering) === JSON.stringify(leftOffering) ||
+      JSON.stringify(offering) === JSON.stringify(rightOffering),
+    "offering slots and phases must be one complete branch record",
+  );
+});
+
+test("missing references cross the transform and fail the decoder", () => {
+  const base = openDocument(source);
+  const missingOffering = structuredClone(source);
+  missingOffering.enrollments[0].offering_id = "missing-offering";
+  const document = api.update(base, JSON.stringify(missingOffering));
+  const output = text(document);
+  assert.match(
+    bridge.validate_persisted_source(output),
+    /^error:履修の開講がありません/,
+  );
+  const missingCourse = structuredClone(source);
+  missingCourse.offerings[0].course_id = {
+    namespace_part: "fixture",
+    local_part: "missing",
+  };
+  const courseDocument = api.update(base, JSON.stringify(missingCourse));
+  assert.match(
+    bridge.validate_persisted_source(text(courseDocument)),
+    /^error:開講の科目がありません/,
+  );
+});
+
 test("concurrent scalar and same-record edits converge in every delivery order", () => {
   const base = openDocument(source);
   const leftFirst = structuredClone(source);
@@ -344,6 +479,7 @@ test("concurrent scalar and same-record edits converge in every delivery order",
   leftSecond.enrollments[0].snapshot.credits = 9;
   const rightFirst = structuredClone(source);
   rightFirst.visible_days = 6;
+  rightFirst.selected_term = "A1";
   const rightSecond = structuredClone(rightFirst);
   rightSecond.overrides[0].text = "Right rename";
   rightSecond.enrollments[0].passing_grade = "fair";
@@ -372,7 +508,10 @@ test("concurrent scalar and same-record edits converge in every delivery order",
     ACTOR_RIGHT,
   );
   const merged = assertConverged(base, left, right, "scalar matrix");
-  assert.equal(merged.selected_term, "S2");
+  assert.ok(
+    merged.selected_term === "S2" || merged.selected_term === "A1",
+    "same-scalar conflict selects one branch value",
+  );
   assert.equal(merged.visible_days, 6);
   assert.ok(
     JSON.stringify(merged.overrides[0]) ===
@@ -607,6 +746,15 @@ test("custom deletion wins over every dependent edit and cannot revive", () => {
           credits: 0,
           slots: [],
         });
+      },
+    ],
+    [
+      "offering override",
+      (draft) => {
+        const override = draft.overrides.find(
+          (row) => row.offering_id === "user-offering-fixture-1",
+        );
+        override.slots = [{ day: "Monday", period: 5 }];
       },
     ],
   ]) {

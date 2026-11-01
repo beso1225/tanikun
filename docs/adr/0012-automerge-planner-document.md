@@ -18,7 +18,10 @@ offering, enrollment, override, or category-assignment identity. Each record is
 an immutable JSON string. This keeps a passed grade, status, and snapshot atomic,
 and preserves term-specific phases and coordination evidence together. Separate
 records merge independently. This costs field-level merging within one record:
-concurrent edits to the same record use Automerge's deterministic winner.
+concurrent edits to the same record use Automerge's deterministic winner. The
+JavaScript normalizer rejects duplicate override identities with the same
+target and attribute key as the domain, even though the stored collection key
+keeps compatibility fields that the domain ignores.
 
 Custom course deletion takes precedence over concurrent edits and enrollment.
 Deletion records a permanent `deleted_custom_course:<course key>` tombstone in
