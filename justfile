@@ -38,7 +38,8 @@ test: build
         -p beso1225/tanikun-api \
         -p beso1225/tanikun-domain \
         -p beso1225/tanikun-requirements \
-        -p beso1225/tanikun-web/app
+        -p beso1225/tanikun-web/app \
+        -p beso1225/tanikun-web/cmd/browser
     node --test tests/integration/moonbit-export.test.mjs
     node --test tests/integration/planner-document.test.mjs
 
