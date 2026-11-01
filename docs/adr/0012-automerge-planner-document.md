@@ -71,6 +71,14 @@ this tracking after a timeout, with operation versions preventing an older
 delayed event from replacing newer state. Save errors carry their recovery
 message into the shell, matched to the current source document.
 
+The IndexedDB connection and transaction lifecycle live in
+`apps/web/public/persistence-transactions.js`. It receives the database and
+timer functions explicitly, so tests can drive blocked, late, timed-out, and
+delayed-completion events without patching browser globals.
+`apps/web/public/persistence.js` owns validation, CAS comparison, and handle
+adoption. It accepts an isolated transaction boundary and builds the browser
+entry point `tanikunStorage` from the production dependencies.
+
 Each write compares the stored value with the last value read or committed by
 this tab in the same IndexedDB read/write transaction. A stale tab reports a
 save failure and keeps its local edit visible instead of overwriting a newer
@@ -108,7 +116,15 @@ Workers, HTTP, authentication, background peer discovery, or remote storage.
 `just test` exercises record convergence, source-only encoding, and custom ID
 allocation. It also runs browser-package scheduler tests without a browser or
 real timers, covering event order, independent instances, load/seed recovery,
-stale completions, and Undo. `just test-browser` covers isolated browser contexts, offline edits,
+stale completions, and Undo. A persistence adapter suite runs the production
+`persistence.js` against `fake-indexeddb` and controlled timers. It covers
+missing storage, open, transaction, and request failures, blocked and late
+opens, active-transaction timeout and abort, delayed commits, retries,
+connection cleanup, aborted-attempt cleanup, and reconciliation with a matching
+or unrelated stored record. The suite records that `changes()` keeps the last
+adopted history immediately after a timeout. The attempted write appears after
+a late commit is adopted, or after reconciliation matches the stored bytes.
+`just test-browser` covers isolated browser contexts, offline edits,
 reload before exchange, repeated exchange, concurrent custom deletion and edits,
 JSON migration, interrupted writes, timed-out opens, stale tabs, initial save
 failures, and unsupported storage. The Phase 2 journey reloads a plan with passed grades,

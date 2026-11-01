@@ -13,6 +13,7 @@ let
       ../apps/web/cmd
       ../apps/web/moon.mod
       ../apps/web/public/index.html
+      ../apps/web/public/persistence-transactions.js
       ../apps/web/public/persistence.js
       ../apps/web/public/planner-document.js
       ../apps/web/styles
@@ -98,7 +99,7 @@ let
       moon check --frozen --target js --deny-warn
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-web/app -p beso1225/tanikun-web/cmd/browser
       moon build --frozen --target js --release --deny-warn
-      node --test tests/integration/moonbit-export.test.mjs tests/integration/tailwind.test.mjs tests/integration/planner-document.test.mjs
+      node --test tests/integration/moonbit-export.test.mjs tests/integration/tailwind.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs
     '';
     installPhase = ''
       mkdir -p "$out"

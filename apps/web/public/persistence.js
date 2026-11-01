@@ -11,156 +11,76 @@ const sameStoredPlan = (left, right) => {
     left.bytes.every((byte, index) => byte === right.bytes[index])
   );
 };
-// Abort transactions on timeout. A late open is closed without running work,
-// so a timed-out write can never overwrite a later successful write.
-const transact = (mode, operation, onCommit) =>
-  new Promise((resolve, reject) => {
-    if (!globalThis.indexedDB) {
-      reject(new Error("保存領域を利用できません"));
-      return;
-    }
-    let settled = false;
-    let database;
-    let transaction;
-    let request;
-    const finish = (error, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      database?.close();
-      if (error) reject(error);
-      else resolve(value);
+{
+  // Validation, CAS comparison, and handle adoption live here. The transaction
+  // lifecycle is injected so isolated instances can share one database.
+  const createStorage = ({ Automerge: A, codec, transact }) => {
+    let document = null;
+    let lastRecord;
+    let nextVersion = 0;
+    let adoptedVersion = 0;
+    const attempts = new Map();
+    const adopt = (next, record, version) => {
+      if (version < adoptedVersion) return;
+      document = next;
+      lastRecord = record;
+      adoptedVersion = version;
+      for (const key of attempts.keys())
+        if (key <= version) attempts.delete(key);
     };
-    const timer = setTimeout(() => {
-      finish(new Error("保存領域へのアクセスがタイムアウトしました"));
-      try {
-        transaction?.abort();
-      } catch {
-        // A transaction may already have completed before its event runs.
-      }
-    }, 5000);
-    const opening = indexedDB.open("tanikun-planner", 1);
-    opening.addEventListener(
-      "upgradeneeded",
-      () => opening.result.createObjectStore("documents"),
-      { once: true },
-    );
-    opening.addEventListener("error", () => finish(opening.error), {
-      once: true,
-    });
-    opening.addEventListener(
-      "success",
-      () => {
-        database = opening.result;
-        if (settled) {
-          database.close();
+    const reconcile = async () => {
+      if (attempts.size === 0) return;
+      const stored = await transact("readonly", (store) =>
+        store.get("planner"),
+      );
+      for (const [version, attempt] of attempts) {
+        if (sameStoredPlan(stored, attempt.record)) {
+          adopt(attempt.next, stored, version);
           return;
         }
-        try {
-          transaction = database.transaction("documents", mode);
-          transaction.addEventListener(
-            "complete",
+      }
+    };
+    let validate;
+    let writeQueue = Promise.resolve();
+    const enqueue = (operation) => {
+      const result = writeQueue.then(operation, operation);
+      writeQueue = result.catch(() => {});
+      return result;
+    };
+    const persist = async (next, replace = false) => {
+      const version = ++nextVersion;
+      const record = { storageVersion: 2, bytes: A.save(next) };
+      await transact(
+        "readwrite",
+        (store, fail) => {
+          const get = store.get("planner");
+          get.addEventListener(
+            "success",
             () => {
-              // A commit can precede its event handler and the timeout. Track
-              // the durable outcome even if the promise already timed out.
-              onCommit?.();
-              finish(null, request?.result);
+              if (!replace && !sameStoredPlan(get.result, lastRecord)) {
+                fail(
+                  new Error("別のタブで保存されました。再読み込みしてください"),
+                );
+                return;
+              }
+              try {
+                store.put(record, "planner");
+                attempts.set(version, { next, record });
+              } catch (error) {
+                fail(error);
+              }
             },
             { once: true },
           );
-          transaction.addEventListener(
-            "error",
-            () =>
-              finish(
-                transaction.error ?? new Error("保存領域にアクセスできません"),
-              ),
-            { once: true },
-          );
-          transaction.addEventListener(
-            "abort",
-            () =>
-              finish(transaction.error ?? new Error("保存が中断されました")),
-            { once: true },
-          );
-          request = operation(transaction.objectStore("documents"), (error) => {
-            transaction.abort();
-            finish(error);
-          });
-        } catch (error) {
-          transaction?.abort();
-          finish(error);
-        }
-      },
-      { once: true },
-    );
-  });
-{
-  const A = globalThis.Automerge;
-  const codec = globalThis.tanikunDocument;
-  let document = null;
-  let lastRecord;
-  let nextVersion = 0;
-  let adoptedVersion = 0;
-  const attempts = new Map();
-  const adopt = (next, record, version) => {
-    if (version < adoptedVersion) return;
-    document = next;
-    lastRecord = record;
-    adoptedVersion = version;
-    for (const key of attempts.keys()) if (key <= version) attempts.delete(key);
-  };
-  const reconcile = async () => {
-    if (attempts.size === 0) return;
-    const stored = await transact("readonly", (store) => store.get("planner"));
-    for (const [version, attempt] of attempts) {
-      if (sameStoredPlan(stored, attempt.record)) {
-        adopt(attempt.next, stored, version);
-        return;
-      }
-    }
-  };
-  let validate;
-  let writeQueue = Promise.resolve();
-  const enqueue = (operation) => {
-    const result = writeQueue.then(operation, operation);
-    writeQueue = result.catch(() => {});
-    return result;
-  };
-  const persist = async (next, replace = false) => {
-    const version = ++nextVersion;
-    const record = { storageVersion: 2, bytes: A.save(next) };
-    await transact(
-      "readwrite",
-      (store, fail) => {
-        const get = store.get("planner");
-        get.addEventListener(
-          "success",
-          () => {
-            if (!replace && !sameStoredPlan(get.result, lastRecord)) {
-              fail(
-                new Error("別のタブで保存されました。再読み込みしてください"),
-              );
-              return;
-            }
-            try {
-              store.put(record, "planner");
-              attempts.set(version, { next, record });
-            } catch (error) {
-              fail(error);
-            }
-          },
-          { once: true },
-        );
-        return get;
-      },
-      () => adopt(next, record, version),
-    );
-  };
-  globalThis.tanikunStorage = {
-    configure: (validator) => {
-      validate = validator;
-    },
-    load: async () => {
+          return get;
+        },
+        {
+          onCommit: () => adopt(next, record, version),
+          onAbort: () => attempts.delete(version),
+        },
+      );
+    };
+    const load = async () => {
       const version = ++nextVersion;
       try {
         const stored = await transact("readonly", (store) =>
@@ -196,43 +116,65 @@ const transact = (mode, operation, onCommit) =>
         }
         return `${storageErrorPrefix}${error instanceof Error ? error.message : String(error)}`;
       }
-    },
-    save: (text, replace = false) =>
+    };
+    const save = (text, replace = false) =>
       enqueue(async () => {
         if (!validate?.(text)) throw new Error("保存データが正しくありません");
         if (!replace) await reconcile();
         return persist(codec.update(document, text), replace);
-      }),
-    // Device-local exchange boundary, with no transport or background sync.
-    // Validate the complete merged source through the configured app model
-    // before replacing the last committed document.
-    changes: () => (document ? A.getAllChanges(document) : []),
-    merge: (changes) =>
-      enqueue(async () => {
-        await reconcile();
-        const incoming = changes.map((change) => A.decodeChange(change));
-        const known = new Set([
-          ...A.getAllChanges(document ?? A.init()).map(
-            (change) => A.decodeChange(change).hash,
-          ),
-          ...incoming.map((change) => change.hash),
-        ]);
-        if (
-          incoming.some((change) =>
-            change.deps.some((dependency) => !known.has(dependency)),
-          )
-        ) {
-          throw new Error("統合する変更の履歴が不足しています");
-        }
-        const next = A.applyChanges(
-          document ? A.clone(document) : A.init(),
-          changes,
-        )[0];
-        const text = codec.text(next);
-        if (validate?.(text) !== true)
-          throw new Error("統合した保存データが正しくありません");
-        await persist(next);
-        return text;
-      }),
+      });
+    return {
+      configure: (validator) => {
+        validate = validator;
+      },
+      load,
+      save,
+      // Device-local exchange boundary, with no transport or background sync.
+      // Validate the complete merged source through the configured app model
+      // before replacing the last committed document.
+      changes: () => (document ? A.getAllChanges(document) : []),
+      merge: (changes) =>
+        enqueue(async () => {
+          await reconcile();
+          const incoming = changes.map((change) => A.decodeChange(change));
+          const known = new Set([
+            ...A.getAllChanges(document ?? A.init()).map(
+              (change) => A.decodeChange(change).hash,
+            ),
+            ...incoming.map((change) => change.hash),
+          ]);
+          if (
+            incoming.some((change) =>
+              change.deps.some((dependency) => !known.has(dependency)),
+            )
+          ) {
+            throw new Error("統合する変更の履歴が不足しています");
+          }
+          const next = A.applyChanges(
+            document ? A.clone(document) : A.init(),
+            changes,
+          )[0];
+          const text = codec.text(next);
+          if (validate?.(text) !== true)
+            throw new Error("統合した保存データが正しくありません");
+          await persist(next);
+          return text;
+        }),
+    };
   };
+  const storage = createStorage({
+    Automerge: globalThis.Automerge,
+    codec: globalThis.tanikunDocument,
+    transact: globalThis.tanikunPersistenceTransactions.createTransactions({
+      indexedDB: globalThis.indexedDB,
+      // Delegate through globals so existing browser fault injection still
+      // shortens the production timeout.
+      timers: {
+        setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
+        clearTimeout: (handle) => globalThis.clearTimeout(handle),
+      },
+    }),
+  });
+  globalThis.tanikunStorage = storage;
+  globalThis.tanikunPersistence = { createStorage };
 }
