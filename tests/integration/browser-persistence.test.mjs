@@ -596,6 +596,94 @@ test("unavailable IndexedDB has a visible read-only outcome", async (t) => {
   });
 });
 
+test("a rejected load result falls back to the load failure guidance", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-load-rejection",
+    async (page, errors) => {
+      await page.addInitScript(() => {
+        let storage;
+        Object.defineProperty(globalThis, "tanikunStorage", {
+          configurable: true,
+          get: () => storage,
+          set: (value) => {
+            value.loadResult = () => Promise.reject("unexpected");
+            storage = value;
+          },
+        });
+      });
+      await page.goto(origin);
+      await waitForPersistence(page, "読み込み失敗");
+      assert.match(
+        await page.locator("#planner-error").innerText(),
+        /保存データを読み込めません/,
+      );
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
+test("a malformed load wire fails closed", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-load-malformed",
+    async (page, errors) => {
+      await page.addInitScript(() => {
+        let storage;
+        Object.defineProperty(globalThis, "tanikunStorage", {
+          configurable: true,
+          get: () => storage,
+          set: (value) => {
+            value.loadResult = () => Promise.resolve(["loaded", 42]);
+            storage = value;
+          },
+        });
+      });
+      await page.goto(origin);
+      await waitForPersistence(page, "読み込み失敗");
+      assert.match(
+        await page.locator("#planner-error").innerText(),
+        /保存データを読み込めません/,
+      );
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
+test("a rejected save result reports save failure", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-save-rejection",
+    async (page, errors) => {
+      await page.goto(origin);
+      await waitForPersistence(page);
+      await page.evaluate(() => {
+        globalThis.tanikunStorage.saveResult = () =>
+          Promise.reject("unexpected");
+      });
+      await page.locator("#term-S2").click();
+      await waitForPersistence(page, "保存失敗");
+      assert.match(
+        await page.locator("#planner-error").innerText(),
+        /保存できません。再読み込みしてください/,
+      );
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
 test("a failed initial seed write reports save failure and a later edit retries", async (t) => {
   const { server, origin } = await startStaticServer(dist);
   t.after(() => new Promise((done) => server.close(done)));

@@ -20,8 +20,8 @@ enum PersistenceStartup {
 ///|
 enum PersistenceEvent {
   Planner(@app.PlannerMsg)
-  ReadFinished(Result[String, String])
-  WriteFinished(PersistenceWrite, Result[Unit, String])
+  ReadFinished(StorageLoadResult)
+  WriteFinished(PersistenceWrite, StorageSaveResult)
   WriteStatus(PersistenceWrite, @app.StorageStatus)
 }
 
@@ -107,7 +107,7 @@ fn PersistenceModel::update(
         Reading | RecoveringSeed(_) => ()
       }
       match result {
-        Err(message) =>
+        Failed(message) =>
           (
             {
               ..self,
@@ -119,31 +119,28 @@ fn PersistenceModel::update(
             },
             None,
           )
-        Ok(text) =>
-          if !text.is_empty() {
-            (self.hydrate(text), None)
-          } else {
-            match self.startup {
-              RecoveringSeed(message) =>
-                (
-                  {
-                    ..self,
-                    startup: Ready,
-                    pending_write: None,
-                    planner: @app.update_planner(
-                      self.planner,
-                      @app.PlannerMsg::StorageSaveFailed(
-                        message~,
-                        text=@app.encode_planner_state(self.planner),
-                      ),
+        Loaded(text) => (self.hydrate(text), None)
+        Missing =>
+          match self.startup {
+            RecoveringSeed(message) =>
+              (
+                {
+                  ..self,
+                  startup: Ready,
+                  pending_write: None,
+                  planner: @app.update_planner(
+                    self.planner,
+                    @app.PlannerMsg::StorageSaveFailed(
+                      message~,
+                      text=@app.encode_planner_state(self.planner),
                     ),
-                  },
-                  None,
-                )
-              _ => {
-                let text = @app.encode_planner_state(self.planner)
-                { ..self, startup: Seeding, }.write(text, false)
-              }
+                  ),
+                },
+                None,
+              )
+            _ => {
+              let text = @app.encode_planner_state(self.planner)
+              { ..self, startup: Seeding, }.write(text, false)
             }
           }
       }
@@ -172,8 +169,8 @@ fn PersistenceModel::update(
       let text = write.text
       if self.startup is Seeding {
         return match result {
-          Ok(_) => (self.hydrate(text), None)
-          Err(message) =>
+          Saved => (self.hydrate(text), None)
+          Failed(message) =>
             (
               { ..self, startup: RecoveringSeed(message), pending_write: None, },
               Some(Read),
@@ -184,17 +181,17 @@ fn PersistenceModel::update(
         ..self,
         pending_write: None,
         last_saved_text: match result {
-          Ok(_) => Some(text)
-          Err(_) => self.last_saved_text
+          Saved => Some(text)
+          Failed(_) => self.last_saved_text
         },
       }
       let message = match result {
-        Ok(_) =>
+        Saved =>
           @app.PlannerMsg::StorageStatusChanged(
             status=@app.StorageStatus::Saved,
             text~,
           )
-        Err(message) => @app.PlannerMsg::StorageSaveFailed(message~, text~)
+        Failed(message) => @app.PlannerMsg::StorageSaveFailed(message~, text~)
       }
       ({ ..next, planner: @app.update_planner(next.planner, message), }, None)
     }

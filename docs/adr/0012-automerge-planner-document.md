@@ -79,6 +79,16 @@ delayed-completion events without patching browser globals.
 adoption. It accepts an isolated transaction boundary and builds the browser
 entry point `tanikunStorage` from the production dependencies.
 
+The JavaScript adapter returns explicit wire results to MoonBit. A load reports
+`missing`, `loaded`, or `failed`; a save reports `saved` or `failed`.
+`apps/web/cmd/browser/storage.mbt` decodes each array into `StorageLoadResult`
+or `StorageSaveResult`. A missing document is the only outcome that starts
+normal seeding. Malformed or rejected results fail with the existing localized
+guidance instead of becoming missing data. That standard guidance lives in the
+MoonBit decoder; JavaScript forwards only a concrete error message when one is
+available. The FFI wrapper also rejects non-string array elements, because
+`Array[String]` erases its element type at the boundary.
+
 Each write compares the stored value with the last value read or committed by
 this tab in the same IndexedDB read/write transaction. A stale tab reports a
 save failure and keeps its local edit visible instead of overwriting a newer
@@ -116,10 +126,11 @@ Workers, HTTP, authentication, background peer discovery, or remote storage.
 `just test` exercises record convergence, source-only encoding, and custom ID
 allocation. It also runs browser-package scheduler tests without a browser or
 real timers, covering event order, independent instances, load/seed recovery,
-stale completions, and Undo. A persistence adapter suite runs the production
-`persistence.js` against `fake-indexeddb` and controlled timers. It covers
-missing storage, open, transaction, and request failures, blocked and late
-opens, active-transaction timeout and abort, delayed commits, retries,
+stale completions, and Undo. Binding tests decode every explicit load and save
+outcome, including malformed wire arrays. A persistence adapter suite runs the
+production `persistence.js` against `fake-indexeddb` and controlled timers. It
+covers missing storage, open, transaction, and request failures, blocked and
+late opens, active-transaction timeout and abort, delayed commits, retries,
 connection cleanup, aborted-attempt cleanup, and reconciliation with a matching
 or unrelated stored record. The suite records that `changes()` keeps the last
 adopted history immediately after a timeout. The attempted write appears after
