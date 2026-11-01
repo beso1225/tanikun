@@ -89,6 +89,14 @@ MoonBit decoder; JavaScript forwards only a concrete error message when one is
 available. The FFI wrapper also rejects non-string array elements, because
 `Array[String]` erases its element type at the boundary.
 
+Source persistence has three owners in `apps/web/app`.
+`planner_persistence_schema.mbt` holds the version 1 DTOs.
+`planner_persistence_records.mbt` converts field codes and domain records.
+`planner_persistence_restore.mbt` validates the complete document and rebuilds
+the planner state. Restoration indexes catalogue, offering, enrollment, and
+override identities instead of rescanning arrays, while retaining array order,
+validation order, localized errors, and atomic rejection.
+
 Each write compares the stored value with the last value read or committed by
 this tab in the same IndexedDB read/write transaction. A stale tab reports a
 save failure and keeps its local edit visible instead of overwriting a newer
@@ -127,8 +135,12 @@ Workers, HTTP, authentication, background peer discovery, or remote storage.
 allocation. It also runs browser-package scheduler tests without a browser or
 real timers, covering event order, independent instances, load/seed recovery,
 stale completions, and Undo. Binding tests decode every explicit load and save
-outcome, including malformed wire arrays. A persistence adapter suite runs the
-production `persistence.js` against `fake-indexeddb` and controlled timers. It
+outcome, including malformed wire arrays. A persistence fixture suite compares
+exact source round trips for every persisted status, grade, snapshot, schedule,
+phase, override kind, coordination record, custom assignment, and display
+field. It also decodes a fixed version 1 fixture and checks that UI-only state
+is absent from the source and reset on restore. A persistence adapter suite runs
+the production `persistence.js` against `fake-indexeddb` and controlled timers. It
 covers missing storage, open, transaction, and request failures, blocked and
 late opens, active-transaction timeout and abort, delayed commits, retries,
 connection cleanup, aborted-attempt cleanup, and reconciliation with a matching
