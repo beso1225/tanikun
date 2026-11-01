@@ -14,16 +14,16 @@
           return;
         }
         let settled = false;
-        let timedOut = false;
         let abortNotified = false;
         let database;
         let transaction;
         let request;
-        // A timeout is ambiguous: the write may already have committed, so the
-        // adapter must keep its attempt for reconciliation. Every other failure
-        // proves the transaction did not commit.
+        // An abort event proves the transaction rolled back, including an abort
+        // triggered after the timeout. A commit that raced the timeout fires
+        // complete instead, so only then does the attempt stay for
+        // reconciliation.
         const notifyAbort = () => {
-          if (timedOut || abortNotified) return;
+          if (abortNotified) return;
           abortNotified = true;
           hooks.onAbort?.();
         };
@@ -36,7 +36,6 @@
           else resolve(value);
         };
         const timer = timers.setTimeout(() => {
-          timedOut = true;
           finish(new Error("保存領域へのアクセスがタイムアウトしました"));
           try {
             transaction?.abort();

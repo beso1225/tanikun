@@ -463,6 +463,119 @@ test("a request failure aborts the transaction and reports its cause", async () 
   assert.equal(timers.size, 0);
 });
 
+test("a transaction creation failure closes the connection", async () => {
+  const idb = controlledIndexedDB();
+  const timers = manualTimers();
+  const transact = createTransactions({
+    indexedDB: idb,
+    timers,
+    timeout: 25,
+  });
+  let aborts = 0;
+  const outcome = settle(
+    transact("readwrite", (store) => store.get("planner"), {
+      onAbort: () => {
+        aborts += 1;
+      },
+    }),
+  );
+  idb.database.transaction = () => {
+    throw new Error("トランザクションを作成できません");
+  };
+  idb.succeed();
+  assert.match(
+    (await outcome).error.message,
+    /トランザクションを作成できません/,
+  );
+  assert.equal(idb.database.closeCalls, 1);
+  assert.equal(aborts, 1);
+  assert.equal(timers.size, 0);
+});
+
+test("an operation that throws aborts and closes the connection", async () => {
+  const idb = controlledIndexedDB();
+  const timers = manualTimers();
+  const transact = createTransactions({
+    indexedDB: idb,
+    timers,
+    timeout: 25,
+  });
+  let aborts = 0;
+  const outcome = settle(
+    transact(
+      "readwrite",
+      () => {
+        throw new Error("操作に失敗しました");
+      },
+      {
+        onAbort: () => {
+          aborts += 1;
+        },
+      },
+    ),
+  );
+  idb.succeed();
+  const transaction = idb.transactions[0];
+  assert.match((await outcome).error.message, /操作に失敗しました/);
+  assert.equal(transaction.abortCalls, 1);
+  assert.equal(aborts, 1);
+  assert.equal(idb.database.closeCalls, 1);
+  assert.equal(timers.size, 0);
+});
+
+test("a transaction error event reports its failure", async () => {
+  const idb = controlledIndexedDB();
+  const timers = manualTimers();
+  const transact = createTransactions({
+    indexedDB: idb,
+    timers,
+    timeout: 25,
+  });
+  let aborts = 0;
+  const outcome = settle(
+    transact("readonly", (store) => store.get("planner"), {
+      onAbort: () => {
+        aborts += 1;
+      },
+    }),
+  );
+  idb.succeed();
+  const transaction = idb.transactions[0];
+  transaction.error = new Error("トランザクションに失敗しました");
+  transaction.dispatchEvent(new Event("error"));
+  assert.match((await outcome).error.message, /トランザクションに失敗しました/);
+  assert.equal(aborts, 1);
+  assert.equal(idb.database.closeCalls, 1);
+  assert.equal(timers.size, 0);
+});
+
+test("an abort after a timeout still drops the attempt", async () => {
+  const idb = controlledIndexedDB();
+  const timers = manualTimers();
+  const transact = createTransactions({
+    indexedDB: idb,
+    timers,
+    timeout: 25,
+  });
+  let aborts = 0;
+  const outcome = settle(
+    transact("readwrite", (store) => store.get("planner"), {
+      onAbort: () => {
+        aborts += 1;
+      },
+    }),
+  );
+  idb.succeed();
+  const transaction = idb.transactions[0];
+  assert.equal(timers.run(), true);
+  assert.match((await outcome).error.message, /タイムアウト/);
+  assert.equal(aborts, 0);
+  transaction.dispatchEvent(new Event("abort"));
+  assert.equal(aborts, 1);
+  assert.equal(transaction.abortCalls, 1);
+  assert.equal(idb.database.closeCalls, 1);
+});
+
 test("a definitive abort notifies the adapter before the connection closes", async () => {
   const idb = controlledIndexedDB();
   const timers = manualTimers();
