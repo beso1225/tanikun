@@ -15,7 +15,8 @@ pub(all) enum UiErrorKind {
   MissingRequirementSet
   DifferentAcademicYear
   General
-  Persistence
+  PersistenceLoad
+  PersistenceSave
 } derive(Eq)
 
 ///|

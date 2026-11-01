@@ -313,7 +313,7 @@ test "save failure guidance matches the document and preserves undo" {
   )
   assert_true(failed.storage_status == @app.StorageStatus::Failed)
   assert_eq(failed.error.unwrap().message, "Reload this tab")
-  assert_true(failed.error.unwrap().kind == @app.UiErrorKind::Persistence)
+  assert_true(failed.error.unwrap().kind == @app.UiErrorKind::PersistenceSave)
   assert_true(failed.undo_available())
 }
 
@@ -336,7 +336,7 @@ test "changed save failure guidance refreshes the view without expiring Undo" {
   )
   assert_true(first != second)
   assert_eq(second.revision, first.revision)
-  assert_true(second.error.unwrap().kind == @app.UiErrorKind::Persistence)
+  assert_true(second.error.unwrap().kind == @app.UiErrorKind::PersistenceSave)
   assert_true(second.undo_available())
   let repeated = @app.update_planner(
     second,
@@ -359,7 +359,7 @@ test "successful retry clears persistence failure guidance without expiring Undo
     @app.PlannerMsg::StorageSaveFailed(message="Reload this tab", text~),
   )
   assert_true(failed.storage_status == @app.StorageStatus::Failed)
-  assert_true(failed.error.unwrap().kind == @app.UiErrorKind::Persistence)
+  assert_true(failed.error.unwrap().kind == @app.UiErrorKind::PersistenceSave)
   assert_true(failed.undo_available())
   let saved = @app.update_planner(
     failed,
@@ -371,6 +371,29 @@ test "successful retry clears persistence failure guidance without expiring Undo
   assert_true(saved.storage_status == @app.StorageStatus::Saved)
   assert_true(saved.error is None)
   assert_true(saved.undo_available())
+}
+
+///|
+test "a successful save does not clear load failure guidance" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::StorageLoadFailed(
+      message="保存データを読み込めません",
+    ),
+  )
+  let saved = @app.update_planner(
+    state,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saved,
+      text=@app.encode_planner_state(state),
+    ),
+  )
+  assert_true(saved.storage_status == @app.StorageStatus::Saved)
+  assert_true(saved.error.unwrap().kind == @app.UiErrorKind::PersistenceLoad)
+  assert_eq(
+    saved.error.unwrap().message,
+    "保存データを読み込めません",
+  )
 }
 
 ///|

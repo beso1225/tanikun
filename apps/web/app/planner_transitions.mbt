@@ -253,7 +253,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
             error: Some(
               UiError::new(
                 General,
-                Persistence,
+                PersistenceLoad,
                 "保存データを読み込めません",
               ),
             ),
@@ -263,14 +263,14 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
       bump({
         ..state,
         storage_status: LoadFailed,
-        error: Some(UiError::new(General, Persistence, message)),
+        error: Some(UiError::new(General, PersistenceLoad, message)),
       })
     StorageSaveFailed(message~, text~) =>
       if encode_planner_state(state) == text {
         {
           ..state,
           storage_status: Failed,
-          error: Some(UiError::new(General, Persistence, message)),
+          error: Some(UiError::new(General, PersistenceSave, message)),
         }
       } else {
         state
@@ -285,7 +285,7 @@ pub fn update_planner(state : PlannerState, msg : PlannerMsg) -> PlannerState {
         let error = if status == Saved {
           match state.error {
             Some(error) =>
-              if error.kind == Persistence {
+              if error.kind == PersistenceSave {
                 None
               } else {
                 Some(error)
