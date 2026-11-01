@@ -7,7 +7,8 @@ Phase 1 is complete. It implements the pure domain model, credit summaries, and
 requirement evaluation. Phase 2 adds the in-memory planner UI; its contract and
 evidence are in [docs/PHASE_2.md](docs/PHASE_2.md) and
 [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md). Phase 3 adds local
-persistence and local Automerge replica convergence. Network sync follows in
+persistence and local Automerge replica convergence; its evidence is in
+[docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md). Network sync follows in
 Phase 4.
 
 **日本語版:** [README.ja.md](README.ja.md)
@@ -21,9 +22,10 @@ Phase 4.
 - Phase 2: complete. The planner UI contract is
   [docs/PHASE_2.md](docs/PHASE_2.md), and the evidence is in
   [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md).
-- Phase 3: in progress. Automerge/IndexedDB persistence, save/reload recovery,
-  and local replica convergence are implemented; see
-  [ADR-0012](docs/adr/0012-automerge-planner-document.md).
+- Phase 3: complete. Automerge/IndexedDB persistence, save/reload recovery,
+  and local replica convergence are implemented; the evidence is in
+  [docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md), with the storage contract
+  in [ADR-0012](docs/adr/0012-automerge-planner-document.md).
   Phase 4 network sync is not started.
 
 ## Stack
@@ -87,6 +89,7 @@ See [docs/MUTATION.md](docs/MUTATION.md) for the baseline and accepted mutants.
 - [Phase 1 results](docs/PHASE_1_RESULTS.md)
 - [Phase 2 planner contract](docs/PHASE_2.md)
 - [Phase 2 results](docs/PHASE_2_RESULTS.md)
+- [Phase 3 results](docs/PHASE_3_RESULTS.md)
 - [Mutation testing](docs/MUTATION.md)
 - [Glossary](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)

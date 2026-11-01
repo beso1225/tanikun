@@ -7,7 +7,8 @@ Phase 1 は完了し、純粋なドメインモデル、単位集計、要件評
 Phase 2 では時間割プランナーの UI を実装しました。契約と結果は
 [docs/PHASE_2.md](docs/PHASE_2.md) と
 [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md) にあります。Phase 3 では
-ローカル永続化と Automerge のレプリカ間の収束を実装しています。
+ローカル永続化と Automerge のレプリカ間の収束を実装しました。結果は
+[docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md) にあります。
 ネットワーク同期は Phase 4 で対応します。
 
 **English:** [README.md](README.md)
@@ -20,10 +21,11 @@ Phase 2 では時間割プランナーの UI を実装しました。契約と�
   結果は [docs/PHASE_1_RESULTS.md](docs/PHASE_1_RESULTS.md) にあります。
 - Phase 2: 完了。プランナー UI の契約は
   [docs/PHASE_2.md](docs/PHASE_2.md)、結果は
-  [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md) にあります。Phase 3 ではローカル永続化を追加中です。
-- Phase 3: 進行中。Automerge と IndexedDB によるローカル永続化、再読み込み後の復元、
-  レプリカ間の収束を実装済みです。
-  詳細は [ADR-0012](docs/adr/0012-automerge-planner-document.md) を参照してください。
+  [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md) にあります。
+- Phase 3: 完了。Automerge と IndexedDB によるローカル永続化、再読み込み後の復元、
+  レプリカ間の収束を実装しました。結果は
+  [docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md)、保存仕様は
+  [ADR-0012](docs/adr/0012-automerge-planner-document.md) にあります。
   Phase 4 のネットワーク同期は未着手です。
 
 ## 構成
