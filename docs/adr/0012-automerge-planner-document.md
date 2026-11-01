@@ -149,6 +149,10 @@ connection cleanup, aborted-attempt cleanup, and reconciliation with a matching
 or unrelated stored record. The suite records that `changes()` keeps the last
 adopted history immediately after a timeout. The attempted write appears after
 a late commit is adopted, or after reconciliation matches the stored bytes.
+The planner document suite validates its complete fictional fixtures through a
+MoonBit bridge. A fixed-actor delivery matrix checks both merge directions, valid
+batch permutations, repeated delivery, and save/load for scalar, atomic record,
+collection order, addition, deletion, and tombstone cases.
 `just test-browser` covers isolated browser contexts, offline edits,
 reload before exchange, repeated exchange, concurrent custom deletion and edits,
 JSON migration, interrupted writes, timed-out opens, stale tabs, initial save
