@@ -300,6 +300,7 @@ test("a stale tab cannot overwrite a newer committed plan", async (t) => {
       await waitForPersistence(right);
       assert.match(await right.locator("#off-grid").innerText(), /Seminar S2/);
       assert.equal((await readCommittedSource(right)).selected_term, "S1");
+      assert.deepEqual(errors, []);
     },
   );
 });

@@ -8,6 +8,8 @@ import {
   delayNextOpenSuccess,
   delayNextTransactionComplete,
   delaySaves,
+  failNextSave,
+  failNextSaveResult,
   waitForCommittedSourceAfter,
   readCommittedSource,
   readStored,
@@ -37,6 +39,11 @@ test("local persistence restores edits after reload", async (t) => {
       await page.locator("#open-catalogue-picker").click();
       await page.locator("#add-offering-phy302-s").click();
       await page.locator("#close-picker").click();
+      await waitForCommittedSource(
+        page,
+        'source.offerings.some((row) => row.id === "phy302-s")',
+        "added phy302 offering",
+      );
       await waitForPersistence(page);
       assert.match(await page.locator("#off-grid").innerText(), /Seminar S2/);
       await page.reload();
@@ -75,10 +82,7 @@ test("save failures keep the edit visible and report the failure", async (t) => 
       await page.goto(origin);
       await waitForPersistence(page);
       const committed = await readStored(page);
-      await page.evaluate(() => {
-        globalThis["tanikunStorage"].save = () =>
-          Promise.reject(new Error("quota exceeded"));
-      });
+      await failNextSave(page);
       await page.locator("#open-catalogue-picker").click();
       await page.locator("#add-offering-phy302-s").click();
       await page.locator("#close-picker").click();
@@ -229,7 +233,7 @@ test("a load failure does not overwrite the stored document", async (t) => {
       const recovered = await readStored(page);
       assert.notEqual(recovered, "{broken");
       assert.equal(recovered.storageVersion, 2);
-      assert.ok(Array.isArray(recovered.bytes));
+      assert.ok(recovered.bytes.length > 0);
       await page.reload();
       await waitForPersistence(page);
       assert.match(await page.locator("#off-grid").innerText(), /Seminar S2/);
@@ -425,10 +429,7 @@ test("a rejected save result reports save failure", async (t) => {
     async ([page], errors, origin) => {
       await page.goto(origin);
       await waitForPersistence(page);
-      await page.evaluate(() => {
-        globalThis.tanikunStorage.saveResult = () =>
-          Promise.reject("unexpected");
-      });
+      await failNextSaveResult(page);
       await page.locator("#term-S2").click();
       await waitForPersistence(page, "保存失敗");
       assert.match(
@@ -517,10 +518,12 @@ test("deleting a custom course with existing overrides survives reload", async (
       await page.locator("#override-credits").selectOption("6");
       await page.locator("#override-slots-enabled").click();
       await page.locator("#override-submit").click();
+      const beforeOverrides = await readStored(page);
       await page.locator("#remove-detail").click();
-      await waitForCommittedSource(
+      await waitForCommittedSourceAfter(
         page,
         "source.overrides.length === 3",
+        beforeOverrides,
         "custom overrides committed",
       );
       await waitForPersistence(page);

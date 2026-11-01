@@ -10,6 +10,8 @@ function installProbe() {
   const openDatabase = () =>
     new Promise((finish, reject) => {
       const opening = indexedDB.open("tanikun-planner", 1);
+      opening.onupgradeneeded = () =>
+        opening.result.createObjectStore("documents");
       opening.onerror = () => reject(opening.error);
       opening.onsuccess = () => finish(opening.result);
     });
@@ -255,23 +257,6 @@ export async function waitForCommittedSourceAfter(
   }
 }
 
-/** Wait for a different committed record than the supplied envelope. */
-export async function waitForCommittedChange(page, previous, label) {
-  try {
-    await page.waitForFunction(
-      async (before) => {
-        const stored = await globalThis.tanikunPersistenceProbe.readRecord();
-        return JSON.stringify(stored) !== JSON.stringify(before);
-      },
-      previous,
-      { timeout: 10_000 },
-    );
-  } catch (error) {
-    assert.fail(`${label}: committed record did not change: ${error.message}`);
-  }
-  return readStored(page);
-}
-
 /** Read Automerge changes without adopting a new document handle. */
 export function readChanges(page) {
   return page.evaluate(() =>
@@ -330,8 +315,15 @@ export async function waitForDelayedCallback(page) {
 export async function shortenPersistenceTimeout(page, replacement = 100) {
   await page.evaluate((delay) => {
     const schedule = globalThis.setTimeout;
-    globalThis.setTimeout = (callback, milliseconds, ...args) =>
-      schedule(callback, milliseconds === 5000 ? delay : milliseconds, ...args);
+    globalThis.setTimeout = (callback, milliseconds, ...args) => {
+      if (milliseconds !== 5000) {
+        return schedule(callback, milliseconds, ...args);
+      }
+      // Restore at the one shortened timeout so later saves keep the real
+      // persistence budget.
+      globalThis.setTimeout = schedule;
+      return schedule(callback, delay, ...args);
+    };
   }, replacement);
 }
 
