@@ -374,6 +374,35 @@ test "successful retry clears persistence failure guidance without expiring Undo
 }
 
 ///|
+test "pending save statuses keep persistence guidance" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::StorageSaveFailed(
+      message="Reload this tab",
+      text=@app.encode_planner_state(@app.sample_state()),
+    ),
+  )
+  let text = @app.encode_planner_state(state)
+  let unsaved = @app.update_planner(
+    state,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Unsaved,
+      text~,
+    ),
+  )
+  assert_true(unsaved.error.unwrap().kind == @app.UiErrorKind::PersistenceSave)
+  let saving = @app.update_planner(
+    unsaved,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saving,
+      text~,
+    ),
+  )
+  assert_true(saving.storage_status == @app.StorageStatus::Saving)
+  assert_eq(saving.error.unwrap().message, "Reload this tab")
+}
+
+///|
 test "a successful save does not clear load failure guidance" {
   let state = @app.update_planner(
     @app.sample_state(),

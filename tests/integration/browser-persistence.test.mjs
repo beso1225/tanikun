@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import {
   abortNextPut,
+  assertNextSaveFailureConsumed,
+  assertNextSaveResultFailureConsumed,
   delayNextOpenSuccess,
   delayNextTransactionComplete,
   delaySaves,
@@ -88,6 +90,7 @@ test("save failures keep the edit visible and report the failure", async (t) => 
       await page.locator("#close-picker").click();
       await waitForPersistence(page, "保存失敗");
       assert.match(await page.locator("#off-grid").innerText(), /Seminar S2/);
+      await assertNextSaveFailureConsumed(page);
       assert.deepEqual(await readStored(page), committed);
       assert.deepEqual(errors, []);
     },
@@ -112,6 +115,7 @@ test("a successful retry clears stale save failure guidance", async (t) => {
         await page.locator("#persistence-status").innerText(),
         "保存失敗",
       );
+      await assertNextSaveFailureConsumed(page);
       await failNextSave(page, "reload required");
       await page.locator("#add-day").click();
       await page
@@ -122,7 +126,18 @@ test("a successful retry clears stale save failure guidance", async (t) => {
         await page.locator("#persistence-status").innerText(),
         "保存失敗",
       );
+      await assertNextSaveFailureConsumed(page);
+      await delaySaves(page);
       await page.locator("#remove-day").click();
+      await waitForPersistence(page, "保存中");
+      assert.equal(
+        await page
+          .locator("#planner-error")
+          .filter({ hasText: "reload required" })
+          .count(),
+        1,
+      );
+      await releaseBarrier(page);
       await waitForCommittedSource(
         page,
         "source.visible_days === 6",
@@ -478,6 +493,7 @@ test("a rejected save result reports save failure", async (t) => {
         await page.locator("#planner-error").innerText(),
         /保存できません。再読み込みしてください/,
       );
+      await assertNextSaveResultFailureConsumed(page);
       assert.deepEqual(errors, []);
     },
   );
