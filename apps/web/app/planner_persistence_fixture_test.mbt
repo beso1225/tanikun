@@ -50,12 +50,28 @@ fn persistence_requirement_sets() -> @tanikun-requirements.RequirementSets[
 }
 
 ///|
+fn persistence_satisfaction_text(
+  value : @tanikun-requirements.Satisfaction,
+) -> String {
+  match value {
+    @tanikun-requirements.Satisfaction::Satisfied => "satisfied"
+    @tanikun-requirements.Satisfaction::Partial => "partial"
+    @tanikun-requirements.Satisfaction::Unsatisfied => "unsatisfied"
+  }
+}
+
+///|
+fn persistence_mode_text(mode : @app.RequirementMode) -> String {
+  "\{persistence_satisfaction_text(mode.satisfaction)}|\{mode.status}|\{mode.progress}|\{mode.remaining}|\{mode.unit}|\{mode.done}|\{mode.total}"
+}
+
+///|
 fn persistence_summary_text(
   node : @app.RequirementNode,
   parts : Array[String],
 ) -> Unit {
   parts.push(
-    "\{node.label}|\{node.confirmed.status}|\{node.confirmed.progress}|\{node.confirmed.remaining}|\{node.confirmed.unit}|\{node.confirmed.done}|\{node.confirmed.total}|\{node.standard.status}|\{node.optimistic.status}|\{node.missing_courses.join(",")}",
+    "\{node.label}|\{persistence_mode_text(node.confirmed)}|\{persistence_mode_text(node.standard)}|\{persistence_mode_text(node.optimistic)}|\{node.missing_courses.join(",")}",
   )
   for child in node.children {
     persistence_summary_text(child, parts)
@@ -112,7 +128,7 @@ fn persistence_full_state() -> @app.PlannerState raise Error {
       (@tanikun-domain.Term::S1, slots),
       (
         @tanikun-domain.Term::S2,
-        [persistence_slot(@tanikun-domain.DayOfWeek::Thursday, 3)],
+        [persistence_slot(@tanikun-domain.DayOfWeek::Sunday, 3)],
       ),
     ]),
   )
@@ -126,19 +142,37 @@ fn persistence_full_state() -> @app.PlannerState raise Error {
     "year-long",
     physics_two,
     @tanikun-domain.OfferingSchedule::YearLong,
-    [persistence_slot(@tanikun-domain.DayOfWeek::Tuesday, 2)],
+    [persistence_slot(@tanikun-domain.DayOfWeek::Saturday, 2)],
     @tanikun-domain.OfferingStatus::Offered,
   )
-  let intensive = persistence_offering(
-    "intensive",
+  let intensive_w = persistence_offering(
+    "intensive-w",
     physics_two,
     @tanikun-domain.OfferingSchedule::Intensive(
       semester=@tanikun-domain.Semester::W,
     ),
     [],
+    @tanikun-domain.OfferingStatus::NotOffered,
+  )
+  let intensive_s = persistence_offering(
+    "intensive-s",
+    physics_two,
+    @tanikun-domain.OfferingSchedule::Intensive(
+      semester=@tanikun-domain.Semester::S,
+    ),
+    [],
     @tanikun-domain.OfferingStatus::Offered,
   )
-  let offerings = [phased, year_long, intensive]
+  let intensive_a = persistence_offering(
+    "intensive-a",
+    physics_two,
+    @tanikun-domain.OfferingSchedule::Intensive(
+      semester=@tanikun-domain.Semester::A,
+    ),
+    [],
+    @tanikun-domain.OfferingStatus::Offered,
+  )
+  let offerings = [phased, year_long, intensive_w, intensive_s, intensive_a]
   let enrollments = []
   let planned_course = planner_course("PLAN101", "Planned course", 4)
   catalogue.push(planned_course)
@@ -322,25 +356,58 @@ test "encoded source excludes UI state and restore resets it" {
     key in [
       "undo_removal", "selected_offering", "catalogue_query", "picker", "settings_open",
       "override_form", "custom_form", "storage_status", "revision", "custom_id_prefix",
-      "last_saved_text", "total_credits", "planner_summary",
+      "last_saved_text", "total_credits", "planner_summary", "error",
     ] {
     assert_true(!text.contains("\"\{key}\""))
   }
-  let dirty = @app.update_planner(state, @app.PlannerMsg::OpenSettings)
-  let dirty = @app.update_planner(
-    dirty,
+  let offering_id = state.enrollments[0].offering_id
+  let settings = @app.update_planner(state, @app.PlannerMsg::OpenSettings)
+  assert_true(settings.settings_open)
+  let queried = @app.update_planner(
+    state,
     @app.PlannerMsg::UpdateCatalogueQuery(query="draft query"),
   )
-  let dirty = @app.update_planner(
-    dirty,
-    @app.PlannerMsg::StorageStatusChanged(
-      status=@app.StorageStatus::Failed,
-      text~,
-    ),
+  assert_eq(queried.catalogue_query, "draft query")
+  let picking = @app.update_planner(state, @app.PlannerMsg::OpenCataloguePicker)
+  assert_true(picking.picker is Some(_))
+  let selected = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectOffering(offering_id~),
   )
-  let dirty = dirty.with_custom_id_prefix("next-session-")
-  assert_eq(@app.encode_planner_state(dirty), text)
-  let restored = match @app.decode_planner_state(dirty, text) {
+  assert_true(selected.selected_offering is Some(_))
+  let overriding = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenOverrideEditor(offering_id~),
+  )
+  assert_true(overriding.override_form is Some(_))
+  let customizing = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenCustomCourseForm,
+  )
+  assert_true(customizing.custom_form is Some(_))
+  let failing = @app.update_planner(
+    state,
+    @app.PlannerMsg::StorageLoadFailed(message="boom"),
+  )
+  assert_true(failing.error is Some(_))
+  for
+    dirty in [
+      settings, queried, picking, selected, overriding, customizing, failing,
+    ] {
+    assert_eq(@app.encode_planner_state(dirty), text)
+  }
+  let removed = @app.update_planner(
+    state,
+    @app.PlannerMsg::RemoveEnrollment(offering_id~),
+  )
+  assert_true(removed.undo_available())
+  let removed_text = @app.encode_planner_state(removed)
+  let restored_undo = match @app.decode_planner_state(state, removed_text) {
+    Ok(value) => value
+    Err(message) => fail("expected a restored removed state: \{message}")
+  }
+  assert_true(!restored_undo.undo_available())
+  let restored = match @app.decode_planner_state(state, text) {
     Ok(value) => value
     Err(message) => fail("expected a restored state: \{message}")
   }
@@ -351,9 +418,35 @@ test "encoded source excludes UI state and restore resets it" {
   assert_true(restored.settings_open == false)
   assert_true(restored.override_form is None)
   assert_true(restored.custom_form is None)
+  assert_true(restored.error is None)
   assert_true(restored.storage_status == @app.StorageStatus::Loading)
   assert_eq(restored.revision, 1)
-  assert_eq(restored.custom_id_prefix, "next-session-")
+  assert_eq(restored.custom_id_prefix, state.custom_id_prefix)
+}
+
+///|
+test "every planner term round-trips" {
+  let state = persistence_full_state()
+  for
+    term in [
+      @app.PlannerTerm::S1,
+      @app.PlannerTerm::S2,
+      @app.PlannerTerm::A1,
+      @app.PlannerTerm::A2,
+      @app.PlannerTerm::W,
+    ] {
+    let selected = @app.update_planner(
+      state,
+      @app.PlannerMsg::SelectTerm(term~),
+    )
+    let text = @app.encode_planner_state(selected)
+    let restored = match @app.decode_planner_state(selected, text) {
+      Ok(value) => value
+      Err(message) => fail("expected a restored term: \{message}")
+    }
+    assert_true(restored.selected_term == term)
+    assert_eq(@app.encode_planner_state(restored), text)
+  }
 }
 
 ///|

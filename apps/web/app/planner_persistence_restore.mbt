@@ -106,16 +106,28 @@ fn restore_planner_state(
     }
     offering_course_keys.add(key)
   }
-  let enrollment_ids : @hashset.HashSet[String] = @hashset.HashSet([])
+  // Preserve the old scan order: at each index, report a missing offering
+  // before reporting a later duplicate of that enrollment. Precomputing the
+  // duplicated IDs keeps this linear without moving the duplicate error ahead
+  // of an earlier missing reference.
+  let seen_enrollment_ids : @hashset.HashSet[String] = @hashset.HashSet([])
+  let duplicate_enrollment_ids : @hashset.HashSet[String] = @hashset.HashSet([])
+  for enrollment in enrollments {
+    let id = enrollment.offering_id.value
+    if seen_enrollment_ids.contains(id) {
+      duplicate_enrollment_ids.add(id)
+    } else {
+      seen_enrollment_ids.add(id)
+    }
+  }
   for enrollment in enrollments {
     let id = enrollment.offering_id.value
     if !offering_ids.contains(id) {
       return Err("履修の開講がありません")
     }
-    if enrollment_ids.contains(id) {
+    if duplicate_enrollment_ids.contains(id) {
       return Err("履修が重複しています")
     }
-    enrollment_ids.add(id)
   }
   for entry in overrides.entries() {
     match entry.target {

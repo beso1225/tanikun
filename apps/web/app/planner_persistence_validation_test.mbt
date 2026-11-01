@@ -203,3 +203,18 @@ test "custom membership invariants are rejected" {
     "独自区分の区分がありません",
   )
 }
+
+///|
+test "enrollment duplicate precedence matches the previous scan" {
+  let dto = persistence_valid_dto()
+  let first = dto.enrollments[0]
+  let missing = { ..first, offering_id: "missing-offering", }
+  persistence_expect_rejected(
+    { ..dto, enrollments: [first, missing, first], }.to_json().stringify(),
+    "履修が重複しています",
+  )
+  persistence_expect_rejected(
+    { ..dto, enrollments: [missing, first, first], }.to_json().stringify(),
+    "履修の開講がありません",
+  )
+}

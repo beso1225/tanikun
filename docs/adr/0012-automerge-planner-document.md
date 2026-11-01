@@ -95,7 +95,9 @@ Source persistence has three owners in `apps/web/app`.
 `planner_persistence_restore.mbt` validates the complete document and rebuilds
 the planner state. Restoration indexes catalogue, offering, enrollment, and
 override identities instead of rescanning arrays, while retaining array order,
-validation order, localized errors, and atomic rejection.
+validation order, localized errors, and atomic rejection. Enrollment duplicates
+are precomputed so a missing offering at an earlier index still wins over a
+later duplicate, matching the previous error precedence.
 
 Each write compares the stored value with the last value read or committed by
 this tab in the same IndexedDB read/write transaction. A stale tab reports a
