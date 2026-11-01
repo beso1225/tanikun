@@ -94,6 +94,48 @@ test("save failures keep the edit visible and report the failure", async (t) => 
   );
 });
 
+test("a successful retry clears stale save failure guidance", async (t) => {
+  await runBrowserJourney(
+    t,
+    { chromium, dist, name: "persistence-retry-clears-error" },
+    async ([page], errors, origin) => {
+      await page.goto(origin);
+      await waitForPersistence(page);
+      await page.locator("#open-settings").click();
+      await failNextSave(page, "quota exceeded");
+      await page.locator("#add-day").click();
+      await page
+        .locator("#planner-error")
+        .filter({ hasText: "quota exceeded" })
+        .waitFor();
+      assert.equal(
+        await page.locator("#persistence-status").innerText(),
+        "保存失敗",
+      );
+      await failNextSave(page, "reload required");
+      await page.locator("#add-day").click();
+      await page
+        .locator("#planner-error")
+        .filter({ hasText: "reload required" })
+        .waitFor();
+      assert.equal(
+        await page.locator("#persistence-status").innerText(),
+        "保存失敗",
+      );
+      await page.locator("#remove-day").click();
+      await waitForCommittedSource(
+        page,
+        "source.visible_days === 6",
+        "successful display-range retry committed",
+      );
+      await waitForPersistence(page);
+      assert.equal(await page.locator("#planner-error").count(), 0);
+      await page.locator("#close-settings").click();
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
 test("unsaved is visible while a source edit is queued", async (t) => {
   await runBrowserJourney(
     t,

@@ -395,17 +395,25 @@ export async function delayNextTransactionComplete(page) {
   });
 }
 
-/** Make the next save reject with a localized quota error. */
+/** Make only the next save reject with a localized error. */
 export async function failNextSave(page, message = "quota exceeded") {
   await page.evaluate((reason) => {
-    globalThis.tanikunStorage.save = () => Promise.reject(new Error(reason));
+    const save = globalThis.tanikunStorage.save;
+    globalThis.tanikunStorage.save = () => {
+      globalThis.tanikunStorage.save = save;
+      return Promise.reject(new Error(reason));
+    };
   }, message);
 }
 
-/** Make the next save result reject with a non-Error value. */
+/** Make only the next save result reject with a non-Error value. */
 export async function failNextSaveResult(page) {
   await page.evaluate(() => {
-    globalThis.tanikunStorage.saveResult = () => Promise.reject("unexpected");
+    const saveResult = globalThis.tanikunStorage.saveResult;
+    globalThis.tanikunStorage.saveResult = () => {
+      globalThis.tanikunStorage.saveResult = saveResult;
+      return Promise.reject("unexpected");
+    };
   });
 }
 

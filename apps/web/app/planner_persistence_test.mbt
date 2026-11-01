@@ -313,6 +313,7 @@ test "save failure guidance matches the document and preserves undo" {
   )
   assert_true(failed.storage_status == @app.StorageStatus::Failed)
   assert_eq(failed.error.unwrap().message, "Reload this tab")
+  assert_true(failed.error.unwrap().kind == @app.UiErrorKind::Persistence)
   assert_true(failed.undo_available())
 }
 
@@ -335,10 +336,68 @@ test "changed save failure guidance refreshes the view without expiring Undo" {
   )
   assert_true(first != second)
   assert_eq(second.revision, first.revision)
+  assert_true(second.error.unwrap().kind == @app.UiErrorKind::Persistence)
   assert_true(second.undo_available())
   let repeated = @app.update_planner(
     second,
     @app.PlannerMsg::StorageSaveFailed(message="Reload this tab", text~),
   )
   assert_true(repeated == second)
+}
+
+///|
+test "successful retry clears persistence failure guidance without expiring Undo" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::RemoveEnrollment(
+      offering_id=planner_offering_id("phy101-s1"),
+    ),
+  )
+  let text = @app.encode_planner_state(state)
+  let failed = @app.update_planner(
+    state,
+    @app.PlannerMsg::StorageSaveFailed(message="Reload this tab", text~),
+  )
+  assert_true(failed.storage_status == @app.StorageStatus::Failed)
+  assert_true(failed.error.unwrap().kind == @app.UiErrorKind::Persistence)
+  assert_true(failed.undo_available())
+  let saved = @app.update_planner(
+    failed,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saved,
+      text~,
+    ),
+  )
+  assert_true(saved.storage_status == @app.StorageStatus::Saved)
+  assert_true(saved.error is None)
+  assert_true(saved.undo_available())
+}
+
+///|
+test "a successful save preserves unrelated validation guidance" {
+  let state = @app.update_planner(
+    @app.sample_state(),
+    @app.PlannerMsg::StorageSaveFailed(
+      message="Reload this tab",
+      text=@app.encode_planner_state(@app.sample_state()),
+    ),
+  )
+  let validation = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectOffering(
+      offering_id=@tanikun-domain.OfferingId::new("missing-offering").unwrap(),
+    ),
+  )
+  assert_true(
+    validation.error.unwrap().kind == @app.UiErrorKind::UnknownOffering,
+  )
+  let saved = @app.update_planner(
+    validation,
+    @app.PlannerMsg::StorageStatusChanged(
+      status=@app.StorageStatus::Saved,
+      text=@app.encode_planner_state(validation),
+    ),
+  )
+  assert_true(saved.storage_status == @app.StorageStatus::Saved)
+  assert_true(saved.error.unwrap().kind == @app.UiErrorKind::UnknownOffering)
 }
