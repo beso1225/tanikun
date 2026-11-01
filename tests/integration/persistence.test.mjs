@@ -695,20 +695,19 @@ test("the adapter reports explicit load and save outcomes", async () => {
   assert.match(conflict[1], /別のタブで保存されました/);
 });
 
-test("rejected and non-Error outcomes fail with localized guidance", async () => {
+test("rejected and unexpected outcomes fail closed", async () => {
   const { calls, transact } = scriptedTransact();
   const storage = createAdapter({ transact });
   const loading = storage.loadResult();
   await flush();
   calls.at(-1).reject("unexpected");
-  assert.deepEqual(await loading, ["failed", "保存データを読み込めません"]);
+  assert.deepEqual(await loading, ["failed"]);
   const saving = storage.saveResult(JSON.stringify(source));
   await flush();
   calls.at(-1).reject("unexpected");
-  assert.deepEqual(await saving, [
-    "failed",
-    "保存できません。再読み込みしてください",
-  ]);
+  assert.deepEqual(await saving, ["failed"]);
+  storage.load = async () => 42;
+  assert.deepEqual(await storage.loadResult(), ["failed"]);
 });
 
 test("a merge from another replica persists the converged plan", async () => {

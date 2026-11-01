@@ -627,6 +627,37 @@ test("a rejected load result falls back to the load failure guidance", async (t)
   );
 });
 
+test("a malformed load wire fails closed", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((done) => server.close(done)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  await runJourney(
+    browser,
+    "persistence-load-malformed",
+    async (page, errors) => {
+      await page.addInitScript(() => {
+        let storage;
+        Object.defineProperty(globalThis, "tanikunStorage", {
+          configurable: true,
+          get: () => storage,
+          set: (value) => {
+            value.loadResult = () => Promise.resolve(["loaded", 42]);
+            storage = value;
+          },
+        });
+      });
+      await page.goto(origin);
+      await waitForPersistence(page, "読み込み失敗");
+      assert.match(
+        await page.locator("#planner-error").innerText(),
+        /保存データを読み込めません/,
+      );
+      assert.deepEqual(errors, []);
+    },
+  );
+});
+
 test("a rejected save result reports save failure", async (t) => {
   const { server, origin } = await startStaticServer(dist);
   t.after(() => new Promise((done) => server.close(done)));

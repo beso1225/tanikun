@@ -84,7 +84,10 @@ The JavaScript adapter returns explicit wire results to MoonBit. A load reports
 `apps/web/cmd/browser/storage.mbt` decodes each array into `StorageLoadResult`
 or `StorageSaveResult`. A missing document is the only outcome that starts
 normal seeding. Malformed or rejected results fail with the existing localized
-guidance instead of becoming missing data.
+guidance instead of becoming missing data. That standard guidance lives in the
+MoonBit decoder; JavaScript forwards only a concrete error message when one is
+available. The FFI wrapper also rejects non-string array elements, because
+`Array[String]` erases its element type at the boundary.
 
 Each write compares the stored value with the last value read or committed by
 this tab in the same IndexedDB read/write transaction. A stale tab reports a

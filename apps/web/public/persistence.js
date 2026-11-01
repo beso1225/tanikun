@@ -9,8 +9,8 @@ const sameStoredPlan = (left, right) => {
     left.bytes.every((byte, index) => byte === right.bytes[index])
   );
 };
-const storageErrorMessage = (error, fallback) =>
-  error instanceof Error ? error.message : fallback;
+const storageFailure = (error) =>
+  error instanceof Error ? ["failed", error.message] : ["failed"];
 {
   // Validation, CAS comparison, and handle adoption live here. The transaction
   // lifecycle is injected so isolated instances can share one database.
@@ -163,29 +163,21 @@ const storageErrorMessage = (error, fallback) =>
     };
     // Explicit wire results for the MoonBit boundary. `storage.mbt` decodes
     // these arrays into variants, so no caller inspects messages for control
-    // flow. A failure keeps its localized recovery guidance. Call the public
-    // methods so a test or a future adapter can replace them.
+    // flow. The decoder owns the standard guidance when a payload is absent or
+    // empty. Call the public methods so a test or a future adapter can replace
+    // them.
     storage.loadResult = async () => {
       try {
         const text = await storage.load();
         if (text === null) return ["missing"];
         if (typeof text === "string") return ["loaded", text];
-        return ["failed", "保存データを読み込めません"];
+        return ["failed"];
       } catch (error) {
-        return [
-          "failed",
-          storageErrorMessage(error, "保存データを読み込めません"),
-        ];
+        return storageFailure(error);
       }
     };
     storage.saveResult = (text, replace = false) =>
-      storage.save(text, replace).then(
-        () => ["saved"],
-        (error) => [
-          "failed",
-          storageErrorMessage(error, "保存できません。再読み込みしてください"),
-        ],
-      );
+      storage.save(text, replace).then(() => ["saved"], storageFailure);
     return storage;
   };
   const storage = createStorage({

@@ -29,15 +29,37 @@ extern "js" fn replica_id() -> String =
   #| () => crypto.randomUUID() + "-"
 
 ///|
+/// Validate the raw wire before MoonBit sees it: `Array[String]` erases its
+/// element type, so a non-string payload would otherwise reach the planner.
 extern "js" fn storage_load_ffi() -> @js_async.Promise[Array[String]] =
-  #| () => globalThis.tanikunStorage.loadResult()
+  #| () =>
+  #|   Promise.resolve()
+  #|     .then(() => globalThis.tanikunStorage.loadResult())
+  #|     .then(
+  #|       (wire) =>
+  #|         Array.isArray(wire) &&
+  #|         wire.every((part) => typeof part === "string")
+  #|           ? wire
+  #|           : ["failed"],
+  #|       () => ["failed"],
+  #|     )
 
 ///|
 extern "js" fn storage_save_ffi(
   text : String,
   replace : Bool,
 ) -> @js_async.Promise[Array[String]] =
-  #| (text, replace) => globalThis.tanikunStorage.saveResult(text, replace)
+  #| (text, replace) =>
+  #|   Promise.resolve()
+  #|     .then(() => globalThis.tanikunStorage.saveResult(text, replace))
+  #|     .then(
+  #|       (wire) =>
+  #|         Array.isArray(wire) &&
+  #|         wire.every((part) => typeof part === "string")
+  #|           ? wire
+  #|           : ["failed"],
+  #|       () => ["failed"],
+  #|     )
 
 ///|
 /// Decode the wire array in one place. Unknown tags, missing payloads, empty
