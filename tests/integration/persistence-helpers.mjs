@@ -395,17 +395,53 @@ export async function delayNextTransactionComplete(page) {
   });
 }
 
-/** Make the next save reject with a localized quota error. */
+/** Make only the next save reject with a localized error. */
 export async function failNextSave(page, message = "quota exceeded") {
   await page.evaluate((reason) => {
-    globalThis.tanikunStorage.save = () => Promise.reject(new Error(reason));
+    if (globalThis.tanikunSaveFailureArmed) {
+      throw new Error("a previous save failure is still armed");
+    }
+    const save = globalThis.tanikunStorage.save;
+    globalThis.tanikunSaveFailureArmed = true;
+    globalThis.tanikunStorage.save = () => {
+      globalThis.tanikunSaveFailureArmed = false;
+      globalThis.tanikunStorage.save = save;
+      return Promise.reject(new Error(reason));
+    };
   }, message);
 }
 
-/** Make the next save result reject with a non-Error value. */
+/** Assert the armed save failure was consumed, so it cannot leak to a later save. */
+export async function assertNextSaveFailureConsumed(page) {
+  await page.evaluate(() => {
+    if (globalThis.tanikunSaveFailureArmed) {
+      throw new Error("the armed save failure was never consumed");
+    }
+  });
+}
+
+/** Make only the next save result reject with a non-Error value. */
 export async function failNextSaveResult(page) {
   await page.evaluate(() => {
-    globalThis.tanikunStorage.saveResult = () => Promise.reject("unexpected");
+    if (globalThis.tanikunSaveResultFailureArmed) {
+      throw new Error("a previous save-result failure is still armed");
+    }
+    const saveResult = globalThis.tanikunStorage.saveResult;
+    globalThis.tanikunSaveResultFailureArmed = true;
+    globalThis.tanikunStorage.saveResult = () => {
+      globalThis.tanikunSaveResultFailureArmed = false;
+      globalThis.tanikunStorage.saveResult = saveResult;
+      return Promise.reject("unexpected");
+    };
+  });
+}
+
+/** Assert the armed save-result failure was consumed. */
+export async function assertNextSaveResultFailureConsumed(page) {
+  await page.evaluate(() => {
+    if (globalThis.tanikunSaveResultFailureArmed) {
+      throw new Error("the armed save-result failure was never consumed");
+    }
   });
 }
 

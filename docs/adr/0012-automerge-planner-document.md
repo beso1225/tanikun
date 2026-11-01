@@ -72,7 +72,11 @@ Adopt a matching local attempt with its full Automerge history; a different
 tab's unknown document still fails the comparison. Commit callbacks also update
 this tracking after a timeout, with operation versions preventing an older
 delayed event from replacing newer state. Save errors carry their recovery
-message into the shell, matched to the current source document.
+message into the shell, matched to the current source document. Persistence
+failures carry distinct load and save persistence error kinds. A matching Saved
+clears only save-failure guidance, while load-failure guidance remains until
+explicit discard. A failed retry and unrelated validation errors also remain
+visible.
 
 The IndexedDB connection and transaction lifecycle live in
 `apps/web/public/persistence-transactions.js`. It receives the database and
