@@ -118,12 +118,12 @@ allocation. It also runs browser-package scheduler tests without a browser or
 real timers, covering event order, independent instances, load/seed recovery,
 stale completions, and Undo. A persistence adapter suite runs the production
 `persistence.js` against `fake-indexeddb` and controlled timers. It covers
-missing storage, open and request failures, blocked and late opens,
-active-transaction timeout and abort, delayed commits, retries, connection
-cleanup, aborted-attempt cleanup, and reconciliation with a matching or
-unrelated stored record. The suite records that `changes()` keeps the last
-adopted history after an uncommitted timeout and includes the attempted write
-only after reconciliation matches the stored bytes.
+missing storage, open, transaction, and request failures, blocked and late
+opens, active-transaction timeout and abort, delayed commits, retries,
+connection cleanup, aborted-attempt cleanup, and reconciliation with a matching
+or unrelated stored record. The suite records that `changes()` keeps the last
+adopted history immediately after a timeout. The attempted write appears after
+a late commit is adopted, or after reconciliation matches the stored bytes.
 `just test-browser` covers isolated browser contexts, offline edits,
 reload before exchange, repeated exchange, concurrent custom deletion and edits,
 JSON migration, interrupted writes, timed-out opens, stale tabs, initial save
