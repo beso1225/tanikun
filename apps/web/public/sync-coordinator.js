@@ -264,6 +264,10 @@ const retryable = (result) =>
         }
         if (result.next_cursor <= after)
           throw new SyncCoordinatorError("inconsistent_cursor");
+        // ADR-0013 requires the observed high-water commit before page
+        // processing. Keep it even if dependency or root validation rejects
+        // this page, so a later rollback is still detectable.
+        metadata = await metadataStore.observe(metadataKey(), result.cursor);
 
         const local = storage.changes().map((change) => ({
           bytes: change,
@@ -309,7 +313,6 @@ const retryable = (result) =>
           changes.push(entry.bytes);
         }
 
-        metadata = await metadataStore.observe(metadataKey(), result.cursor);
         await syncStore.markRemote(syncScope(), hashes);
         await metadataStore.applyPage({
           key: metadataKey(),

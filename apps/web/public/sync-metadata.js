@@ -224,9 +224,12 @@ const sameBytes = (left, right) =>
               throw new SyncMetadataError("cursor_regression");
             let document;
             if (expectedPlannerBytes === null) {
-              if (planner !== undefined)
-                throw new SyncMetadataError("stale_planner");
-              document = automerge.init();
+              if (planner === undefined) document = automerge.init();
+              else if (typeof planner === "string")
+                // ADR-0012 keeps a legacy JSON record valid until the next
+                // save. Migrate it into Automerge before applying the page.
+                document = codec.update(null, planner);
+              else throw new SyncMetadataError("stale_planner");
             } else {
               if (
                 planner?.storageVersion !== 2 ||
