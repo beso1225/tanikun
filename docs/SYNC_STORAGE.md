@@ -55,13 +55,14 @@ the final cursor read all share one `DB.batch()` transaction. An identical
 canonical envelope returns its sequence. A differing envelope fails the whole
 transaction. A later statement failure rolls back earlier rows and counters.
 
-Pull reads its cursor, integrity state, and rows in one batch. SQL first
-limits candidates to `limit + 1` before calculating their sizes and retrieving
-BLOBs; the repository then
-counts each encoded envelope once to select the exact JSON byte-capped prefix. These binding
-operations use D1's primary, without opting into read replicas. The separate full-log integrity check still
-scans the document log; the candidate bound does not make that check constant-cost. No application
-read-modify-write counter allocation or cross-await transaction is used.
+Pull reads its cursor, integrity state, and rows in one batch. SQL first limits
+candidates to `limit + 1` before calculating their sizes and retrieving BLOBs;
+the repository then counts each encoded envelope once to select the exact JSON
+byte-capped prefix. These binding operations use D1's primary, without opting
+into read replicas. The separate full-log integrity check still scans the
+document log; the candidate bound does not make that check constant-cost. No
+application read-modify-write counter allocation or cross-await transaction is
+used.
 
 `packages/sync-contract/contract.mjs` owns envelope validation, byte limits,
 canonical encoding, and stored-envelope conversion. It has no platform or
