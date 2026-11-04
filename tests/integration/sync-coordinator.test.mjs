@@ -116,6 +116,21 @@ async function seedPlanner(factory, baseDocument) {
   database.close();
 }
 
+async function seedLegacyPlanner(factory, text) {
+  const database = await openPlannerDatabase(factory);
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction("documents", "readwrite");
+    transaction.objectStore("documents").put(text, "planner");
+    transaction.addEventListener("complete", () => resolve(), { once: true });
+    transaction.addEventListener(
+      "abort",
+      () => reject(transaction.error ?? new Error("legacy seed failed")),
+      { once: true },
+    );
+  });
+  database.close();
+}
+
 function createFakeTransport() {
   const pushes = [];
   const pullCalls = [];
@@ -317,7 +332,7 @@ test("fails closed on a missing dependency without advancing the cursor", async 
   assert.equal(result.code, "missing_dependency");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
-  assert.equal(metadata.observedHighWater, 0);
+  assert.equal(metadata.observedHighWater, 3);
   assert.equal(context.transport.pushes.length, 0);
 });
 
@@ -631,7 +646,7 @@ test("rejects an independent Automerge root instead of merging histories", async
   assert.equal(result.code, "history_mismatch");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
-  assert.equal(metadata.observedHighWater, 0);
+  assert.equal(metadata.observedHighWater, 2);
   assert.equal(
     JSON.parse(await context.storage.load()).program_id,
     "fictional",
@@ -859,4 +874,100 @@ test("two coordinators under one lock keep the cursor monotonic", async () => {
   assert.ok(metadata.observedHighWater >= 2);
   assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
   assert.equal(context.transport.pushes.length, 1);
+});
+
+test("continues across multiple pull pages and refreshes the planner CAS", async () => {
+  const context = await setup();
+  const remote1Document = codec.update(
+    Automerge.clone(context.base, { actor: "bb".repeat(32) }),
+    JSON.stringify({ ...source, program_id: "remote-1" }),
+  );
+  const remote1 = Automerge.getLastLocalChange(remote1Document);
+  const remote2Document = codec.update(
+    remote1Document,
+    JSON.stringify({ ...source, program_id: "remote-2" }),
+  );
+  const remote2 = Automerge.getLastLocalChange(remote2Document);
+  context.transport.setPull((options) => {
+    if (options.after === 0) {
+      return {
+        kind: "pulled",
+        document_id: documentId,
+        changes: context.baseChanges.map((change, index) =>
+          storedEnvelope(change, index + 1),
+        ),
+        next_cursor: 2,
+        has_more: true,
+        cursor: 4,
+      };
+    }
+    if (options.after === 2) {
+      return {
+        kind: "pulled",
+        document_id: documentId,
+        changes: [storedEnvelope(remote1, 3), storedEnvelope(remote2, 4)],
+        next_cursor: 4,
+        has_more: false,
+        cursor: 4,
+      };
+    }
+    return {
+      kind: "pulled",
+      document_id: documentId,
+      changes: [],
+      next_cursor: options.after,
+      has_more: false,
+      cursor: 4,
+    };
+  });
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(result.cursor, 4);
+  assert.deepEqual(
+    context.transport.pullCalls.map((call) => call.after),
+    [0, 2],
+  );
+  assert.equal(JSON.parse(await context.storage.load()).program_id, "remote-2");
+  const metadata = await context.metadataStore.read(metadataKey());
+  assert.equal(metadata.mergedCursor, 4);
+  assert.equal(metadata.observedHighWater, 4);
+});
+
+test("does not report a legacy planner as a concurrent replacement", async () => {
+  const context = await setup();
+  await seedLegacyPlanner(context.factory, JSON.stringify(source));
+  await context.storage.load();
+  const independent = codec.update(null, JSON.stringify(source));
+  const changes = Automerge.getAllChanges(independent);
+  context.transport.setPull(() => ({
+    kind: "pulled",
+    document_id: documentId,
+    changes: changes.map((change, index) => storedEnvelope(change, index + 1)),
+    next_cursor: changes.length,
+    has_more: false,
+    cursor: changes.length,
+  }));
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "history_mismatch");
+  assert.notEqual(result.code, "stale_planner");
+});
+
+test("pushes a large local history in bounded batches", async () => {
+  const context = await setup();
+  for (let index = 0; index < 45; index += 1) {
+    await context.storage.save(
+      JSON.stringify({ ...source, program_id: `large-${index}` }),
+    );
+  }
+  await waitFor(
+    async () => (await context.syncStore.listOutbox(syncScope)).length >= 45,
+  );
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.deepEqual(
+    context.transport.pushes.map((batch) => batch.length),
+    [20, 20, 7],
+  );
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
