@@ -3,6 +3,11 @@
   "main": "../bridges/worker.mjs",
   "compatibility_date": "2026-10-12",
   "send_metrics": false,
+  "vars": {
+    "APP_ENV": "local",
+    "DEV_AUTH": "true",
+    "DEV_AUTH_IDENTITIES": "{\"local-fixture-token-alice\":\"dev-alice\",\"local-fixture-token-bob\":\"dev-bob\"}",
+  },
   "d1_databases": [
     {
       "binding": "DB",
