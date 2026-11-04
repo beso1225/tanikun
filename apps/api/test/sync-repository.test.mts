@@ -2,9 +2,27 @@ import { applyD1Migrations, env, reset } from "cloudflare:test";
 import { beforeEach, expect, it } from "vitest";
 
 import fixture from "../../../docs/contracts/sync-v1.json";
+import { SyncError } from "../../../packages/sync-contract/contract.mjs";
 import { createChangeRepository } from "../repositories/changes.mjs";
 
 const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+async function captureSyncError(operation) {
+  return operation().then(
+    () => {
+      throw new Error("Expected the operation to fail");
+    },
+    (reason) => reason,
+  );
+}
+
+async function expectRedactedSyncError(operation, expected) {
+  const error = await captureSyncError(operation);
+  expect(error).toBeInstanceOf(SyncError);
+  expect(error).toMatchObject(expected);
+  expect(error.message).toBe(expected.code);
+  expect(error.cause).toBeUndefined();
+}
 
 beforeEach(async () => {
   await reset();
@@ -82,13 +100,15 @@ it("shares exact append, duplicate, conflict, and pull results with the golden f
   const conflict = fixture.cases.find(
     (candidate) => candidate.name === "conflict-rolls-back-new-row",
   );
-  await expect(
-    repository.append(
-      "dev-alice",
-      fixture.document_id,
-      conflict.request.body.changes,
-    ),
-  ).rejects.toMatchObject({ code: "change_conflict" });
+  await expectRedactedSyncError(
+    () =>
+      repository.append(
+        "dev-alice",
+        fixture.document_id,
+        conflict.request.body.changes,
+      ),
+    { code: "change_conflict" },
+  );
   expect(
     await repository.lookupChange(
       "dev-alice",
@@ -157,12 +177,10 @@ it("rolls back a later SQL failure and consumes no sequence before a retry", asy
   await env.DB.exec(
     `CREATE TRIGGER reject_second BEFORE INSERT ON changes WHEN NEW.change_id = '${b.change_id}' BEGIN SELECT RAISE(ABORT, 'synthetic_failure'); END`,
   );
-  await expect(
-    repository.append("dev-alice", fixture.document_id, [a, b]),
-  ).rejects.toMatchObject({
-    code: "temporarily_unavailable",
-    message: "temporarily_unavailable",
-  });
+  await expectRedactedSyncError(
+    () => repository.append("dev-alice", fixture.document_id, [a, b]),
+    { code: "temporarily_unavailable" },
+  );
   expect(
     await repository.lookupChange(
       "dev-alice",
@@ -184,12 +202,14 @@ it("rolls back a later SQL failure and consumes no sequence before a retry", asy
 it("conflicting envelopes inside one batch roll back all preceding new changes", async () => {
   const repository = await seeded();
   const a = change(1);
-  await expect(
-    repository.append("dev-alice", fixture.document_id, [
-      a,
-      { ...a, payload: "BQY=" },
-    ]),
-  ).rejects.toMatchObject({ code: "change_conflict" });
+  await expectRedactedSyncError(
+    () =>
+      repository.append("dev-alice", fixture.document_id, [
+        a,
+        { ...a, payload: "BQY=" },
+      ]),
+    { code: "change_conflict" },
+  );
   expect((await repository.pull("dev-alice", fixture.document_id)).cursor).toBe(
     0,
   );
@@ -244,13 +264,15 @@ it("rejects gaps for pull, new append, and duplicate-only append without a write
     .bind(fixture.document_id)
     .run();
   for (const changes of [[change(3)], [change(2)]]) {
-    await expect(
-      repository.append("dev-alice", fixture.document_id, changes),
-    ).rejects.toMatchObject({ code: "log_gap", cursor: 2 });
+    await expectRedactedSyncError(
+      () => repository.append("dev-alice", fixture.document_id, changes),
+      { code: "log_gap", cursor: 2 },
+    );
   }
-  await expect(
-    repository.pull("dev-alice", fixture.document_id),
-  ).rejects.toMatchObject({ code: "log_gap", cursor: 2 });
+  await expectRedactedSyncError(
+    () => repository.pull("dev-alice", fixture.document_id),
+    { code: "log_gap", cursor: 2 },
+  );
   expect(
     await repository.lookupChange(
       "dev-alice",
@@ -282,9 +304,10 @@ it("pages in sequence order, handles empty pages and cursor rollback, and remain
   expect(
     await repository.pull("dev-alice", fixture.document_id, { after: 4 }),
   ).toMatchObject({ changes: [], next_cursor: 4, has_more: false });
-  await expect(
-    repository.pull("dev-alice", fixture.document_id, { after: 5 }),
-  ).rejects.toMatchObject({ code: "cursor_ahead", cursor: 4 });
+  await expectRedactedSyncError(
+    () => repository.pull("dev-alice", fixture.document_id, { after: 5 }),
+    { code: "cursor_ahead", cursor: 4 },
+  );
 });
 
 it("round-trips opaque AES envelopes and conflicts on metadata changes with the same ID", async () => {
@@ -295,9 +318,11 @@ it("round-trips opaque AES envelopes and conflicts on metadata changes with the 
   expect(
     (await repository.pull("dev-alice", fixture.document_id)).changes[0],
   ).toEqual({ ...fixture.encrypted_envelope, server_sequence: 1 });
-  await expect(
-    repository.append("dev-alice", fixture.document_id, [fixture.envelope]),
-  ).rejects.toMatchObject({ code: "change_conflict" });
+  await expectRedactedSyncError(
+    () =>
+      repository.append("dev-alice", fixture.document_id, [fixture.envelope]),
+    { code: "change_conflict" },
+  );
 });
 
 it("distinguishes counter CHECK exhaustion from the NOT NULL gap guard and rolls back", async () => {
@@ -307,9 +332,14 @@ it("distinguishes counter CHECK exhaustion from the NOT NULL gap guard and rolls
   await env.DB.exec(
     "CREATE TRIGGER exhaust_counter AFTER INSERT ON changes BEGIN UPDATE documents SET last_seq = 9007199254740991 WHERE id = NEW.document_id; END",
   );
-  await expect(
-    repository.append("dev-alice", fixture.document_id, [change(1), change(2)]),
-  ).rejects.toMatchObject({ code: "sequence_exhausted" });
+  await expectRedactedSyncError(
+    () =>
+      repository.append("dev-alice", fixture.document_id, [
+        change(1),
+        change(2),
+      ]),
+    { code: "sequence_exhausted" },
+  );
   expect((await repository.pull("dev-alice", fixture.document_id)).cursor).toBe(
     0,
   );
@@ -419,4 +449,76 @@ it("bounds the payload-sizing query to the requested page rather than the remain
     expect(payloadRowsRead).toBeGreaterThan(0);
     expect(payloadRowsRead).toBeLessThanOrEqual(64);
   }
+});
+
+it.each([
+  { name: "negative after", options: { after: -1 } },
+  { name: "fractional after", options: { after: 1.5 } },
+  { name: "NaN after", options: { after: NaN } },
+  { name: "infinite after", options: { after: Infinity } },
+  { name: "unsafe after", options: { after: Number.MAX_SAFE_INTEGER + 1 } },
+  { name: "zero limit", options: { limit: 0 } },
+  { name: "over-maximum limit", options: { limit: 101 } },
+  { name: "fractional limit", options: { limit: 1.5 } },
+  { name: "infinite limit", options: { limit: Infinity } },
+])("rejects $name on an owned document", async ({ options }) => {
+  const repository = await seeded();
+  const error = await captureSyncError(() =>
+    repository.pull("dev-alice", fixture.document_id, options),
+  );
+  expect(error).toBeInstanceOf(SyncError);
+  expect(error).toMatchObject({ code: "malformed_request" });
+  expect(error.message).toBe("malformed_request");
+  expect(error.cause).toBeUndefined();
+});
+
+async function allocatorStatements(vector) {
+  await seeded();
+  // These SQL-level tests bypass the full-log integrity guard. The repository
+  // exhaustion test separately verifies the public error and redaction.
+  await env.DB.prepare("UPDATE documents SET last_seq = ?1 WHERE id = ?2")
+    .bind(vector.last_sequence, fixture.document_id)
+    .run();
+  return Array.from({ length: vector.new_changes }, () =>
+    env.DB.prepare(
+      "UPDATE documents SET last_seq = last_seq + 1 WHERE id = ?1 RETURNING last_seq AS server_sequence",
+    ).bind(fixture.document_id),
+  );
+}
+
+it.each(
+  fixture.sequence_allocation_cases.filter(
+    (vector) => !vector.counter_unchanged,
+  ),
+)("enforces the SQL allocator vector $name", async (vector) => {
+  const statements = await allocatorStatements(vector);
+  const results = await env.DB.batch(statements);
+  expect(
+    results.flatMap((result) =>
+      result.results.map((row) => row.server_sequence),
+    ),
+  ).toEqual(vector.sequences);
+  const document = await env.DB.prepare(
+    "SELECT last_seq FROM documents WHERE id = ?1",
+  )
+    .bind(fixture.document_id)
+    .first();
+  expect(document.last_seq).toBe(vector.cursor);
+});
+
+it.each(
+  fixture.sequence_allocation_cases.filter(
+    (vector) => vector.counter_unchanged,
+  ),
+)("rolls back the SQL allocator vector $name", async (vector) => {
+  const statements = await allocatorStatements(vector);
+  await expect(env.DB.batch(statements)).rejects.toThrowError(
+    "sync_sequence_range",
+  );
+  const document = await env.DB.prepare(
+    "SELECT last_seq FROM documents WHERE id = ?1",
+  )
+    .bind(fixture.document_id)
+    .first();
+  expect(document.last_seq).toBe(vector.last_sequence);
 });
