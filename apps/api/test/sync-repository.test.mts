@@ -380,3 +380,43 @@ it("rechecks ownership inside the atomic batch if ownership changes after lookup
       .count,
   ).toBe(0);
 });
+
+it("bounds the payload-sizing query to the requested page rather than the remaining history", async () => {
+  const repository = await seeded();
+  for (let start = 1; start <= 256; start += 20) {
+    const entries = Array.from(
+      { length: Math.min(20, 257 - start) },
+      (_, index) => change(start + index),
+    );
+    await repository.append("dev-alice", fixture.document_id, entries);
+  }
+  let payloadRowsRead = 0;
+  const measured = createChangeRepository({
+    prepare: (sql) => env.DB.prepare(sql),
+    batch: async (statements) => {
+      const results = await env.DB.batch(statements);
+      for (const result of results) {
+        if (result.results.some((row) => Object.hasOwn(row, "payload"))) {
+          payloadRowsRead += result.meta.rows_read;
+        }
+      }
+      return results;
+    },
+  });
+  for (const after of [0, 200]) {
+    payloadRowsRead = 0;
+    const page = await measured.pull("dev-alice", fixture.document_id, {
+      after,
+      limit: 2,
+    });
+    expect(page).toMatchObject({
+      next_cursor: after + 2,
+      has_more: true,
+      cursor: 256,
+    });
+    // Allow index/window bookkeeping, but not sizing all 256 payloads.
+    // The separate full-log integrity query is not part of this metric.
+    expect(payloadRowsRead).toBeGreaterThan(0);
+    expect(payloadRowsRead).toBeLessThanOrEqual(64);
+  }
+});

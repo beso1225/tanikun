@@ -198,15 +198,19 @@ export function createChangeRepository(
             .prepare(
               // Size only the candidate IDs before retrieving BLOBs. Include the
               // first payload crossing the byte budget for exact JSON sizing.
-              `WITH sizes AS (
-                SELECT c.seq,
-                  4 * ((length(c.payload) + 2) / 3) AS payload_bytes,
-                  SUM(4 * ((length(c.payload) + 2) / 3)) OVER (ORDER BY c.seq) AS encoded_bytes
+              `WITH candidates AS (
+                SELECT c.seq, 4 * ((length(c.payload) + 2) / 3) AS payload_bytes
                 FROM changes c JOIN documents d ON d.id = c.document_id
                 WHERE d.id = ?1 AND d.owner_id = ?2 AND c.seq > ?3
+                ORDER BY c.seq LIMIT ?4
+              ), sizes AS (
+                SELECT seq, payload_bytes,
+                  SUM(payload_bytes) OVER (ORDER BY seq) AS encoded_bytes
+                FROM candidates
               )
-              SELECT ${rowColumns} FROM changes c JOIN sizes s ON s.seq = c.seq
-              WHERE c.document_id = ?1 AND s.encoded_bytes - s.payload_bytes < ?5
+              SELECT ${rowColumns} FROM sizes s CROSS JOIN changes c
+              WHERE c.document_id = ?1 AND c.seq = s.seq
+                AND s.encoded_bytes - s.payload_bytes < ?5
               ORDER BY c.seq LIMIT ?4`,
             )
             .bind(
