@@ -378,6 +378,47 @@ it("rejects invalid query strings on an owned document", async () => {
   }
 });
 
+it("rejects query strings on bootstrap and append before writing", async () => {
+  const bootstrapQuery = await request("/api/v1/sync/document?after=0");
+  expect(bootstrapQuery.status).toBe(400);
+  expect(await bootstrapQuery.json()).toEqual({
+    error: { code: "malformed_request" },
+  });
+  const empty = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM documents",
+  ).first();
+  expect(empty.count).toBe(0);
+
+  const { document_id: documentId } = await bootstrap();
+  const body = JSON.stringify({ changes: [envelopeFor(documentId)] });
+  const appendQuery = await SELF.fetch(
+    `${apiOrigin}/api/v1/sync/documents/${documentId}/changes?foo=1`,
+    {
+      method: "POST",
+      headers: headers(alice, { "Content-Type": "application/json" }),
+      body,
+    },
+  );
+  expect(appendQuery.status).toBe(400);
+  expect(await appendQuery.json()).toEqual({
+    error: { code: "malformed_request" },
+  });
+  const changes = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM changes",
+  ).first();
+  expect(changes.count).toBe(0);
+
+  const mediaTypeFirst = await SELF.fetch(
+    `${apiOrigin}/api/v1/sync/documents/${documentId}/changes?foo=1`,
+    {
+      method: "POST",
+      headers: headers(alice, { "Content-Type": "text/plain" }),
+      body,
+    },
+  );
+  expect(mediaTypeFirst.status).toBe(415);
+});
+
 it("rejects malformed bodies, duplicate keys, unknown fields, and limits", async () => {
   const { document_id: documentId } = await bootstrap();
   const envelope = envelopeFor(documentId);
@@ -511,9 +552,22 @@ it("returns one document for concurrent bootstrap calls", async () => {
 });
 
 it("hides every sync route when the local gate is disabled or malformed", async () => {
-  const gateRequest = new Request(`${apiOrigin}/api/v1/sync/document`, {
-    headers: headers(),
-  });
+  const gateRequests = [
+    () =>
+      new Request(`${apiOrigin}/api/v1/sync/document`, {
+        headers: headers(),
+      }),
+    () =>
+      new Request(
+        `${apiOrigin}/api/v1/sync/documents/${fixture.document_id}/changes`,
+        { headers: headers() },
+      ),
+    () =>
+      new Request(
+        `${apiOrigin}/api/v1/sync/documents/${fixture.document_id}/changes`,
+        { method: "POST", headers: headers() },
+      ),
+  ];
   const configurations = [
     {
       DEV_AUTH: "false",
@@ -541,11 +595,13 @@ it("hides every sync route when the local gate is disabled or malformed", async 
     },
   ];
   for (const configuration of configurations) {
-    const response = await worker.fetch(gateRequest, configuration);
-    expect(response.status).toBe(404);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      allowedOrigin,
-    );
-    expect(await response.json()).toEqual({ error: { code: "not_found" } });
+    for (const makeRequest of gateRequests) {
+      const response = await worker.fetch(makeRequest(), configuration);
+      expect(response.status).toBe(404);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        allowedOrigin,
+      );
+      expect(await response.json()).toEqual({ error: { code: "not_found" } });
+    }
   }
 });

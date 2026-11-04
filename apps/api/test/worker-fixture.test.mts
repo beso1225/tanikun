@@ -1,16 +1,18 @@
+import assert from "node:assert/strict";
+
 import { applyD1Migrations, env, reset, SELF } from "cloudflare:test";
 import { beforeEach, expect, it } from "vitest";
 
 import fixture from "../../../docs/contracts/sync-v1.json";
 import { validateAppend } from "../../../packages/sync-contract/contract.mjs";
+import worker from "../bridges/worker.mjs";
 
 const apiOrigin = "http://127.0.0.1:8787";
 const aliceId = "dev-alice";
 const bobId = "dev-bob";
 
 const skipped = new Set([
-  // These need a stubbed UUID, a failing database, or client-only state.
-  "bootstrap-new",
+  // These need a failing database or client-only state.
   "rollback-on-bootstrap",
   "payload-decode-failure",
   // These deliberately change DEV_AUTH/APP_ENV and are covered by dedicated
@@ -137,6 +139,37 @@ function requestFor(testCase) {
   });
 }
 
+async function rowCounts() {
+  const [users, documents, changes] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS count FROM users").first(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM documents").first(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM changes").first(),
+  ]);
+  return {
+    users: users.count,
+    documents: documents.count,
+    changes: changes.count,
+  };
+}
+
+function assertExpectedWrites(testCase, before, after) {
+  const expectation = testCase.expect ?? {};
+  if (expectation.writes === false) {
+    assert.deepEqual(after, before);
+  } else if (expectation.writes === true) {
+    assert.ok(
+      after.users + after.documents + after.changes >
+        before.users + before.documents + before.changes,
+    );
+  }
+  if (expectation.documents_created !== undefined) {
+    assert.equal(
+      after.documents - before.documents,
+      expectation.documents_created,
+    );
+  }
+}
+
 beforeEach(async () => {
   await reset();
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
@@ -146,7 +179,21 @@ it.each(serverCases)(
   "matches the golden fixture case $name",
   async (testCase) => {
     await applySetup(testCase.setup);
-    const response = await SELF.fetch(requestFor(testCase));
+    const before = await rowCounts();
+    const request = requestFor(testCase);
+    const response =
+      testCase.name === "bootstrap-new"
+        ? await worker.fetch(request, {
+            DB: env.DB,
+            APP_ENV: "local",
+            DEV_AUTH: "true",
+            DEV_AUTH_IDENTITIES: JSON.stringify(
+              fixture.environment.DEV_AUTH_IDENTITIES,
+            ),
+            TEST_NEW_DOCUMENT_ID: fixture.document_id,
+          })
+        : await SELF.fetch(request);
+    const after = await rowCounts();
     const expected = testCase.response;
 
     expect(response.status).toBe(expected.status);
@@ -164,5 +211,6 @@ it.each(serverCases)(
     const actualBody =
       expected.body === null ? await response.text() : await response.json();
     expect(actualBody).toEqual(expected.body === null ? "" : expected.body);
+    assertExpectedWrites(testCase, before, after);
   },
 );
