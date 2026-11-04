@@ -2,8 +2,9 @@
 
 This is the server storage boundary for Phase 4. The wire contract is
 [ADR-0013](adr/0013-http-sync-protocol.md); temporary identity and HTTP gating
-belong to [ADR-0014](adr/0014-local-development-auth.md). Storage adds no HTTP
-routes, authentication middleware, browser code, or IndexedDB changes.
+belong to [ADR-0014](adr/0014-local-development-auth.md). The storage layer
+adds no browser code or IndexedDB changes. The Worker HTTP boundary that calls
+it is described below.
 
 ## Migrations and local configuration
 
@@ -34,11 +35,13 @@ repository methods never run migrations. See
 
 ## Repository boundary
 
-`apps/api/repositories/changes.mjs` exports `createChangeRepository(DB)`.
-Callers supply an already resolved owner ID. The repository enforces document
-ownership, but it does not resolve tokens or accept an Origin. The future HTTP
-boundary must apply ADR-0014's local gate before calling it, including for AES
-and `none` envelopes.
+`apps/api/repositories/changes.mjs` exports
+`createChangeRepository(DB, {newDocumentId, now})`. The optional
+`newDocumentId` and `now` injections let tests choose deterministic document
+IDs and timestamps. Callers supply an already resolved owner ID. The repository
+enforces document ownership, but it does not resolve tokens or accept an
+Origin. The Worker HTTP boundary applies ADR-0014's local gate before calling
+it, including for AES and `none` envelopes.
 
 | Method                                        | Result                                                                                                                              |
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -69,7 +72,7 @@ canonical encoding, and stored-envelope conversion. It has no platform or
 planner dependencies. Server tests consume the same
 [golden fixture](contracts/sync-v1.json) selected for future browser tests.
 HTTP parsing, duplicate JSON keys, streamed request limits, Origin, and bearer
-headers remain responsibilities of the later HTTP implementation.
+headers are owned by the Worker HTTP boundary described below.
 
 Failures expose only `SyncError.code` and, for gap/rollback errors, `cursor`.
 The repository does not log payloads, metadata, identities, SQL errors, or their
@@ -79,22 +82,48 @@ causes. NOT NULL failures on the integrity counter and envelope distinguish
 `temporarily_unavailable`. No automatic server retry changes the submitted
 batch; callers follow ADR-0013's exact-envelope retry policy.
 
+## Worker HTTP boundary
+
+`apps/api/bridges/worker.mjs` keeps the existing `/api/health` behavior and
+dispatches `/api/v1` sync requests to `apps/api/http/`. The boundary implements
+ADR-0014's environment, URL, Origin, and bearer checks before it calls the
+repository. Sync routes stay disabled unless `DEV_AUTH` is `true`, `APP_ENV` is
+`local`, the request URL is HTTP on `127.0.0.1` or `localhost`, and the
+identity mapping is valid and nonempty. `just dev-api` supplies the fixture
+identities for local development; the test Wrangler configuration supplies
+them to `SELF`.
+
+`apps/api/http/json.mjs` bounds the streamed body before parsing and rejects
+duplicate object keys at every depth. The HTTP layer also enforces the ADR
+media type, batch, payload, query, method, and owned-resource rules. It maps
+expected failures to stable status codes and redacted JSON bodies.
+`apps/api/http/respond.mjs` adds `Vary: Origin` to every sync response and the
+exact allow origin only for `http://127.0.0.1:4300`; gate failures keep their
+404 status. Request and response bodies never include SQL, exception messages,
+tokens, or payload bytes.
+
 ## Local evidence
 
-`just test-d1` builds the API and runs the repository and shared-contract suites
-inside the Workers runtime with a real local D1 binding. Each test resets
-storage and applies the production migration with Cloudflare's migration helper.
-The suites cover fresh/repeat migration, recorded schema version, concurrent
-bootstrap, concurrent append, exact mixed acknowledgements, duplicate/conflict
-handling, an injected mid-batch SQL failure, retry without consumed sequence,
-owner isolation and a changed-owner race, gap rejection including duplicate-only
-append, multiple cursor pages, cursor rollback, AES byte/metadata round trips,
-and the 8 MiB response cap with lossless continuation. A trigger moves the
-counter to its upper boundary inside a test transaction to exercise the real
-CHECK and its rollback without manufacturing quadrillions of log rows.
+`just test-d1` builds the API and runs the repository, shared-contract, and
+Worker HTTP suites inside the Workers runtime with a real local D1 binding.
+Each test resets storage and applies the production migration with Cloudflare's
+migration helper. The storage suites cover fresh/repeat migration, recorded
+schema version, concurrent bootstrap, concurrent append, exact mixed
+acknowledgements, duplicate/conflict handling, an injected mid-batch SQL
+failure, retry without consumed sequence, owner isolation and a changed-owner
+race, gap rejection including duplicate-only append, multiple cursor pages,
+cursor rollback, AES byte/metadata round trips, and the 8 MiB response cap with
+lossless continuation. A trigger moves the counter to its upper boundary inside
+a test transaction to exercise the real CHECK and its rollback without
+manufacturing quadrillions of log rows.
 
+The Worker HTTP suites use `SELF` with the production bridge and local D1. They
+cover bootstrap, append, duplicate retry, conflict rollback, cursor pagination,
+foreign and missing documents, malformed bodies and duplicate JSON keys,
+request and payload limits, media types, method and route errors, the
+exact-Origin CORS contract, the local gate variants, and redacted error bodies.
 The golden fixture's malformed envelopes and encoded-size boundaries also run
 through the shared validator. CLI verification applies `0001_sync.sql` to an
 empty local database, repeats it as a no-op, and reads the recorded filename.
-This establishes local D1 behavior, not production deployment, HTTP auth,
-cryptographic protection, or browser synchronization.
+This establishes local D1 and local Worker behavior, not production deployment,
+production identity, cryptographic protection, or browser synchronization.
