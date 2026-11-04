@@ -231,6 +231,8 @@ const retryable = (result) =>
     const pullPages = async () => {
       await storage.load();
       let snapshot = storage.snapshot();
+      if (snapshot?.storageVersion === 1)
+        throw new SyncCoordinatorError("planner_not_migrated");
       let metadata = await metadataStore.read(metadataKey());
       for (let pages = 0; pages < 10_000; pages += 1) {
         const result = await retry(() =>
