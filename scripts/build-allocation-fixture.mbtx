@@ -46,4 +46,5 @@ async fn main {
   ]).run()
   @shell.Cmd("just", ["build-automerge", root + "/apps/web/public"]).run()
   @shell.Cmd("warren", ["-C", root + "/apps/web", "build"]).run()
+  @shell.Cmd("just", ["build-sync-contract", root + "/apps/web/dist"]).run()
 }

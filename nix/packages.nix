@@ -19,6 +19,7 @@ let
       ../apps/web/public/planner-document.js
       ../apps/web/public/sync-coordinator.js
       ../apps/web/public/sync-metadata.js
+      ../apps/web/public/sync-shell.js
       ../apps/web/public/sync-store.js
       ../apps/web/public/sync-transport.js
       ../apps/web/styles

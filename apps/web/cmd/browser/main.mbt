@@ -45,12 +45,35 @@ fn planner_view(
           class="flex shrink-0 items-center gap-2 pl-2 sm:border-l sm:border-rule/60 sm:pl-3",
           [
             credit_total_view(summary),
-            span(
-              id="persistence-status",
-              class="text-[0.6875rem] text-muted",
-              attrs=@html.Attrs::build().role("status"),
-              storage_status_label(state.storage_status),
-            ),
+            div(class="flex flex-col items-end gap-0.5", [
+              span(
+                id="persistence-status",
+                class="text-[0.6875rem] text-muted",
+                attrs=@html.Attrs::build().role("status"),
+                storage_status_label(state.storage_status),
+              ),
+              div(class="flex items-center gap-1", [
+                div(
+                  id="sync-status",
+                  class="text-[0.6875rem] leading-tight text-muted",
+                  attrs=@html.Attrs::build()
+                    .role("status")
+                    .aria_live("polite")
+                    .aria_atomic("true")
+                    .tabindex(-1),
+                  [
+                    span(class="sr-only", "同期状態: "),
+                    span(id="sync-status-text", "同期準備中"),
+                  ],
+                ),
+                button(
+                  id="sync-retry",
+                  class="hidden min-h-8 min-w-8 rounded-md border border-rule px-1 text-xs text-muted hover:bg-canvas",
+                  attrs=@html.Attrs::build().aria_label("同期を再試行"),
+                  "↻",
+                ),
+              ]),
+            ]),
             button(
               id="open-catalogue-picker",
               class="flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90",
