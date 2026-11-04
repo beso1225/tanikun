@@ -118,7 +118,10 @@ envelope fields.
   reload does not re-upload either kind. Entries are scoped by
   `origin:document`, so a document rebind cannot push another document's
   envelopes. The seen set is deduplicated by change ID and grows with retained
-  history; the outbox itself holds only unsynced local changes.
+  history; the outbox itself holds only unsynced local changes. Each sync scans
+  retained local history to build the seen and outbox sets, so per-sync CPU work
+  is linear in retained history; a persisted scan-boundary optimization is
+  future work. The outbox and push batches stay bounded.
 - `sync-metadata.js` keeps ADR-0013's `sync:<origin>:<document>` record in
   `tanikun-planner`/`documents`. It records the observed server high-water
   before a pull, then writes the merged planner and merged cursor in one
