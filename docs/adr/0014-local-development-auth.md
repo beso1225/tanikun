@@ -67,7 +67,9 @@ with the API normally at `http://127.0.0.1:8787`.
 
 For allowed origins, responses include
 `Access-Control-Allow-Origin: http://127.0.0.1:4300` and `Vary: Origin`,
-including gate-generated 404 responses. A response-header step applies this
+including gate-generated 404 responses. Allowed-origin responses also send
+`Access-Control-Expose-Headers: Retry-After` so the browser transport can honor
+ADR-0013's retry minimum. A response-header step applies this
 exact-Origin comparison after any result, without authenticating, provisioning,
 or changing the rejection status. It adds `Vary: Origin` on every result.
 Disallowed origins receive no allow-origin header. This header step does not

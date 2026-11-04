@@ -102,8 +102,9 @@ duplicate object keys at every depth. The HTTP layer also enforces the ADR
 media type, batch, payload, query, method, and owned-resource rules. It maps
 expected failures to stable status codes and redacted JSON bodies.
 `apps/api/http/respond.mjs` adds `Vary: Origin` to every sync response and the
-exact allow origin only for `http://127.0.0.1:4300`; gate failures keep their
-404 status. Error bodies and diagnostics never include SQL, exception messages,
+exact allow origin only for `http://127.0.0.1:4300`; allowed origins also expose
+`Retry-After` for the browser transport. Gate failures keep their 404 status.
+Error bodies and diagnostics never include SQL, exception messages,
 tokens, or payload bytes; operation bodies carry only the contract-defined
 envelope fields.
 
