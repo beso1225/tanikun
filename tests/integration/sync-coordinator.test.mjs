@@ -1115,3 +1115,50 @@ test("does not re-upload a discarded plan after a failed discard clear", async (
   assert.equal(context.transport.pushes.length, pushes);
   assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
+
+test("fails closed when a fresh seed follows an interrupted discard", async () => {
+  const context = await setup();
+  context.transport.setPull((options) =>
+    options.after === 0
+      ? {
+          kind: "pulled",
+          document_id: documentId,
+          changes: context.baseChanges.map((change, index) =>
+            storedEnvelope(change, index + 1),
+          ),
+          next_cursor: 2,
+          has_more: false,
+          cursor: 2,
+        }
+      : {
+          kind: "pulled",
+          document_id: documentId,
+          changes: [],
+          next_cursor: options.after,
+          has_more: false,
+          cursor: 2,
+        },
+  );
+  assert.equal((await context.coordinator.sync()).kind, "synced");
+  assert.equal(
+    (await context.metadataStore.read(metadataKey())).mergedCursor,
+    2,
+  );
+  await context.storage.discard();
+  await context.storage.save(
+    JSON.stringify({ ...source, program_id: "fresh-seed" }),
+  );
+  await waitFor(
+    async () => (await context.syncStore.listOutbox(syncScope)).length >= 1,
+  );
+  const pushes = context.transport.pushes.length;
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "discard_pending");
+  assert.equal(context.transport.pushes.length, pushes);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  assert.equal(
+    JSON.parse(await context.storage.load()).program_id,
+    "fresh-seed",
+  );
+});
