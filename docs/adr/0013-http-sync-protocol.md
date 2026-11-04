@@ -27,7 +27,14 @@ contract artifact. Both future Worker integration and browser adapter tests
 must load that exact file and assert its request, response, and failure cases.
 The fixture contains synthetic opaque bytes, not valid Automerge history.
 Protocol tests use it without a planner decoder; merge tests need separate
-valid Automerge fixtures. This decision adds no product module or route.
+valid Automerge fixtures. Fixture response bodies are exact JSON values, not
+subset matches. Required and forbidden response headers are asserted separately.
+`raw_body` denotes literal UTF-8 request bytes instead of JSON serialization.
+Large-body cases use the deterministic `request.body_generator` recipes described
+in the fixture, so the repository does not store megabytes of repeated bytes.
+`sequence_allocation_cases` exercise the counter's arithmetic boundary in model
+or SQL unit tests without materializing quadrillions of log rows.
+This decision adds no product module or route.
 
 ## Wire types and envelope
 
@@ -78,8 +85,11 @@ Phase 4 provides an opaque transport and a local-development restriction.
 It does not provide cryptographic blindness: algorithm `none` exposes payloads
 to the local server, and no Phase 6 key management or encryption is implemented.
 No production plaintext is permitted. Phase 4 rejects every non-local sync
-request, including an AES envelope. Accepting an algorithm name is not evidence
-that end-to-end encryption works.
+request, including an AES envelope. The local gate accepts both `none` and syntactically valid `AES-256-GCM`
+envelopes. The server validates metadata and lengths but never decrypts or
+verifies the tag. The AES fixture is synthetic opaque data, not a working
+cryptographic example. Accepting an algorithm name is not evidence that
+end-to-end encryption works.
 
 ## HTTP operations
 
@@ -95,7 +105,14 @@ including bootstrap. Preflight checks Origin without resolving a bearer.
 
 Bootstrap atomically provisions the dev user and its server-generated document
 when absent. Unique owner and document constraints make concurrent bootstrap
-return the same document. It does not create an Automerge seed. A first client
+return the same document. Use an idempotent insert-on-owner-conflict operation
+and read the winner on the primary inside the bootstrap transaction. A losing
+concurrent bootstrap still returns `200` with that winner's document ID; it does
+not return a conflict. Transient database failures use the normal `503` retry
+policy. Concurrent append transactions serialize on D1; each returns `200` for
+its committed result, `409` for a conflicting envelope, or `503` for a transient
+failure. They never expose a uniqueness error as a new wire status.
+Bootstrap does not create an Automerge seed. A first client
 must pull existing history before uploading its local history. A new replica
 must obtain the original Automerge history, not recreate the same JSON.
 Phase 4 requires replicas to branch from that shared history as in ADR-0012.
@@ -156,12 +173,37 @@ cannot detect an older server view.
 Before advancing the merged cursor, the client decrypts when applicable,
 checks each change hash, validates dependencies, applies the entire page to a
 candidate Automerge document, and validates the materialized planner through
-ADR-0012's boundary. Persist the candidate document and merged cursor atomically. Sync metadata
-lives beside the local document in the same IndexedDB transaction; it does not
-change the `storageVersion: 2` envelope or add planner source fields.
-A failed decode, dependency check, merge, validation, or local write leaves the
-previous document and merged cursor intact. Persist the observed high-water
-separately even if merge fails. After a crash, re-fetching the page is safe.
+ADR-0012's boundary. Keep IndexedDB database `tanikun-planner` at version 1,
+object store `documents`, and the planner at key `planner`. Sync metadata uses
+the sibling key `"sync:" + JSON.stringify([apiOrigin, document_id])`, where
+`apiOrigin` is the API URL's normalized origin without a trailing slash.
+Its value is exactly
+`{"syncVersion":1,"mergedCursor":0,"observedHighWater":0}` initially.
+Both counters must be safe nonnegative integers, with `mergedCursor` no greater
+than `observedHighWater`. Missing metadata starts both counters at zero; invalid
+or future versions stop
+sync without replacing the stored value. Do not alter the `storageVersion: 2`
+planner envelope or add sync fields to planner source.
+
+For a response containing `cursor`, first re-read metadata and check for
+rollback in a read/write transaction. Then commit
+`observedHighWater = max(stored, response.cursor)` in a read/write transaction
+on `documents`, preserving `mergedCursor`. If that write fails, stop processing
+and report persistence failure. Do not merge, acknowledge the page, or start
+another network operation. A crash before this commit cannot be made durable;
+no later merge or upload is permitted before the commit completes.
+
+Only after that commit succeeds may the candidate planner and `mergedCursor`
+commit together in a second transaction on the same object store. Re-read both
+the planner and sibling metadata there. Apply ADR-0012's planner CAS check and
+compare the merged cursor with the request's starting cursor. Preserve the
+maximum stored high-water when replacing metadata. If another tab changed the
+planner or cursor, reject the whole candidate commit and reload before retrying.
+Serialize network sync across tabs per API origin and document, not only within
+one tab. UI saves retain ADR-0012's CAS rule and leave sibling metadata intact.
+A failed decode, dependency check, merge, validation, or second transaction
+leaves the previous planner and merged cursor intact while retaining the first
+transaction's observed high-water. After a crash, re-fetching the page is safe.
 
 The server cannot enforce dependency order without inspecting content.
 The client uploads changes in topological dependency order, with prerequisites
@@ -290,7 +332,8 @@ Ownership is resolved before constructing these statements, and every statement
 is constrained to that resolved document. The actual table names and migration
 remain #139's responsibility; this is a transaction design, not a migration.
 
-Before shipping #139, the local D1 test must prove a two-change append,
+Before shipping #139, the local D1 test must prove concurrent bootstrap returning
+the same document, a two-change append,
 identical replay, a mixed new/previously-stored/repeated batch with exact
 `accepted` sequences, rejection of append into a gapped log, a new change
 followed by a conflicting duplicate, rollback of

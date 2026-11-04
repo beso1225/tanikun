@@ -5,7 +5,8 @@
     "APP_ENV": "local",
     "DEV_AUTH": "true",
     "DEV_AUTH_IDENTITIES": {
-      "local-fixture-token-alice": "dev-alice"
+      "local-fixture-token-alice": "dev-alice",
+      "local-fixture-token-bob": "dev-bob"
     },
     "api_origin": "http://127.0.0.1:8787"
   },
@@ -14,11 +15,12 @@
     "empty-document": "Alice owns the fixture document with last_sequence 0 and no changes.",
     "one-change": "Alice owns the fixture document with last_sequence 1 and the stored envelope.",
     "two-changes": "The one-change setup followed by second_envelope at sequence 2.",
-    "foreign-document": "Alice owns the fixture document; dev-bob owns the foreign document.",
+    "foreign-document": "Alice owns document_id at cursor 0; dev-bob owns foreign_document_id at cursor 0. Both logs are empty.",
     "gap": "Alice owns the fixture document with last_sequence 2 but only second_envelope at sequence 2 exists.",
     "one-change-local-high-water-two": "The one-change setup; the client has merged cursor 1 and observed high-water 2.",
     "production": "The empty setup with APP_ENV production, even with DEV_AUTH true.",
-    "disabled": "The empty setup with DEV_AUTH false."
+    "disabled": "The empty setup with DEV_AUTH false.",
+    "two-owners-empty": "Alice owns document_id at cursor 0; dev-bob owns foreign_document_id at cursor 0. Both tokens resolve distinct users."
   },
   "document_id": "11111111-1111-4111-8111-111111111111",
   "foreign_document_id": "22222222-2222-4222-8222-222222222222",
@@ -1181,7 +1183,7 @@
       }
     },
     {
-      "name": "merge-failure",
+      "name": "payload-decode-failure",
       "setup": "one-change",
       "request": {
         "method": "GET",
@@ -1255,7 +1257,8 @@
           "error": {
             "code": "origin_forbidden"
           }
-        }
+        },
+        "forbidden_headers": ["Access-Control-Allow-Origin"]
       },
       "expect": {
         "writes": false
@@ -1608,11 +1611,964 @@
       "expect": {
         "writes": false
       }
+    },
+    {
+      "name": "unknown-bearer",
+      "setup": "empty",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/sync/document",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer unknown-fixture-token"
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin",
+          "WWW-Authenticate": "Bearer"
+        },
+        "body": {
+          "error": {
+            "code": "unauthorized"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "malformed-bearer",
+      "setup": "empty",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/sync/document",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Basic local-fixture-token-alice"
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin",
+          "WWW-Authenticate": "Bearer"
+        },
+        "body": {
+          "error": {
+            "code": "unauthorized"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "bob-bootstrap-existing",
+      "setup": "two-owners-empty",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/sync/document",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-bob"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "document_id": "22222222-2222-4222-8222-222222222222",
+          "cursor": 0
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "foreign-append",
+      "setup": "foreign-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/22222222-2222-4222-8222-222222222222/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "22222222-2222-4222-8222-222222222222",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "22222222-2222-4222-8222-222222222222",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA=="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "not_found"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "foreign-append-malformed-body",
+      "setup": "foreign-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/22222222-2222-4222-8222-222222222222/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": []
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "not_found"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "missing-append",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/22222222-2222-4222-8222-222222222222/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA=="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "not_found"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "pull-preflight",
+      "setup": "empty",
+      "request": {
+        "method": "OPTIONS",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Access-Control-Request-Method": "GET",
+          "Access-Control-Request-Headers": "authorization"
+        }
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin",
+          "Access-Control-Allow-Methods": "GET",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+          "Access-Control-Max-Age": "0"
+        },
+        "body": null
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "append-two-new-in-request-order",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "BQY="
+            },
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA=="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "document_id": "11111111-1111-4111-8111-111111111111",
+          "accepted": [
+            {
+              "change_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "server_sequence": 1
+            },
+            {
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "server_sequence": 2
+            }
+          ],
+          "cursor": 2
+        }
+      },
+      "expect": {
+        "writes": true,
+        "last_sequence": 2
+      }
+    },
+    {
+      "name": "oversized-decoded-payload",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body_generator": {
+          "kind": "replace_payload_with_repeated_byte",
+          "body": {
+            "changes": [
+              {
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "payload_encoding": "base64",
+                "crypto_algorithm": "none",
+                "key_version": 0,
+                "nonce": null,
+                "aad": {
+                  "api_version": 1,
+                  "document_id": "11111111-1111-4111-8111-111111111111",
+                  "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "envelope_version": 1,
+                  "key_version": 0
+                },
+                "payload": "AQIDBA=="
+              }
+            ]
+          },
+          "byte": 0,
+          "decoded_length": 262145
+        }
+      },
+      "response": {
+        "status": 413,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "request_too_large"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "oversized-streamed-body",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body_generator": {
+          "kind": "pad_json_with_spaces",
+          "body": {
+            "changes": [
+              {
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "payload_encoding": "base64",
+                "crypto_algorithm": "none",
+                "key_version": 0,
+                "nonce": null,
+                "aad": {
+                  "api_version": 1,
+                  "document_id": "11111111-1111-4111-8111-111111111111",
+                  "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "envelope_version": 1,
+                  "key_version": 0
+                },
+                "payload": "AQIDBA=="
+              }
+            ]
+          },
+          "utf8_length": 4194305
+        },
+        "transport": {
+          "omit_content_length": true,
+          "stream_body": true
+        }
+      },
+      "response": {
+        "status": 413,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "request_too_large"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "local-opaque-aes-append",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "AES-256-GCM",
+              "key_version": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 1
+              },
+              "payload": "AAAAAAAAAAAAAAAAAAAAAAA="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "document_id": "11111111-1111-4111-8111-111111111111",
+          "accepted": [
+            {
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "server_sequence": 1
+            }
+          ],
+          "cursor": 1
+        }
+      },
+      "expect": {
+        "writes": true,
+        "last_sequence": 1
+      }
+    },
+    {
+      "name": "aad-mismatch",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA=="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "route-body-document-mismatch",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "22222222-2222-4222-8222-222222222222",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "22222222-2222-4222-8222-222222222222",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA=="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "unknown-envelope-field",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA==",
+              "unexpected": "value"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "unpadded-base64",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "aes-short-nonce",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "AES-256-GCM",
+              "key_version": 1,
+              "nonce": "AAAAAAAAAAAAAAA=",
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 1
+              },
+              "payload": "AAAAAAAAAAAAAAAAAAAAAAA="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "aes-short-payload",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "AES-256-GCM",
+              "key_version": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 1
+              },
+              "payload": "AAAAAAAAAAAAAAAAAAAAAA=="
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "unknown-request-field",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "changes": [
+            {
+              "document_id": "11111111-1111-4111-8111-111111111111",
+              "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "envelope_version": 1,
+              "payload_encoding": "base64",
+              "crypto_algorithm": "none",
+              "key_version": 0,
+              "nonce": null,
+              "aad": {
+                "api_version": 1,
+                "document_id": "11111111-1111-4111-8111-111111111111",
+                "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "envelope_version": 1,
+                "key_version": 0
+              },
+              "payload": "AQIDBA=="
+            }
+          ],
+          "unexpected": true
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
+    },
+    {
+      "name": "duplicate-json-key",
+      "setup": "empty-document",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sync/documents/11111111-1111-4111-8111-111111111111/changes",
+        "headers": {
+          "Origin": "http://127.0.0.1:4300",
+          "Authorization": "Bearer local-fixture-token-alice",
+          "Content-Type": "application/json"
+        },
+        "raw_body": "{\"changes\":[{\"document_id\":\"11111111-1111-4111-8111-111111111111\",\"change_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"envelope_version\":1,\"payload_encoding\":\"base64\",\"crypto_algorithm\":\"none\",\"key_version\":0,\"nonce\":null,\"aad\":{\"api_version\":1,\"document_id\":\"11111111-1111-4111-8111-111111111111\",\"change_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"envelope_version\":1,\"key_version\":0},\"payload\":\"AQIDBA==\"}],\"changes\":[]}"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "http://127.0.0.1:4300",
+          "Vary": "Origin"
+        },
+        "body": {
+          "error": {
+            "code": "malformed_request"
+          }
+        }
+      },
+      "expect": {
+        "writes": false
+      }
     }
   ],
   "client_defaults": {
     "merged_cursor": 0,
     "observed_high_water": 0,
-    "note": "Setups override these values explicitly. Response headers list required headers; unrelated runtime headers are allowed. A null response body denotes no bytes. Wire cases do not attempt Automerge merge, except the explicit merge-failure case."
-  }
+    "note": "Setups override these values explicitly. Apply response_assertions to every case. Wire cases do not attempt Automerge decoding except payload-decode-failure."
+  },
+  "encrypted_envelope": {
+    "document_id": "11111111-1111-4111-8111-111111111111",
+    "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "envelope_version": 1,
+    "payload_encoding": "base64",
+    "crypto_algorithm": "AES-256-GCM",
+    "key_version": 1,
+    "nonce": "AAAAAAAAAAAAAAAA",
+    "aad": {
+      "api_version": 1,
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "change_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "envelope_version": 1,
+      "key_version": 1
+    },
+    "payload": "AAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "response_assertions": {
+    "body_comparison": "exact JSON value; null means no response bytes",
+    "required_headers": "case-insensitive names; required values must match",
+    "forbidden_headers_all_responses": ["Access-Control-Allow-Credentials"],
+    "other_headers": "allowed unless explicitly forbidden"
+  },
+  "request_generator_rules": {
+    "replace_payload_with_repeated_byte": "Deep-copy body; set changes[0].payload to canonical padded base64 of decoded_length copies of byte; serialize with JSON.stringify as UTF-8.",
+    "pad_json_with_spaces": "Serialize body with JSON.stringify as UTF-8; append ASCII spaces until exactly utf8_length bytes. Reject an undersized length in the harness.",
+    "transport": "When stream_body is true, send generated bytes as a stream without Content-Length; enforce the same size limit as a buffered request.",
+    "raw_body": "Send literal UTF-8 bytes instead of serializing a body. Exactly one of body, raw_body, and body_generator may be present."
+  },
+  "sequence_allocation_cases": [
+    {
+      "name": "last-safe-sequence",
+      "last_sequence": 9007199254740990,
+      "new_changes": 1,
+      "sequences": [9007199254740991],
+      "cursor": 9007199254740991
+    },
+    {
+      "name": "exhausted-counter",
+      "last_sequence": 9007199254740991,
+      "new_changes": 1,
+      "status": 503,
+      "body": {
+        "error": {
+          "code": "sequence_exhausted"
+        }
+      },
+      "counter_unchanged": true
+    },
+    {
+      "name": "batch-crosses-safe-limit",
+      "last_sequence": 9007199254740990,
+      "new_changes": 2,
+      "status": 503,
+      "body": {
+        "error": {
+          "code": "sequence_exhausted"
+        }
+      },
+      "counter_unchanged": true
+    }
+  ]
 }
