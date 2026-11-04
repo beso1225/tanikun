@@ -67,7 +67,11 @@ with the API normally at `http://127.0.0.1:8787`.
 
 For allowed origins, responses include
 `Access-Control-Allow-Origin: http://127.0.0.1:4300` and `Vary: Origin`,
-including error responses. Disallowed origins receive no allow-origin header.
+including gate-generated 404 responses. A response-header step applies this
+exact-Origin comparison after any result, without authenticating, provisioning,
+or changing the rejection status. It adds `Vary: Origin` on every result.
+Disallowed origins receive no allow-origin header. This header step does not
+change the operation's gate-before-Origin evaluation order.
 Never send `Access-Control-Allow-Credentials`; browser fetch uses
 `credentials: "omit"` and an explicit bearer header. Cookies are ignored.
 
@@ -86,7 +90,8 @@ route existence, preflight, bearer, method, owned resource lookup, media type,
 size and syntax, then semantic validation and operation. An unparseable route
 ID is `400 malformed_request` after bearer/method checks; a valid foreign ID
 is `404 not_found`. Known paths with unsupported methods return `405` with
-`Allow: GET, OPTIONS` or `Allow: POST, OPTIONS`. Unknown paths are `404`.
+`Allow: GET, OPTIONS` for bootstrap or `Allow: GET, POST, OPTIONS` for the
+changes path. Unknown paths are `404`.
 This order fixes ambiguous combinations, such as a foreign document plus an
 invalid body, without disclosing ownership.
 

@@ -102,7 +102,10 @@ Phase 4 requires replicas to branch from that shared history as in ADR-0012.
 If independent roots produce an invalid planner, preserve both local histories
 and report merge failure; do not silently replace either plan.
 
-Append validates the entire request before writing. Each new distinct change
+Append validates the entire request before writing. Inside its atomic transaction,
+it rejects an existing gap with `409 log_gap` before assigning any sequence.
+That rejection also applies to an all-duplicate batch and consumes no sequence.
+Each new distinct change
 gets the next per-document sequence in request order. Identical repeats within
 the request return the same sequence in each corresponding `accepted` entry.
 An existing identical envelope returns its existing sequence. A differing
@@ -220,16 +223,37 @@ AUTOINCREMENT ID or allocating numbers in JavaScript before insertion.
 states that failed statements roll back the transaction. This is upstream
 documentation, not a completed Tanikun D1 spike. The concrete fallback is:
 
-- One document row has a `last_sequence` integer with a safe-integer CHECK.
+- One document row has a non-null `last_sequence` integer with a safe-integer CHECK.
 - Log rows have unique `(document_id, change_id)` and `(document_id, sequence)`
-  constraints, and a non-null canonical envelope BLOB.
+  constraints, a positive safe-integer sequence CHECK, and a non-null canonical envelope BLOB.
 - Canonical envelope bytes are UTF-8 JSON of the ordered array
   `[document_id, change_id, envelope_version, payload_encoding, crypto_algorithm, key_version, nonce, [1, document_id, change_id, 1, key_version], payload]`.
 - For each envelope, bind document `?1`, change `?2`, and canonical BLOB `?3`
   where referenced. The counter UPDATE takes only the first two bindings.
-  Execute the three statements below, then read the accepted sequence.
-  Submit all envelopes' statements and the final high-water read in one
+  Execute the four per-envelope statements below, including its sequence SELECT.
+  Each SELECT supplies that input entry's `accepted` result, including repeated
+  and previously stored changes. Preserve input order when reading batch results.
+  Submit the integrity guard, all envelopes' statements, and the final
+  high-water SELECT in one
   `env.DB.batch()`. Never split the transaction between await calls.
+
+The batch starts with this integrity guard, binding only the document ID.
+Unique positive sequences, a count equal to the counter, and no sequence above
+the counter establish a contiguous prefix. A violation sets the non-null counter
+to NULL to abort before append. Do not check integrity in a separate transaction.
+
+```sql
+UPDATE sync_documents SET last_sequence = NULL
+WHERE document_id = ?1 AND (
+  last_sequence != (SELECT COUNT(*) FROM sync_changes WHERE document_id = ?1)
+  OR EXISTS (
+    SELECT 1 FROM sync_changes
+    WHERE document_id = ?1 AND sequence > sync_documents.last_sequence
+  )
+);
+```
+
+For each input envelope, the batch then executes:
 
 ```sql
 UPDATE sync_changes SET envelope = NULL
@@ -247,9 +271,18 @@ WHERE document_id = ?1
   AND NOT EXISTS (
     SELECT 1 FROM sync_changes WHERE document_id = ?1 AND change_id = ?2
   );
+
+SELECT change_id, sequence AS server_sequence FROM sync_changes
+WHERE document_id = ?1 AND change_id = ?2;
 ```
 
-The first statement deliberately violates NOT NULL on a conflicting envelope.
+The batch finishes with this read, binding only the document ID:
+
+```sql
+SELECT last_sequence AS cursor FROM sync_documents WHERE document_id = ?1;
+```
+
+The first per-envelope statement deliberately violates NOT NULL on a conflicting envelope.
 That aborts the entire batch. An identical duplicate leaves both counter and
 row unchanged. A new change increments the document's counter and inserts at
 that number inside the transaction. A later failure rolls both back.
@@ -258,10 +291,18 @@ is constrained to that resolved document. The actual table names and migration
 remain #139's responsibility; this is a transaction design, not a migration.
 
 Before shipping #139, the local D1 test must prove a two-change append,
-identical replay, a new change followed by a conflicting duplicate, rollback of
+identical replay, a mixed new/previously-stored/repeated batch with exact
+`accepted` sequences, rejection of append into a gapped log, a new change
+followed by a conflicting duplicate, rollback of
 counter and rows, successful retry at the unconsumed next sequence, concurrent
 append, and isolation across two owners. Classify constraint errors without
-exposing raw database messages. Do not label this fallback as runtime-proven
+exposing raw database messages. On a failed batch, classify the constraint by
+its guarded column and recheck the relevant state on the primary. A counter
+NOT NULL failure is `log_gap`; an envelope NOT NULL failure is `change_conflict`.
+Read the current primary counter for the `log_gap` error body after rollback.
+Counter range overflow is `sequence_exhausted`; other failures are
+`temporarily_unavailable`. A missing document remains `not_found`.
+Do not label this fallback as runtime-proven
 until that evidence exists. No claim of production D1 execution is made here.
 
 ## Snapshots, recovery, and threat model
