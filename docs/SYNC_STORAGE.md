@@ -93,6 +93,10 @@ identity mapping is valid and nonempty. `just dev-api` supplies the fixture
 identities for local development; the test Wrangler configuration supplies
 them to `SELF`.
 
+The fixture harness may set `TEST_NEW_DOCUMENT_ID` only to make the
+`bootstrap-new` fixture case deterministic; default, preview, and production
+configurations must omit it.
+
 `apps/api/http/json.mjs` bounds the streamed body before parsing and rejects
 duplicate object keys at every depth. The HTTP layer also enforces the ADR
 media type, batch, payload, query, method, and owned-resource rules. It maps

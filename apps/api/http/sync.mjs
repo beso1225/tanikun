@@ -95,6 +95,9 @@ async function dispatch(request, env) {
   if (!route.methods.includes(request.method))
     throw methodNotAllowed(route.allow);
 
+  // Test-only fixture hook: the golden-fixture bootstrap-new case sets this
+  // so its server-generated document is deterministic. Production, preview,
+  // and default configurations must never set it.
   const repository = createChangeRepository(
     env.DB,
     typeof env.TEST_NEW_DOCUMENT_ID === "string" &&
