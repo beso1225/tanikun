@@ -22,7 +22,7 @@ const syncJson = (status, body) => ({
 async function openPage(
   t,
   viewport = { width: 1280, height: 900 },
-  { configure = true } = {},
+  { configure = true, beforeGoto, waitForReady = true } = {},
 ) {
   const { server, origin } = await startStaticServer(dist);
   t.after(() => new Promise((finish) => server.close(finish)));
@@ -46,8 +46,9 @@ async function openPage(
     );
     api = await installFakeApi(page, origin);
   }
+  if (beforeGoto) await beforeGoto(page, origin);
   await page.goto(origin);
-  await waitForPersistence(page);
+  if (waitForReady) await waitForPersistence(page);
   return { page, api, errors };
 }
 
@@ -58,6 +59,19 @@ async function installFakeApi(page, origin) {
   const pullCalls = [];
   let mode = "online";
   let failedPush = false;
+  const recordPush = (envelopes) => {
+    pushBodies.push(envelopes);
+    return envelopes.map((envelope) => {
+      let sequence = changes.find(
+        (change) => change.change_id === envelope.change_id,
+      )?.server_sequence;
+      if (sequence === undefined) {
+        sequence = changes.length + 1;
+        changes.push({ ...envelope, server_sequence: sequence });
+      }
+      return { change_id: envelope.change_id, server_sequence: sequence };
+    });
+  };
 
   await page.route(`${origin}/api/v1/sync/**`, async (route) => {
     const request = route.request();
@@ -88,6 +102,9 @@ async function installFakeApi(page, origin) {
       url.pathname === `/api/v1/sync/documents/${documentId}/changes` &&
       request.method() === "POST"
     ) {
+      const body = JSON.parse(request.postData() ?? "{}");
+      const envelopes = Array.isArray(body.changes) ? body.changes : [];
+      const accepted = recordPush(envelopes);
       if (mode === "fail-push" && !failedPush) {
         failedPush = true;
         await route.fulfill(
@@ -95,19 +112,6 @@ async function installFakeApi(page, origin) {
         );
         return;
       }
-      const body = JSON.parse(request.postData() ?? "{}");
-      const envelopes = Array.isArray(body.changes) ? body.changes : [];
-      pushBodies.push(envelopes);
-      const accepted = envelopes.map((envelope) => {
-        let sequence = changes.find(
-          (change) => change.change_id === envelope.change_id,
-        )?.server_sequence;
-        if (sequence === undefined) {
-          sequence = changes.length + 1;
-          changes.push({ ...envelope, server_sequence: sequence });
-        }
-        return { change_id: envelope.change_id, server_sequence: sequence };
-      });
       await route.fulfill(
         syncJson(200, {
           document_id: documentId,
@@ -210,7 +214,7 @@ test(
 );
 
 test(
-  "failed push shows retry guidance and retry succeeds",
+  "lost push response retries without duplicate server changes",
   { timeout: 60_000 },
   async (t) => {
     const { page, api, errors } = await openPage(t);
@@ -223,6 +227,8 @@ test(
     api.mode = "online";
     await page.locator("#sync-retry").click();
     await waitForSync(page, "同期済み");
+    const posted = api.pushBodies.flat().map((change) => change.change_id);
+    assert.ok(posted.length > new Set(posted).size);
     assert.equal(
       api.changes.length,
       new Set(api.changes.map((change) => change.change_id)).size,
@@ -270,12 +276,19 @@ test("sync status remains usable at 390px", { timeout: 60_000 }, async (t) => {
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
     ),
   );
+  api.mode = "online";
   await page.locator("#sync-retry").focus();
+  await page.keyboard.press("Enter");
+  await waitForSync(page, "同期済み");
   assert.equal(
     await page.evaluate(() => document.activeElement?.id),
-    "sync-retry",
+    "sync-status",
   );
   await page.keyboard.press("Tab");
+  assert.notEqual(
+    await page.evaluate(() => document.activeElement?.id),
+    "sync-status",
+  );
   assert.notEqual(
     await page.evaluate(() => document.activeElement?.id),
     "sync-retry",
@@ -311,6 +324,36 @@ test(
     await addOffering(page);
     await waitForSync(page, "同期エラー");
     assert.equal(await page.locator("#sync-retry").isVisible(), false);
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "sync starts after local persistence recovers",
+  { timeout: 60_000 },
+  async (t) => {
+    const { page, api, errors } = await openPage(t, undefined, {
+      waitForReady: false,
+      beforeGoto: (target) =>
+        target.addInitScript(() => {
+          const put = IDBObjectStore.prototype.put;
+          let failed = false;
+          IDBObjectStore.prototype.put = function (...args) {
+            if (!failed && this.name === "documents" && args[1] === "planner") {
+              failed = true;
+              throw new Error("quota exceeded");
+            }
+            return put.apply(this, args);
+          };
+        }),
+    });
+    await waitForPersistence(page, "保存失敗");
+    await waitForSync(page, "同期エラー");
+    assert.equal(await page.locator("#sync-retry").isVisible(), false);
+
+    await addOffering(page);
+    await waitForSync(page, "同期済み");
+    assert.ok(api.bootstrapCalls.length > 0);
     assert.deepEqual(errors, []);
   },
 );
