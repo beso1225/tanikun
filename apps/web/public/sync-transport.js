@@ -87,6 +87,8 @@ function readJson(response, text) {
   }
 }
 
+// Browsers expose Retry-After only when the API sends
+// Access-Control-Expose-Headers: Retry-After. The Phase 4 Worker does.
 function retryAfterSeconds(response) {
   const raw = response.headers?.get?.("retry-after");
   if (typeof raw !== "string" || !/^[0-9]+$/.test(raw)) return undefined;
@@ -176,6 +178,8 @@ function parsePush(documentId, validated, response, text) {
     return malformed();
   }
   const accepted = [];
+  const sequenceByChange = new Map();
+  const changeBySequence = new Map();
   for (const [index, entry] of body.accepted.entries()) {
     if (
       !exactKeys(entry, ["change_id", "server_sequence"]) ||
@@ -185,6 +189,19 @@ function parsePush(documentId, validated, response, text) {
     ) {
       return malformed();
     }
+    const previousSequence = sequenceByChange.get(entry.change_id);
+    if (
+      previousSequence !== undefined &&
+      previousSequence !== entry.server_sequence
+    ) {
+      return malformed();
+    }
+    const previousChange = changeBySequence.get(entry.server_sequence);
+    if (previousChange !== undefined && previousChange !== entry.change_id) {
+      return malformed();
+    }
+    sequenceByChange.set(entry.change_id, entry.server_sequence);
+    changeBySequence.set(entry.server_sequence, entry.change_id);
     accepted.push(entry);
   }
   return {
