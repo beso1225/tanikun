@@ -115,9 +115,10 @@ envelope fields.
 - `sync-store.js` uses a separate `tanikun-sync` database with `outbox` and
   `seen` stores. Outbox entries are `none` envelopes of local Automerge
   changes. Seen hashes mark remote changes and acknowledged local changes so a
-  reload does not re-upload either kind. The seen set is deduplicated by change
-  ID and grows with retained history; the outbox itself holds only unsynced
-  local changes.
+  reload does not re-upload either kind. Entries are scoped by
+  `origin:document`, so a document rebind cannot push another document's
+  envelopes. The seen set is deduplicated by change ID and grows with retained
+  history; the outbox itself holds only unsynced local changes.
 - `sync-metadata.js` keeps ADR-0013's `sync:<origin>:<document>` record in
   `tanikun-planner`/`documents`. It records the observed server high-water
   before a pull, then writes the merged planner and merged cursor in one
@@ -138,9 +139,9 @@ envelope fields.
   coordinator exposes a narrow status callback and uses Web Locks when
   available. Without Web Locks, a single leader is required; metadata
   transactions still reject cursor rollback.
-- `discard()` clears the planner, outbox, seen hashes, and sync metadata under
-  the same per-document lock. The shell integration and visible status are
-  #143; this module has no UI.
+- `discard()` clears the planner, outbox, seen hashes, and sync metadata for
+  the current scope under the same per-document lock. The shell integration
+  and visible status are #143; this module has no UI.
 
 `tests/integration/sync-coordinator.test.mjs` runs the production modules
 against `fake-indexeddb` and a fake transport. It covers local-save enqueueing,
