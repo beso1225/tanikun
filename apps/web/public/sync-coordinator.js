@@ -250,6 +250,8 @@ const retryable = (result) =>
         if (result.cursor < after) throw new SyncCoordinatorError("rollback");
         if (result.next_cursor > result.cursor)
           throw new SyncCoordinatorError("inconsistent_cursor");
+        if (result.has_more !== result.next_cursor < result.cursor)
+          throw new SyncCoordinatorError("inconsistent_cursor");
         if (result.changes.length === 0) {
           if (
             result.has_more ||
