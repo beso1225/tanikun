@@ -1,6 +1,7 @@
 import {
   SYNC_LIMITS,
   SyncError,
+  parseWireJson,
   requireDocumentId,
   validateAppend,
   validateStoredEnvelope,
@@ -73,12 +74,11 @@ function readJson(response, text) {
     const type = response.headers.get("content-type");
     if (
       !type ||
-      type.split(";")[0].trim().toLowerCase() !== "application/json" ||
-      encoder.encode(text).byteLength > SYNC_LIMITS.maxResponseBytes
+      type.split(";")[0].trim().toLowerCase() !== "application/json"
     ) {
       return null;
     }
-    const value = JSON.parse(text);
+    const value = parseWireJson(text);
     return value && typeof value === "object" && !Array.isArray(value)
       ? value
       : null;
@@ -87,22 +87,32 @@ function readJson(response, text) {
   }
 }
 
+function retryAfterSeconds(response) {
+  const raw = response.headers?.get?.("retry-after");
+  if (typeof raw !== "string" || !/^[0-9]+$/.test(raw)) return undefined;
+  const seconds = Number(raw);
+  return Number.isSafeInteger(seconds) ? seconds : undefined;
+}
+
 function serverFailure(status, response, text) {
   const body = readJson(response, text);
   if (!body) return malformed();
   const withCursor = Object.hasOwn(body, "cursor");
+  const code = body.error?.code;
+  const expectsCursor = code === "cursor_ahead" || code === "log_gap";
   if (
     !exactKeys(body, withCursor ? ["error", "cursor"] : ["error"]) ||
     !exactKeys(body.error, ["code"]) ||
-    typeof body.error.code !== "string" ||
-    body.error.code.length === 0 ||
-    (withCursor && !isCursor(body.cursor))
+    typeof code !== "string" ||
+    code.length === 0 ||
+    withCursor !== expectsCursor ||
+    (expectsCursor && (status !== 409 || !isCursor(body.cursor)))
   ) {
     return malformed();
   }
   const base = {
     status,
-    code: body.error.code,
+    code,
     retryable: false,
   };
   if (withCursor) base.cursor = body.cursor;
@@ -117,11 +127,17 @@ function serverFailure(status, response, text) {
       return { ...base, kind: K.REQUEST_REJECTED };
     default:
       if (status >= 500) {
-        return {
+        const retryable = code === "temporarily_unavailable";
+        const result = {
           ...base,
           kind: K.SERVER_ERROR,
-          retryable: body.error.code === "temporarily_unavailable",
+          retryable,
         };
+        if (retryable) {
+          const retryAfter = retryAfterSeconds(response);
+          if (retryAfter !== undefined) result.retry_after = retryAfter;
+        }
+        return result;
       }
       return { ...base, kind: K.REQUEST_REJECTED };
   }
@@ -228,6 +244,68 @@ function parsePull(documentId, after, limit, response, text) {
   };
 }
 
+async function readResponseText(response) {
+  const contentLength = response.headers?.get?.("content-length");
+  if (contentLength !== null && contentLength !== undefined) {
+    if (
+      !/^[0-9]+$/.test(contentLength) ||
+      Number(contentLength) > SYNC_LIMITS.maxResponseBytes
+    ) {
+      if (response.body) {
+        try {
+          await response.body.cancel();
+        } catch {
+          // The body may already be closed.
+        }
+      }
+      return null;
+    }
+  }
+  if (!response.body) {
+    const text = await response.text();
+    return encoder.encode(text).byteLength > SYNC_LIMITS.maxResponseBytes
+      ? null
+      : text;
+  }
+  let reader;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    return null;
+  }
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > SYNC_LIMITS.maxResponseBytes) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // A cancelled stream can already have released its lock.
+    }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 export function createSyncTransport({
   fetch,
   baseUrl,
@@ -251,6 +329,9 @@ export function createSyncTransport({
   }
   if (base.protocol !== "http:" && base.protocol !== "https:") {
     throw new TypeError("baseUrl must be an absolute HTTP URL");
+  }
+  if (base.pathname !== "/" || base.search !== "" || base.hash !== "") {
+    throw new TypeError("baseUrl must not include a path, query, or fragment");
   }
 
   const origin = base.origin;
@@ -286,16 +367,18 @@ export function createSyncTransport({
         return transportFailure(timedOut, signal);
       }
       if (
-        typeof response?.text !== "function" ||
+        (typeof response?.text !== "function" &&
+          typeof response?.body?.getReader !== "function") ||
         !Number.isInteger(response.status)
       ) {
         return malformed();
       }
       try {
-        text = await response.text();
+        text = await readResponseText(response);
       } catch {
         return transportFailure(timedOut, signal);
       }
+      if (text === null) return malformed();
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);

@@ -184,3 +184,192 @@ export function envelopeFromRow(row) {
     server_sequence: row.seq,
   };
 }
+
+// Response bodies are wire input too: reject duplicate object keys before
+// JSON.parse can apply its last-wins rule. Keeping this in the shared contract
+// lets the browser reuse the same wire validation instead of a browser-only
+// copy.
+class Parser {
+  constructor(text) {
+    this.text = text;
+    this.index = 0;
+    this.depth = 0;
+  }
+
+  parse() {
+    this.skipWhitespace();
+    const value = this.parseValue();
+    this.skipWhitespace();
+    if (this.index !== this.text.length) throw new SyntaxError("trailing data");
+    return value;
+  }
+
+  fail() {
+    throw new SyntaxError("invalid JSON");
+  }
+
+  skipWhitespace() {
+    while (this.index < this.text.length) {
+      const code = this.text.charCodeAt(this.index);
+      if (code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0d) {
+        this.index += 1;
+      } else {
+        break;
+      }
+    }
+  }
+
+  parseValue() {
+    this.skipWhitespace();
+    if (this.depth >= 64) this.fail();
+    this.depth += 1;
+    try {
+      const character = this.text[this.index];
+      if (character === '"') return this.parseString();
+      if (character === "{") return this.parseObject();
+      if (character === "[") return this.parseArray();
+      if (character === "t") return this.parseLiteral("true", true);
+      if (character === "f") return this.parseLiteral("false", false);
+      if (character === "n") return this.parseLiteral("null", null);
+      if (character === "-" || (character >= "0" && character <= "9"))
+        return this.parseNumber();
+      this.fail();
+    } finally {
+      this.depth -= 1;
+    }
+  }
+
+  parseLiteral(literal, value) {
+    if (!this.text.startsWith(literal, this.index)) this.fail();
+    this.index += literal.length;
+    return value;
+  }
+
+  parseString() {
+    const start = this.index;
+    if (this.text[start] !== '"') this.fail();
+    this.index += 1;
+    while (this.index < this.text.length) {
+      const code = this.text.charCodeAt(this.index);
+      if (code === 0x22) {
+        this.index += 1;
+        return JSON.parse(this.text.slice(start, this.index));
+      }
+      if (code === 0x5c) {
+        this.index += 1;
+        if (this.index >= this.text.length) this.fail();
+        const escape = this.text[this.index];
+        if (escape === "u") {
+          this.index += 1;
+          for (let offset = 0; offset < 4; offset += 1) {
+            if (!/[0-9a-fA-F]/.test(this.text[this.index + offset] ?? ""))
+              this.fail();
+          }
+          this.index += 4;
+        } else if ('"\\/bfnrt'.includes(escape)) {
+          this.index += 1;
+        } else {
+          this.fail();
+        }
+        continue;
+      }
+      if (code < 0x20) this.fail();
+      this.index += 1;
+    }
+    this.fail();
+  }
+
+  parseNumber() {
+    const start = this.index;
+    if (this.text[this.index] === "-") this.index += 1;
+    if (this.text[this.index] === "0") {
+      this.index += 1;
+    } else if (this.text[this.index] >= "1" && this.text[this.index] <= "9") {
+      while (this.text[this.index] >= "0" && this.text[this.index] <= "9")
+        this.index += 1;
+    } else {
+      this.fail();
+    }
+    if (this.text[this.index] === ".") {
+      this.index += 1;
+      if (!this.isDigit(this.text[this.index])) this.fail();
+      while (this.isDigit(this.text[this.index])) this.index += 1;
+    }
+    if (this.text[this.index] === "e" || this.text[this.index] === "E") {
+      this.index += 1;
+      if (this.text[this.index] === "+" || this.text[this.index] === "-")
+        this.index += 1;
+      if (!this.isDigit(this.text[this.index])) this.fail();
+      while (this.isDigit(this.text[this.index])) this.index += 1;
+    }
+    return Number(this.text.slice(start, this.index));
+  }
+
+  isDigit(character) {
+    return character >= "0" && character <= "9";
+  }
+
+  parseArray() {
+    this.index += 1;
+    const value = [];
+    this.skipWhitespace();
+    if (this.text[this.index] === "]") {
+      this.index += 1;
+      return value;
+    }
+    while (true) {
+      value.push(this.parseValue());
+      this.skipWhitespace();
+      if (this.text[this.index] === ",") {
+        this.index += 1;
+        continue;
+      }
+      if (this.text[this.index] === "]") {
+        this.index += 1;
+        return value;
+      }
+      this.fail();
+    }
+  }
+
+  parseObject() {
+    this.index += 1;
+    const value = {};
+    const keys = new Set();
+    this.skipWhitespace();
+    if (this.text[this.index] === "}") {
+      this.index += 1;
+      return value;
+    }
+    while (true) {
+      this.skipWhitespace();
+      if (this.text[this.index] !== '"') this.fail();
+      const key = this.parseString();
+      if (keys.has(key)) this.fail();
+      keys.add(key);
+      this.skipWhitespace();
+      if (this.text[this.index] !== ":") this.fail();
+      this.index += 1;
+      Object.defineProperty(value, key, {
+        value: this.parseValue(),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+      this.skipWhitespace();
+      if (this.text[this.index] === ",") {
+        this.index += 1;
+        continue;
+      }
+      if (this.text[this.index] === "}") {
+        this.index += 1;
+        return value;
+      }
+      this.fail();
+    }
+  }
+}
+
+export function parseWireJson(text) {
+  return new Parser(text).parse();
+}
