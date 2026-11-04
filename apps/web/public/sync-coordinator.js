@@ -247,6 +247,27 @@ const retryable = (result) =>
         if (documentId) await syncStore.clear(syncScope());
         if (metadata.mergedCursor > 0)
           metadata = await metadataStore.resetMerged(metadataKey());
+      } else if (metadata.mergedCursor > 0) {
+        const localRoots = new Set(
+          storage
+            .changes()
+            .map((change) => globalThis.Automerge.decodeChange(change))
+            .filter((change) => change.deps.length === 0)
+            .map((change) => change.hash),
+        );
+        const seen = documentId
+          ? await syncStore.seenHashes(syncScope())
+          : new Set();
+        const rootIsKnown =
+          localRoots.size > 0 &&
+          [...localRoots].every((root) => seen.has(root));
+        if (!rootIsKnown) {
+          // A re-seeded independent root cannot belong to the merged cursor.
+          // Clear its stale sync state and fail closed; explicit discard is
+          // required before adopting either history.
+          if (documentId) await syncStore.clear(syncScope());
+          throw new SyncCoordinatorError("discard_pending");
+        }
       }
       for (let pages = 0; pages < 10_000; pages += 1) {
         const result = await retry(() =>
