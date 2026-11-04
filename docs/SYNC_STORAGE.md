@@ -121,26 +121,34 @@ envelope fields.
 - `sync-metadata.js` keeps ADR-0013's `sync:<origin>:<document>` record in
   `tanikun-planner`/`documents`. It records the observed server high-water
   before a pull, then writes the merged planner and merged cursor in one
-  transaction. The planner record stays `storageVersion: 2`.
-- `persistence.js` exposes `validateText` and `onLocalChange`. A successful
-  local save passes its new Automerge change to the listener; remote merges do
-  not enter the outbox.
-- The coordinator pushes at most 20 envelopes per batch, retries retryable
-  transport results with bounded jitter and `Retry-After`, pulls pages,
-  checks dependencies, marks remote hashes, and commits the page atomically.
-  It exposes a narrow status callback and uses Web Locks when available.
-  Without Web Locks, a single leader is required; metadata transactions still
-  reject cursor rollback.
-- `discard()` clears the outbox, seen hashes, and sync metadata. `resync()`
-  resets the merged cursor and high-water while retaining pending local
-  changes. The shell integration and visible status are #143; this module has
-  no UI.
+  transaction. The write compares the planner bytes with the snapshot the
+  coordinator validated and fails with `stale_planner` if another tab changed
+  or replaced the planner. The planner record stays `storageVersion: 2`.
+- `persistence.js` exposes `validateText`, `onLocalChange`, `snapshot`, and
+  `discard`. A successful local save passes its new Automerge change to the
+  listener; remote merges do not enter the outbox. `snapshot` provides the
+  planner CAS input; `discard` removes the planner for an explicit reset.
+- The coordinator pulls before it pushes, so a fresh client adopts the server
+  history before uploading local history. It rejects independent Automerge
+  roots with `history_mismatch`, checks dependencies, marks remote hashes, and
+  commits the page atomically. It then pushes local changes in batches of at
+  most 20; an oversized batch is split recursively before it is treated as a
+  terminal error.
+- Retryable transport results use bounded jitter and `Retry-After`. The
+  coordinator exposes a narrow status callback and uses Web Locks when
+  available. Without Web Locks, a single leader is required; metadata
+  transactions still reject cursor rollback.
+- `discard()` clears the planner, outbox, seen hashes, and sync metadata under
+  the same per-document lock. The shell integration and visible status are
+  #143; this module has no UI.
 
 `tests/integration/sync-coordinator.test.mjs` runs the production modules
 against `fake-indexeddb` and a fake transport. It covers local-save enqueueing,
 batch push and prune, duplicate delivery after prune failure, dependency-valid
-pull, missing dependencies, cursor rollback, page-commit failure and retry,
-server gaps, discard, Web Lock use, and status callbacks.
+pull, fresh-client history adoption, independent-root rejection, missing
+dependencies, cursor rollback, page-commit failure and retry, stale-planner
+CAS, oversized-batch splitting, server gaps, discard, Web Lock use, retry and
+`Retry-After`, bootstrap, and status callbacks.
 
 ## Local evidence
 
