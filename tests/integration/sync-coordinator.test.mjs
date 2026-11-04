@@ -1074,3 +1074,44 @@ test("recovers metadata ahead of a missing planner after an interrupted discard"
   assert.equal(metadata.mergedCursor, 2);
   assert.equal(metadata.observedHighWater, 2);
 });
+
+test("does not re-upload a discarded plan after a failed discard clear", async () => {
+  const context = await setup();
+  const originalClear = context.syncStore.clear.bind(context.syncStore);
+  let fail = true;
+  const flakyStore = {
+    ...context.syncStore,
+    async clear(scope) {
+      if (fail) {
+        fail = false;
+        throw new Error("clear failed");
+      }
+      return originalClear(scope);
+    },
+  };
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: flakyStore,
+    metadataStore: context.metadataStore,
+    sleep: async () => {},
+    random: () => 0,
+    locks: null,
+  });
+  await context.storage.save(
+    JSON.stringify({ ...source, program_id: "discard-failure" }),
+  );
+  await waitFor(
+    async () => (await context.syncStore.listOutbox(syncScope)).length >= 1,
+  );
+  await assert.rejects(coordinator.discard());
+  assert.equal(await context.storage.load(), null);
+  assert.equal((await context.syncStore.listOutbox(syncScope)).length, 1);
+  const pushes = context.transport.pushes.length;
+  const result = await coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(context.transport.pushes.length, pushes);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+});
