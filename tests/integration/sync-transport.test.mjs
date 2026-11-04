@@ -97,6 +97,24 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
+test("rejects a base URL with a path, query, or fragment", () => {
+  for (const invalid of [
+    "https://host.example/sync",
+    "https://host.example?tenant=1",
+    "https://host.example#fragment",
+  ]) {
+    assert.throws(
+      () =>
+        createSyncTransport({
+          fetch: async () => {},
+          baseUrl: invalid,
+          token,
+        }),
+      /baseUrl must not include a path, query, or fragment/,
+    );
+  }
+});
+
 test("the browser artifact uses the shared contract module unchanged", () => {
   assert.equal(
     readFileSync(join(artifactDir, "sync-contract.mjs"), "utf8"),
@@ -338,6 +356,35 @@ test("413 and 5xx results expose the code and retryability", async () => {
     code: "temporarily_unavailable",
     retryable: true,
   });
+  const retryResult = await transportFor(
+    scriptedFetch(() =>
+      jsonResponse(unavailable, {
+        status: 503,
+        headers: { "Retry-After": "30" },
+      }),
+    ).fetch,
+  ).bootstrap();
+  assert.deepEqual(retryResult, {
+    kind: K.SERVER_ERROR,
+    status: 503,
+    code: "temporarily_unavailable",
+    retryable: true,
+    retry_after: 30,
+  });
+  const invalidRetryResult = await transportFor(
+    scriptedFetch(() =>
+      jsonResponse(unavailable, {
+        status: 503,
+        headers: { "Retry-After": "soon" },
+      }),
+    ).fetch,
+  ).bootstrap();
+  assert.deepEqual(invalidRetryResult, {
+    kind: K.SERVER_ERROR,
+    status: 503,
+    code: "temporarily_unavailable",
+    retryable: true,
+  });
   const exhausted = fixture.sequence_allocation_cases.find(
     (entry) => entry.name === "exhausted-counter",
   );
@@ -378,6 +425,55 @@ test("network failure, timeout, and caller abort are distinct", async () => {
   }).bootstrap({ signal: controller.signal });
   controller.abort();
   assert.deepEqual(await pending, { kind: K.ABORTED, retryable: false });
+  const bodyAbortFetch = (() => {
+    const calls = [];
+    return {
+      calls,
+      fetch(url, init) {
+        calls.push({ url, init });
+        const body = new ReadableStream({
+          start(streamController) {
+            init.signal.addEventListener(
+              "abort",
+              () => streamController.error(new Error("aborted")),
+              { once: true },
+            );
+          },
+        });
+        return Promise.resolve(
+          new Response(body, {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      },
+    };
+  })();
+  const bodyController = new AbortController();
+  const bodyPending = transportFor(bodyAbortFetch.fetch).bootstrap({
+    signal: bodyController.signal,
+  });
+  await new Promise((finish) => setTimeout(finish, 0));
+  bodyController.abort();
+  assert.deepEqual(await bodyPending, {
+    kind: K.ABORTED,
+    retryable: false,
+  });
+  const bodyFailureResult = await transportFor(
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(streamController) {
+            streamController.error(new TypeError("body failed"));
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+  ).bootstrap();
+  assert.deepEqual(bodyFailureResult, {
+    kind: K.OFFLINE,
+    retryable: true,
+  });
   const preAbortedFetch = hangingFetch();
   const alreadyAborted = new AbortController();
   alreadyAborted.abort();
@@ -462,6 +558,63 @@ test("malformed JSON, content type, and envelopes are explicit results", async (
     structuredClone(caseByName("append").request.body.changes),
   );
   assert.deepEqual(pushResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+
+  const duplicateDocument = `{"document_id":"${documentId}","document_id":"${documentId}","cursor":0}`;
+  const duplicateResult = await transportFor(
+    scriptedFetch(
+      () =>
+        new Response(duplicateDocument, {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    ).fetch,
+  ).bootstrap();
+  assert.deepEqual(duplicateResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+
+  const unauthorizedWithCursor = jsonResponse(
+    { error: { code: "unauthorized" }, cursor: 0 },
+    { status: 401 },
+  );
+  const cursorShapeResult = await transportFor(
+    scriptedFetch(() => unauthorizedWithCursor).fetch,
+  ).bootstrap();
+  assert.deepEqual(cursorShapeResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+
+  const gapWithoutCursor = jsonResponse(
+    { error: { code: "log_gap" } },
+    { status: 409 },
+  );
+  const gapShapeResult = await transportFor(
+    scriptedFetch(() => gapWithoutCursor).fetch,
+  ).pull(documentId, { after: 2 });
+  assert.deepEqual(gapShapeResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+
+  const oversizedBody = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(SYNC_LIMITS.maxResponseBytes + 1));
+      controller.close();
+    },
+  });
+  const oversizedResponse = new Response(oversizedBody, {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+  const oversizedResult = await transportFor(
+    scriptedFetch(() => oversizedResponse).fetch,
+  ).bootstrap();
+  assert.deepEqual(oversizedResult, {
     kind: K.MALFORMED_RESPONSE,
     retryable: false,
   });
