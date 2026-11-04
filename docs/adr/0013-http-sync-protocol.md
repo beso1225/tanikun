@@ -356,6 +356,10 @@ rows without gaps. Its raw HTTP harness must reject duplicate Authorization
 header lines on every operation, which object-valued fixture headers cannot
 represent.
 
+Local implementation evidence for this decision is recorded in
+[D1 sync storage](../SYNC_STORAGE.md). The SQL names `documents.last_seq`
+and `changes.seq` implement the counter and sequence used in this design.
+
 ## Snapshots, recovery, and threat model
 
 Phase 4 retains the complete log and has no snapshot API, compaction, GC,

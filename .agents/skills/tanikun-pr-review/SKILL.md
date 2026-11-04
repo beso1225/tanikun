@@ -24,6 +24,26 @@ implementation before closing them; a passing test does not prove omitted scope.
 
 If `gh` cannot resolve DNS, set `GODEBUG=netdns=cgo` for the command.
 
+## Delegated review, when requested
+
+Wait for the current head's required CI checks before delegating review. Preserve
+the user's chosen providers, models, and runtime modes. Give each reviewer the
+exact head SHA, linked issue, full diff, previous findings, and relevant skills.
+
+Require actionable findings as GitHub inline review comments on changed lines,
+not as a single issue-level PR comment. Use a COMMENT review with `commit_id`,
+and each finding's `path`, `line`, and `side` through the pull-request reviews
+API. Include priority, the concrete failure, and the requested fix in each
+comment. Verify every anchor against the actual patch for that SHA. If the
+problem is an omission, anchor to the closest relevant changed line and explain
+the missing behavior. Do not invent a finding to create an inline comment.
+
+The review body may summarize the recommendation, model, reviewed SHA, and
+limitations. A review with no findings needs only that summary. After pushing
+fixes, reply to and resolve addressed threads, then request a new review task
+for the new SHA. Stop when required CI passes and all requested reviewers have
+no actionable blockers. Merge still requires the user's approval.
+
 ## Fix
 
 1. Add a focused test when the comment describes a behavior change.
@@ -40,7 +60,8 @@ person's work.
 - Reply with what changed and which command verified it.
 - Resolve a thread only after the fix is pushed.
 - Keep a thread open when the reviewer needs to confirm a trade-off.
-- Re-run `gh pr checks <number> --watch` after the push.
+- Use the host PR watch after the push when available. Otherwise use
+  `gh pr checks <number> --watch`.
 
 If a check fails, load `tanikun-nix-ci` before changing production code.
 

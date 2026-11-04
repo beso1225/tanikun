@@ -33,7 +33,8 @@ APIs, JavaScript FFI, persistence, or network code.
 - Use small commits. Public commits, pull requests, and primary docs are written
   in English.
 - Review the full diff. Do not merge without approval, and resolve review
-  threads after fixing the code.
+  threads after fixing the code. Post actionable review findings as inline
+  comments on the relevant changed lines.
 
 ## Toolchain and commands
 

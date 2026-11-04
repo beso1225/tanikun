@@ -1,6 +1,6 @@
 {
   "name": "tanikun-api-test",
-  "main": "./d1-worker.mjs",
+  "main": "../bridges/worker.mjs",
   "compatibility_date": "2026-10-12",
   "send_metrics": false,
   "d1_databases": [
@@ -8,6 +8,7 @@
       "binding": "DB",
       "database_name": "tanikun-test",
       "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../migrations",
     },
   ],
 }
