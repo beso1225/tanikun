@@ -49,7 +49,9 @@ migrate-local:
 
 # Serve the API with local workerd; Wrangler rebuilds MoonBit on changes.
 dev-api:
-    WRANGLER_LOG_PATH=.wrangler/logs pnpm exec wrangler dev --local --config wrangler.jsonc
+    WRANGLER_LOG_PATH=.wrangler/logs pnpm exec wrangler dev --local --config wrangler.jsonc \
+        --var APP_ENV:local --var DEV_AUTH:true \
+        --var 'DEV_AUTH_IDENTITIES:{"local-fixture-token-alice":"dev-alice","local-fixture-token-bob":"dev-bob"}'
 
 # Exercise HTTP against Wrangler's local Workers runtime.
 # Keep Wrangler's registry and cache inside the ignored build directory.
