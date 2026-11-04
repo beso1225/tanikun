@@ -243,6 +243,14 @@ test("sync status remains usable at 390px", { timeout: 60_000 }, async (t) => {
     await page.locator("#sync-status").getAttribute("role"),
     "status",
   );
+  assert.equal(
+    await page.locator("#sync-status").getAttribute("aria-live"),
+    "polite",
+  );
+  assert.equal(
+    await page.locator("#sync-status").getAttribute("aria-atomic"),
+    "true",
+  );
   assert.match(
     await page.locator("#sync-status").innerText(),
     /同期状態:\s*同期済み/,

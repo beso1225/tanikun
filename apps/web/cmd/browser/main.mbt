@@ -56,7 +56,10 @@ fn planner_view(
                 div(
                   id="sync-status",
                   class="text-[0.6875rem] leading-tight text-muted",
-                  attrs=@html.Attrs::build().role("status"),
+                  attrs=@html.Attrs::build()
+                    .role("status")
+                    .aria_live("polite")
+                    .aria_atomic("true"),
                   [
                     span(class="sr-only", "同期状態: "),
                     span(id="sync-status-text", "同期準備中"),
