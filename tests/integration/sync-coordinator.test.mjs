@@ -266,10 +266,10 @@ test("applies a dependency-valid remote page and never re-uploads it", async () 
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 3);
   assert.equal(metadata.observedHighWater, 3);
-  assert.equal(context.transport.pushes.length, 1);
+  assert.equal(context.transport.pushes.length, 0);
   const second = await context.coordinator.sync();
   assert.equal(second.kind, "synced");
-  assert.equal(context.transport.pushes.length, 1);
+  assert.equal(context.transport.pushes.length, 0);
   assert.deepEqual(await context.syncStore.listOutbox(), []);
 });
 
@@ -294,11 +294,13 @@ test("fails closed on a missing dependency without advancing the cursor", async 
   assert.equal(result.code, "missing_dependency");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
-  assert.equal(metadata.observedHighWater, 3);
+  assert.equal(metadata.observedHighWater, 0);
+  assert.equal(context.transport.pushes.length, 0);
 });
 
 test("rejects a cursor rollback and leaves the merged cursor unchanged", async () => {
   const context = await setup();
+  await context.metadataStore.observe(metadataKey(), 5);
   context.transport.setPull(() => ({
     kind: "pulled",
     document_id: documentId,
@@ -312,7 +314,7 @@ test("rejects a cursor rollback and leaves the merged cursor unchanged", async (
   assert.equal(result.code, "rollback");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
-  assert.equal(metadata.observedHighWater, 2);
+  assert.equal(metadata.observedHighWater, 5);
 });
 
 test("keeps the outbox when acknowledgement fails and prunes after retry", async () => {
@@ -348,10 +350,12 @@ test("keeps the outbox when acknowledgement fails and prunes after retry", async
   assert.equal(context.transport.pushes.length, 2);
 });
 
-test("discard clears sync state and permits a fresh metadata read", async () => {
+test("discard clears the planner and sync state without re-uploading history", async () => {
   const context = await setup();
   await context.coordinator.sync();
+  const pushes = context.transport.pushes.length;
   await context.coordinator.discard();
+  assert.equal(await context.storage.load(), null);
   assert.deepEqual(await context.syncStore.listOutbox(), []);
   assert.deepEqual(await context.syncStore.seenHashes(), new Set());
   assert.deepEqual(await context.metadataStore.read(metadataKey()), {
@@ -359,6 +363,9 @@ test("discard clears sync state and permits a fresh metadata read", async () => 
     mergedCursor: 0,
     observedHighWater: 0,
   });
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(context.transport.pushes.length, pushes);
 });
 
 test("metadata observation never regresses the cursor", async () => {
@@ -466,10 +473,10 @@ test("reports a server gap as a closed error without advancing the cursor", asyn
   }));
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "error");
-  assert.equal(result.code, "conflict");
+  assert.equal(result.code, "log_gap");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
-  assert.equal(metadata.observedHighWater, 2);
+  assert.equal(metadata.observedHighWater, 0);
 });
 
 test("runs under the per-document Web Lock and reports lifecycle status", async () => {
@@ -529,38 +536,6 @@ test("keeps sync metadata out of the source and the version 2 envelope", async (
   assert.ok(record.bytes instanceof Uint8Array);
 });
 
-test("resync resets the cursor and re-pulls without re-uploading the page", async () => {
-  const context = await setup();
-  const remote = codec.update(
-    Automerge.clone(context.base, { actor: "bb".repeat(32) }),
-    JSON.stringify({ ...source, program_id: "resync-remote" }),
-  );
-  const remoteChange = Automerge.getLastLocalChange(remote);
-  context.transport.setPull(() => ({
-    kind: "pulled",
-    document_id: documentId,
-    changes: [
-      ...context.baseChanges.map((change, index) =>
-        storedEnvelope(change, index + 1),
-      ),
-      storedEnvelope(remoteChange, 3),
-    ],
-    next_cursor: 3,
-    has_more: false,
-    cursor: 3,
-  }));
-  await context.coordinator.sync();
-  assert.equal(context.transport.pushes.length, 1);
-  const result = await context.coordinator.resync();
-  assert.equal(result.kind, "synced");
-  assert.equal(result.cursor, 3);
-  assert.equal(context.transport.pushes.length, 1);
-  assert.equal(
-    (await context.metadataStore.read(metadataKey())).mergedCursor,
-    3,
-  );
-});
-
 test("bootstraps a document when no ID is supplied", async () => {
   const context = await setup();
   const coordinator = createSyncCoordinator({
@@ -612,4 +587,130 @@ test("retries transient results with bounded jitter and Retry-After", async () =
   assert.equal(result.kind, "synced");
   assert.equal(attempts, 2);
   assert.deepEqual(delays, [2_000]);
+});
+
+test("rejects an independent Automerge root instead of merging histories", async () => {
+  const context = await setup();
+  const independent = codec.update(null, JSON.stringify(source));
+  const changes = Automerge.getAllChanges(independent);
+  context.transport.setPull(() => ({
+    kind: "pulled",
+    document_id: documentId,
+    changes: changes.map((change, index) => storedEnvelope(change, index + 1)),
+    next_cursor: changes.length,
+    has_more: false,
+    cursor: changes.length,
+  }));
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "history_mismatch");
+  const metadata = await context.metadataStore.read(metadataKey());
+  assert.equal(metadata.mergedCursor, 0);
+  assert.equal(metadata.observedHighWater, 0);
+  assert.equal(
+    JSON.parse(await context.storage.load()).program_id,
+    "fictional",
+  );
+  assert.equal(context.transport.pushes.length, 0);
+});
+
+test("splits an oversized append batch instead of stalling the outbox", async () => {
+  const context = await setup();
+  const originalPush = context.transport.push.bind(context.transport);
+  let calls = 0;
+  context.transport.push = async (id, envelopes) => {
+    calls += 1;
+    if (envelopes.length > 1) {
+      return {
+        kind: "invalid_request",
+        code: "request_too_large",
+        retryable: false,
+      };
+    }
+    return originalPush(id, envelopes);
+  };
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(calls, 3);
+  assert.deepEqual(await context.syncStore.listOutbox(), []);
+});
+
+test("rejects a page when another tab replaced the planner", async () => {
+  const context = await setup();
+  const remote = codec.update(
+    Automerge.clone(context.base, { actor: "bb".repeat(32) }),
+    JSON.stringify({ ...source, program_id: "competing-remote" }),
+  );
+  const remoteChange = Automerge.getLastLocalChange(remote);
+  context.transport.setPull(() => ({
+    kind: "pulled",
+    document_id: documentId,
+    changes: [
+      ...context.baseChanges.map((change, index) =>
+        storedEnvelope(change, index + 1),
+      ),
+      storedEnvelope(remoteChange, 3),
+    ],
+    next_cursor: 3,
+    has_more: false,
+    cursor: 3,
+  }));
+  const flakyMetadata = {
+    ...context.metadataStore,
+    async applyPage(options) {
+      await context.storage.save(
+        JSON.stringify({ ...source, program_id: "competing-local" }),
+      );
+      return context.metadataStore.applyPage(options);
+    },
+  };
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: flakyMetadata,
+    sleep: async () => {},
+    random: () => 0,
+    locks: null,
+  });
+  const result = await coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "stale_planner");
+  assert.equal(
+    JSON.parse(await context.storage.load()).program_id,
+    "competing-local",
+  );
+});
+
+test("a fresh client adopts server history before uploading anything", async () => {
+  const context = await setup();
+  await context.storage.discard();
+  const remote = codec.update(
+    Automerge.clone(context.base, { actor: "bb".repeat(32) }),
+    JSON.stringify({ ...source, program_id: "server-history" }),
+  );
+  const remoteChange = Automerge.getLastLocalChange(remote);
+  context.transport.setPull(() => ({
+    kind: "pulled",
+    document_id: documentId,
+    changes: [
+      ...context.baseChanges.map((change, index) =>
+        storedEnvelope(change, index + 1),
+      ),
+      storedEnvelope(remoteChange, 3),
+    ],
+    next_cursor: 3,
+    has_more: false,
+    cursor: 3,
+  }));
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(result.cursor, 3);
+  assert.equal(
+    JSON.parse(await context.storage.load()).program_id,
+    "server-history",
+  );
+  assert.equal(context.transport.pushes.length, 0);
 });
