@@ -339,14 +339,22 @@ identical replay, a mixed new/previously-stored/repeated batch with exact
 followed by a conflicting duplicate, rollback of
 counter and rows, successful retry at the unconsumed next sequence, concurrent
 append, and isolation across two owners. Classify constraint errors without
-exposing raw database messages. On a failed batch, classify the constraint by
-its guarded column and recheck the relevant state on the primary. A counter
-NOT NULL failure is `log_gap`; an envelope NOT NULL failure is `change_conflict`.
+exposing raw database messages. On a failed batch, classify by both constraint
+kind and guarded column, then recheck the relevant state on the primary.
+`sync_documents.last_sequence` NOT NULL is `log_gap`, while its safe-range CHECK
+is `sequence_exhausted`. `sync_changes.envelope` NOT NULL is `change_conflict`.
+A column name alone cannot distinguish gap rejection from counter exhaustion.
+The #139 implementation must test both constraint kinds and their wire errors.
 Read the current primary counter for the `log_gap` error body after rollback.
 Counter range overflow is `sequence_exhausted`; other failures are
 `temporarily_unavailable`. A missing document remains `not_found`.
 Do not label this fallback as runtime-proven
-until that evidence exists. No claim of production D1 execution is made here.
+until that evidence exists. No claim of production D1 execution is made here. #139's pull tests must also
+verify ascending order across multiple rows, byte-capped page truncation at
+8 MiB with correct `has_more` and `next_cursor`, and fetching the remaining
+rows without gaps. Its raw HTTP harness must reject duplicate Authorization
+header lines on every operation, which object-valued fixture headers cannot
+represent.
 
 ## Snapshots, recovery, and threat model
 

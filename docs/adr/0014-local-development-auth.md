@@ -80,7 +80,10 @@ browser preflight does not carry it. It requires the allowed Origin and an
 `Access-Control-Request-Method` supported by that route. Requested headers must
 be a case-insensitive subset of `Authorization` and `Content-Type`.
 Valid preflight returns `204`, no body, route-specific
-`Access-Control-Allow-Methods` (`GET` or `POST`),
+`Access-Control-Allow-Methods` equal to the requested method exactly (`GET`
+or `POST`). It echoes the one method only after verifying that method belongs
+to the route's supported set. This CORS value differs from the full HTTP
+`Allow` set returned on a 405. Valid preflight also includes
 `Access-Control-Allow-Headers: Authorization, Content-Type`, and
 `Access-Control-Max-Age: 0`. It never provisions an identity or touches D1.
 Invalid preflight method or headers return `403 origin_forbidden`.
