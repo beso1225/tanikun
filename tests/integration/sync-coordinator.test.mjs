@@ -1037,3 +1037,40 @@ test("discard handles a save queued before its hook starts", async () => {
   assert.equal(result.kind, "synced");
   assert.equal(context.transport.pushes.length, pushes);
 });
+
+test("recovers metadata ahead of a missing planner after an interrupted discard", async () => {
+  const context = await setup();
+  await context.metadataStore.observe(metadataKey(), 2);
+  await context.storage.discard();
+  context.transport.setPull((options) =>
+    options.after === 0
+      ? {
+          kind: "pulled",
+          document_id: documentId,
+          changes: context.baseChanges.map((change, index) =>
+            storedEnvelope(change, index + 1),
+          ),
+          next_cursor: 2,
+          has_more: false,
+          cursor: 2,
+        }
+      : {
+          kind: "pulled",
+          document_id: documentId,
+          changes: [],
+          next_cursor: options.after,
+          has_more: false,
+          cursor: 2,
+        },
+  );
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(result.cursor, 2);
+  assert.equal(
+    JSON.parse(await context.storage.load()).program_id,
+    "fictional",
+  );
+  const metadata = await context.metadataStore.read(metadataKey());
+  assert.equal(metadata.mergedCursor, 2);
+  assert.equal(metadata.observedHighWater, 2);
+});
