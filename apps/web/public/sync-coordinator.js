@@ -213,8 +213,11 @@ const retryable = (result) =>
         await pushBatch(batch.slice(middle));
         return;
       }
-      if (result.kind !== "pushed")
+      if (result.kind !== "pushed") {
+        if (Number.isSafeInteger(result.cursor))
+          await metadataStore.observe(metadataKey(), result.cursor);
         throw new SyncCoordinatorError(result.code ?? result.kind, result);
+      }
       await metadataStore.observe(metadataKey(), result.cursor);
       await syncStore.acknowledge(
         syncScope(),
@@ -243,8 +246,11 @@ const retryable = (result) =>
             limit: maxPageSize,
           }),
         );
-        if (result.kind !== "pulled")
+        if (result.kind !== "pulled") {
+          if (Number.isSafeInteger(result.cursor))
+            await metadataStore.observe(metadataKey(), result.cursor);
           throw new SyncCoordinatorError(result.code ?? result.kind, result);
+        }
         const after = metadata.mergedCursor;
         if (
           !Number.isSafeInteger(result.cursor) ||
