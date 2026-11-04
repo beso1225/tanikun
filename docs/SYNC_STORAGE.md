@@ -108,6 +108,37 @@ Error bodies and diagnostics never include SQL, exception messages,
 tokens, or payload bytes; operation bodies carry only the contract-defined
 envelope fields.
 
+## Client sync coordinator
+
+`apps/web/public/sync-coordinator.js` owns the browser-side order:
+
+- `sync-store.js` uses a separate `tanikun-sync` database with `outbox` and
+  `seen` stores. Outbox entries are `none` envelopes of local Automerge
+  changes. Seen hashes mark remote changes and acknowledged local changes so a
+  reload does not re-upload either kind.
+- `sync-metadata.js` keeps ADR-0013's `sync:<origin>:<document>` record in
+  `tanikun-planner`/`documents`. It records the observed server high-water
+  before a pull, then writes the merged planner and merged cursor in one
+  transaction. The planner record stays `storageVersion: 2`.
+- `persistence.js` exposes `validateText` and `onLocalChange`. A successful
+  local save passes its new Automerge change to the listener; remote merges do
+  not enter the outbox.
+- The coordinator pushes at most 20 envelopes per batch, retries retryable
+  transport results with bounded jitter and `Retry-After`, pulls pages,
+  checks dependencies, marks remote hashes, and commits the page atomically.
+  It exposes a narrow status callback and uses Web Locks when available.
+  Without Web Locks, a single leader is required; metadata transactions still
+  reject cursor rollback.
+- `discard()` clears the outbox, seen hashes, and sync metadata. `resync()`
+  resets the merged cursor and high-water while retaining pending local
+  changes.
+
+`tests/integration/sync-coordinator.test.mjs` runs the production modules
+against `fake-indexeddb` and a fake transport. It covers local-save enqueueing,
+batch push and prune, duplicate delivery after prune failure, dependency-valid
+pull, missing dependencies, cursor rollback, page-commit failure and retry,
+server gaps, discard, Web Lock use, and status callbacks.
+
 ## Local evidence
 
 `just test-d1` builds the API and runs the repository, shared-contract, and

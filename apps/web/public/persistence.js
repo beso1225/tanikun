@@ -41,6 +41,7 @@ const storageFailure = (error) =>
       }
     };
     let validate;
+    let localChangeListener;
     let writeQueue = Promise.resolve();
     const enqueue = (operation) => {
       const result = writeQueue.then(operation, operation);
@@ -121,11 +122,24 @@ const storageFailure = (error) =>
       enqueue(async () => {
         if (!validate?.(text)) throw new Error("保存データが正しくありません");
         if (!replace) await reconcile();
-        return persist(codec.update(document, text), replace);
+        const next = codec.update(document, text);
+        await persist(next, replace);
+        const change = A.getLastLocalChange(next);
+        if (change && localChangeListener) {
+          try {
+            localChangeListener(change);
+          } catch {
+            // The committed save remains successful; sync can rescan later.
+          }
+        }
       });
     const storage = {
       configure: (validator) => {
         validate = validator;
+      },
+      validateText: (text) => validate?.(text) === true,
+      onLocalChange: (listener) => {
+        localChangeListener = listener;
       },
       load,
       save,
