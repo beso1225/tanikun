@@ -14,5 +14,7 @@
 | [0010](0010-mandatory-course-planning.md)                 | Mandatory membership projects separately from confirmed passes           | accepted |
 | [0011](0011-local-planner-persistence.md)                 | Persist planner source state locally with a versioned document           | accepted |
 | [0012](0012-automerge-planner-document.md)                | Store planner records in Automerge and exchange local changes            | accepted |
+| [0013](0013-http-sync-protocol.md)                        | Exchange opaque changes through a versioned HTTP sync log                | accepted |
+| [0014](0014-local-development-auth.md)                    | Restrict temporary sync identities to local development                  | accepted |
 
 See the [documentation index](../README.md) for current contracts.
