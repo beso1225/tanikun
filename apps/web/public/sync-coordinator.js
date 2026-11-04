@@ -239,6 +239,14 @@ const retryable = (result) =>
       if (snapshot?.storageVersion === 1)
         throw new SyncCoordinatorError("planner_not_migrated");
       let metadata = await metadataStore.read(metadataKey());
+      if (snapshot === null && metadata.mergedCursor > 0) {
+        // Recover from an interrupted discard: the planner is gone but the
+        // metadata still points past the start of the log. Keep the observed
+        // high-water, reset only the merged cursor, and clear stale scope
+        // state before pulling from zero.
+        if (documentId) await syncStore.clear(syncScope());
+        metadata = await metadataStore.resetMerged(metadataKey());
+      }
       for (let pages = 0; pages < 10_000; pages += 1) {
         const result = await retry(() =>
           transport.pull(documentId, {

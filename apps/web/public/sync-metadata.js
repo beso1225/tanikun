@@ -307,6 +307,48 @@ const sameBytes = (left, right) =>
       });
     };
 
+    const resetMerged = async (key) => {
+      const database = await open();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, "readwrite");
+        const store = transaction.objectStore(storeName);
+        let next;
+        let failure;
+        const request = store.get(key);
+        request.addEventListener(
+          "success",
+          () => {
+            try {
+              const current = validateMetadata(request.result);
+              next = { ...current, mergedCursor: 0 };
+              store.put(next, key);
+            } catch (error) {
+              failure = error;
+              try {
+                transaction.abort();
+              } catch {
+                // A completed transaction cannot be aborted.
+              }
+            }
+          },
+          { once: true },
+        );
+        transaction.addEventListener("complete", () => resolve(next), {
+          once: true,
+        });
+        transaction.addEventListener(
+          "abort",
+          () =>
+            reject(
+              failure ??
+                transaction.error ??
+                new SyncMetadataError("invalid_sync_state"),
+            ),
+          { once: true },
+        );
+      });
+    };
+
     const clear = async (key) => {
       const database = await open();
       await new Promise((resolve, reject) => {
@@ -331,6 +373,7 @@ const sameBytes = (left, right) =>
       read,
       observe,
       applyPage,
+      resetMerged,
       clear,
       close: () => {
         opening?.then((database) => database.close()).catch(() => {});
