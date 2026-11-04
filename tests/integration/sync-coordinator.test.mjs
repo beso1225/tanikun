@@ -933,24 +933,30 @@ test("continues across multiple pull pages and refreshes the planner CAS", async
   assert.equal(metadata.observedHighWater, 4);
 });
 
-test("does not report a legacy planner as a concurrent replacement", async () => {
+test("reports a legacy planner as not migrated without touching it", async () => {
   const context = await setup();
-  await seedLegacyPlanner(context.factory, JSON.stringify(source));
+  const legacy = JSON.stringify(source);
+  await seedLegacyPlanner(context.factory, legacy);
   await context.storage.load();
-  const independent = codec.update(null, JSON.stringify(source));
-  const changes = Automerge.getAllChanges(independent);
-  context.transport.setPull(() => ({
-    kind: "pulled",
-    document_id: documentId,
-    changes: changes.map((change, index) => storedEnvelope(change, index + 1)),
-    next_cursor: changes.length,
-    has_more: false,
-    cursor: changes.length,
-  }));
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "error");
-  assert.equal(result.code, "history_mismatch");
-  assert.notEqual(result.code, "stale_planner");
+  assert.equal(result.code, "planner_not_migrated");
+
+  const database = await openPlannerDatabase(context.factory);
+  const stored = await new Promise((resolve, reject) => {
+    const transaction = database.transaction("documents", "readonly");
+    const request = transaction.objectStore("documents").get("planner");
+    request.addEventListener("success", () => resolve(request.result), {
+      once: true,
+    });
+    request.addEventListener(
+      "error",
+      () => reject(request.error ?? new Error("planner read failed")),
+      { once: true },
+    );
+  });
+  database.close();
+  assert.equal(stored, legacy);
 });
 
 test("pushes a large local history in bounded batches", async () => {
