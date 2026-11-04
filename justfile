@@ -94,7 +94,7 @@ build-web: build-css build-automerge
 test-browser: build-web
     moon run scripts/build-allocation-fixture.mbtx
     node --test tests/integration/browser-allocations.test.mjs
-    node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs
+    node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
