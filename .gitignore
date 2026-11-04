@@ -9,6 +9,7 @@ output/playwright/
 /apps/web/public/styles.css
 /apps/web/public/automerge.js
 /apps/web/public/automerge.LICENSE.txt
+/apps/web/public/sync-contract.mjs
 
 /result
 /result-*
