@@ -17,7 +17,9 @@ let
       ../apps/web/public/persistence-transactions.js
       ../apps/web/public/persistence.js
       ../apps/web/public/planner-document.js
+      ../apps/web/public/sync-transport.js
       ../apps/web/styles
+      ../docs/contracts
       ../packages
       ../scripts
       ../tests/integration

@@ -20,6 +20,17 @@ const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const hash = /^[0-9a-f]{64}$/;
 const encoder = new TextEncoder();
+const envelopeKeys = [
+  "document_id",
+  "change_id",
+  "envelope_version",
+  "payload_encoding",
+  "crypto_algorithm",
+  "key_version",
+  "nonce",
+  "aad",
+  "payload",
+];
 
 export function requireDocumentId(value) {
   if (typeof value !== "string" || !uuid.test(value)) {
@@ -58,17 +69,7 @@ function base64Bytes(value) {
 export function validateEnvelope(value, documentId) {
   requireDocumentId(documentId);
   if (
-    !exactKeys(value, [
-      "document_id",
-      "change_id",
-      "envelope_version",
-      "payload_encoding",
-      "crypto_algorithm",
-      "key_version",
-      "nonce",
-      "aad",
-      "payload",
-    ]) ||
+    !exactKeys(value, envelopeKeys) ||
     value.document_id !== documentId ||
     typeof value.change_id !== "string" ||
     !hash.test(value.change_id) ||
@@ -127,6 +128,23 @@ export function validateEnvelope(value, documentId) {
     ]),
   );
   return { wire: value, payload, nonce, canonical };
+}
+
+// Validates a stored envelope returned by pull. The sequence is transport
+// metadata added by the server; the rest of the envelope is the append shape.
+export function validateStoredEnvelope(value, documentId) {
+  if (!exactKeys(value, [...envelopeKeys, "server_sequence"])) {
+    throw new SyncError("malformed_request");
+  }
+  const { server_sequence, ...wire } = value;
+  if (
+    !Number.isSafeInteger(server_sequence) ||
+    server_sequence < 1 ||
+    server_sequence > SYNC_LIMITS.maxSequence
+  ) {
+    throw new SyncError("malformed_request");
+  }
+  return { ...validateEnvelope(wire, documentId), server_sequence };
 }
 
 export function validateAppend(changes, documentId) {

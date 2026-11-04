@@ -62,6 +62,7 @@ setup-web:
 
 # Build CSS and preview the page with Tailwind/Warren watchers.
 dev-web: build-automerge
+    just build-sync-contract apps/web/public
     node scripts/dev-web.mjs
 
 # Generate the stylesheet Warren copies from public/.
@@ -77,9 +78,14 @@ build-automerge public_dir="apps/web/public":
     cp node_modules/@automerge/automerge/dist/iife/iife.js "{{ public_dir }}/automerge.js"
     cp node_modules/@automerge/automerge/LICENSE "{{ public_dir }}/automerge.LICENSE.txt"
 
+# Copy the shared sync contract module into the browser artifact.
+build-sync-contract output_dir="apps/web/dist":
+    node scripts/build-sync-contract.mjs "{{ output_dir }}/sync-contract.mjs"
+
 # Build static browser assets into apps/web/dist.
 build-web: build-css build-automerge
     warren -C apps/web build
+    just build-sync-contract
 
 # Verify the built page in Chromium; run inside `nix develop` for Playwright.
 # Set TANIKUN_WEB_DIST to test an already built directory instead of dist.
