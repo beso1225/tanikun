@@ -23,6 +23,7 @@ const history = [];
 let coordinator = null;
 let retryQueued = false;
 let saveTriggerInstalled = false;
+let starting = false;
 
 function labelFor(state, code) {
   if (state === "error" && code === "discard_pending") return "同期エラー";
@@ -147,7 +148,17 @@ function createCoordinator(config, storage) {
   });
 }
 
-async function start() {
+function start() {
+  if (starting) return;
+  starting = true;
+  void startOnce()
+    .catch(() => setStatus("error", "sync_setup_failed"))
+    .finally(() => {
+      starting = false;
+    });
+}
+
+async function startOnce() {
   const config = readConfig();
   if (!config) {
     setStatus("unconfigured");
@@ -178,7 +189,13 @@ document.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
   if (!event.target.closest("#sync-retry")) return;
   event.preventDefault();
+  // The retry control is hidden as soon as the state becomes syncing. Move
+  // focus to the stable status element after the event finishes so browser
+  // focus restoration cannot fall through to the next control.
   triggerSync();
+  setTimeout(() => {
+    document.querySelector("#sync-status")?.focus({ preventScroll: true });
+  }, 0);
 });
 
 const app = document.querySelector("#app");
@@ -193,6 +210,16 @@ if (app) {
       renderedButton = button;
       render();
     }
+    const persistence = document
+      .querySelector("#persistence-status")
+      ?.textContent?.trim();
+    if (
+      persistence === "保存済み" &&
+      !coordinator &&
+      !starting &&
+      current.code === "local_storage_unavailable"
+    )
+      void start();
   }).observe(app, { childList: true, subtree: true, characterData: true });
 }
 

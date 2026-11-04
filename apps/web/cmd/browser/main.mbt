@@ -59,7 +59,8 @@ fn planner_view(
                   attrs=@html.Attrs::build()
                     .role("status")
                     .aria_live("polite")
-                    .aria_atomic("true"),
+                    .aria_atomic("true")
+                    .tabindex(-1),
                   [
                     span(class="sr-only", "同期状態: "),
                     span(id="sync-status-text", "同期準備中"),
