@@ -107,6 +107,7 @@ const retryable = (result) =>
     };
 
     const metadataKey = () => "sync:" + JSON.stringify([origin, documentId]);
+    const syncScope = () => `${origin}:${documentId}`;
 
     const retry = async (operation) => {
       for (let attempt = 0; ; attempt += 1) {
@@ -147,15 +148,15 @@ const retryable = (result) =>
     const enqueueChange = async (change, expectedEpoch = epoch) => {
       if (!documentId || epoch !== expectedEpoch) return false;
       const changeId = decodeHash(change);
-      const seen = await syncStore.seenHashes();
+      const seen = await syncStore.seenHashes(syncScope());
       if (seen.has(changeId)) return false;
-      const outbox = await syncStore.outboxHashes();
+      const outbox = await syncStore.outboxHashes(syncScope());
       if (outbox.has(changeId)) return false;
       if (epoch !== expectedEpoch) return false;
       const index = storage
         .changes()
         .findIndex((candidate) => decodeHash(candidate) === changeId);
-      await syncStore.enqueue([
+      await syncStore.enqueue(syncScope(), [
         {
           change_id: changeId,
           envelope: envelopeFor(change, documentId),
@@ -177,8 +178,8 @@ const retryable = (result) =>
 
     const scanLocalChanges = async () => {
       const changes = storage.changes();
-      const seen = await syncStore.seenHashes();
-      const outbox = await syncStore.outboxHashes();
+      const seen = await syncStore.seenHashes(syncScope());
+      const outbox = await syncStore.outboxHashes(syncScope());
       const entries = [];
       for (const [index, change] of changes.entries()) {
         const changeId = decodeHash(change);
@@ -189,7 +190,7 @@ const retryable = (result) =>
           order: index,
         });
       }
-      await syncStore.enqueue(entries);
+      await syncStore.enqueue(syncScope(), entries);
     };
 
     const pushBatch = async (batch) => {
@@ -213,12 +214,15 @@ const retryable = (result) =>
       if (result.kind !== "pushed")
         throw new SyncCoordinatorError(result.code ?? result.kind, result);
       await metadataStore.observe(metadataKey(), result.cursor);
-      await syncStore.acknowledge(batch.map((entry) => entry.change_id));
+      await syncStore.acknowledge(
+        syncScope(),
+        batch.map((entry) => entry.change_id),
+      );
     };
 
     const pushOutbox = async () => {
       while (true) {
-        const entries = await syncStore.listOutbox();
+        const entries = await syncStore.listOutbox(syncScope());
         if (entries.length === 0) return;
         await pushBatch(entries.slice(0, maxBatch));
       }
@@ -237,12 +241,26 @@ const retryable = (result) =>
         );
         if (result.kind !== "pulled")
           throw new SyncCoordinatorError(result.code ?? result.kind, result);
+        const after = metadata.mergedCursor;
+        if (
+          !Number.isSafeInteger(result.cursor) ||
+          !Number.isSafeInteger(result.next_cursor) ||
+          result.cursor < after ||
+          result.next_cursor > result.cursor
+        )
+          throw new SyncCoordinatorError("inconsistent_cursor");
         if (result.changes.length === 0) {
-          if (result.has_more)
-            throw new SyncCoordinatorError("empty_page_with_more");
+          if (
+            result.has_more ||
+            result.next_cursor !== after ||
+            result.cursor !== after
+          )
+            throw new SyncCoordinatorError("inconsistent_cursor");
           metadata = await metadataStore.observe(metadataKey(), result.cursor);
           return metadata;
         }
+        if (result.next_cursor <= after)
+          throw new SyncCoordinatorError("inconsistent_cursor");
 
         const local = storage.changes().map((change) => ({
           bytes: change,
@@ -289,7 +307,7 @@ const retryable = (result) =>
         }
 
         metadata = await metadataStore.observe(metadataKey(), result.cursor);
-        await syncStore.markRemote(hashes);
+        await syncStore.markRemote(syncScope(), hashes);
         await metadataStore.applyPage({
           key: metadataKey(),
           expectedMergedCursor: metadata.mergedCursor,
@@ -318,7 +336,7 @@ const retryable = (result) =>
       const metadata = await metadataStore.read(metadataKey());
       emit("synced", {
         cursor: metadata.mergedCursor,
-        pending: (await syncStore.listOutbox()).length,
+        pending: (await syncStore.listOutbox(syncScope())).length,
       });
       return {
         kind: "synced",
@@ -353,8 +371,10 @@ const retryable = (result) =>
       epoch += 1;
       await Promise.allSettled(pendingEnqueues);
       await withLock(async () => {
-        await syncStore.clear();
-        if (documentId) await metadataStore.clear(metadataKey());
+        if (documentId) {
+          await syncStore.clear(syncScope());
+          await metadataStore.clear(metadataKey());
+        }
         await storage.discard?.();
       });
     };

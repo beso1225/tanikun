@@ -34,6 +34,8 @@ const transactionDone = (transaction) =>
 
 const readAll = (store) => requestDone(store.getAll());
 const readKeys = (store) => requestDone(store.getAllKeys());
+const scopeKey = (scope, changeId) => `${scope}|${changeId}`;
+const scopePrefix = (scope) => `${scope}|`;
 
 {
   const databaseName = "tanikun-sync";
@@ -91,64 +93,85 @@ const readKeys = (store) => requestDone(store.getAllKeys());
     };
 
     return {
-      async enqueue(entries) {
+      async enqueue(scope, entries) {
         if (entries.length === 0) return;
         await run([outboxStore], "readwrite", (transaction) => {
           const store = transaction.objectStore(outboxStore);
-          for (const entry of entries) store.put(entry, entry.change_id);
+          for (const entry of entries)
+            store.put({ ...entry, scope }, scopeKey(scope, entry.change_id));
         });
       },
 
-      async listOutbox() {
+      async listOutbox(scope) {
         const entries = await run([outboxStore], "readonly", (transaction) =>
           readAll(transaction.objectStore(outboxStore)),
         );
-        return entries.toSorted(
-          (left, right) =>
-            left.order - right.order ||
-            left.change_id.localeCompare(right.change_id),
-        );
+        return entries
+          .filter((entry) => entry.scope === scope)
+          .toSorted(
+            (left, right) =>
+              left.order - right.order ||
+              left.change_id.localeCompare(right.change_id),
+          );
       },
 
-      async outboxHashes() {
+      async outboxHashes(scope) {
         const keys = await run([outboxStore], "readonly", (transaction) =>
           readKeys(transaction.objectStore(outboxStore)),
         );
-        return new Set(keys);
+        const prefix = scopePrefix(scope);
+        return new Set(
+          keys
+            .filter((key) => key.startsWith(prefix))
+            .map((key) => key.slice(prefix.length)),
+        );
       },
 
-      async acknowledge(changeIds) {
+      async acknowledge(scope, changeIds) {
         if (changeIds.length === 0) return;
         await run([outboxStore, seenStore], "readwrite", (transaction) => {
           const outbox = transaction.objectStore(outboxStore);
           const seen = transaction.objectStore(seenStore);
           for (const changeId of changeIds) {
-            outbox.delete(changeId);
-            seen.put({ kind: "synced" }, changeId);
+            outbox.delete(scopeKey(scope, changeId));
+            seen.put({ kind: "synced" }, scopeKey(scope, changeId));
           }
         });
       },
 
-      async markRemote(changeIds) {
+      async markRemote(scope, changeIds) {
         if (changeIds.length === 0) return;
         await run([seenStore], "readwrite", (transaction) => {
           const seen = transaction.objectStore(seenStore);
           for (const changeId of changeIds)
-            seen.put({ kind: "remote" }, changeId);
+            seen.put({ kind: "remote" }, scopeKey(scope, changeId));
         });
       },
 
-      async seenHashes() {
+      async seenHashes(scope) {
         const keys = await run([seenStore], "readonly", (transaction) =>
           readKeys(transaction.objectStore(seenStore)),
         );
-        return new Set(keys);
+        const prefix = scopePrefix(scope);
+        return new Set(
+          keys
+            .filter((key) => key.startsWith(prefix))
+            .map((key) => key.slice(prefix.length)),
+        );
       },
 
-      async clear() {
+      async clear(scope) {
         await run([outboxStore, seenStore], "readwrite", (transaction) => {
-          transaction.objectStore(outboxStore).clear();
-          transaction.objectStore(seenStore).clear();
+          const prefix = scopePrefix(scope);
+          for (const storeName of [outboxStore, seenStore]) {
+            const store = transaction.objectStore(storeName);
+            const keys = store.getAllKeys();
+            keys.onsuccess = () => {
+              for (const key of keys.result) {
+                if (String(key).startsWith(prefix)) store.delete(key);
+              }
+            };
+          }
         });
       },
 
