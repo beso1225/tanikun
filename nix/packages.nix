@@ -17,6 +17,9 @@ let
       ../apps/web/public/persistence-transactions.js
       ../apps/web/public/persistence.js
       ../apps/web/public/planner-document.js
+      ../apps/web/public/sync-coordinator.js
+      ../apps/web/public/sync-metadata.js
+      ../apps/web/public/sync-store.js
       ../apps/web/public/sync-transport.js
       ../apps/web/styles
       ../docs/contracts
@@ -102,7 +105,7 @@ let
       moon check --frozen --target js --deny-warn
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-web/app -p beso1225/tanikun-web/cmd/browser
       moon build --frozen --target js --release --deny-warn
-      node --test tests/integration/moonbit-export.test.mjs tests/integration/tailwind.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/sync-transport.test.mjs
+      node --test tests/integration/moonbit-export.test.mjs tests/integration/tailwind.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs
     '';
     installPhase = ''
       mkdir -p "$out"

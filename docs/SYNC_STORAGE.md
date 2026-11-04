@@ -108,6 +108,52 @@ Error bodies and diagnostics never include SQL, exception messages,
 tokens, or payload bytes; operation bodies carry only the contract-defined
 envelope fields.
 
+## Client sync coordinator
+
+`apps/web/public/sync-coordinator.js` owns the browser-side order:
+
+- `sync-store.js` uses a separate `tanikun-sync` database with `outbox` and
+  `seen` stores. Outbox entries are `none` envelopes of local Automerge
+  changes. Seen hashes mark remote changes and acknowledged local changes so a
+  reload does not re-upload either kind. Entries are scoped by
+  `origin:document`, so a document rebind cannot push another document's
+  envelopes. The seen set is deduplicated by change ID and grows with retained
+  history; the outbox itself holds only unsynced local changes. Each sync scans
+  retained local history to build the seen and outbox sets, so per-sync CPU work
+  is linear in retained history; a persisted scan-boundary optimization is
+  future work. The outbox and push batches stay bounded.
+- `sync-metadata.js` keeps ADR-0013's `sync:<origin>:<document>` record in
+  `tanikun-planner`/`documents`. It records the observed server high-water
+  before a pull, then writes the merged planner and merged cursor in one
+  transaction. The write compares the planner bytes with the snapshot the
+  coordinator validated and fails with `stale_planner` if another tab changed
+  or replaced the planner. The planner record stays `storageVersion: 2`.
+- `persistence.js` exposes `validateText`, `onLocalChange`, `snapshot`, and
+  `discard`. A successful local save passes its new Automerge change to the
+  listener; remote merges do not enter the outbox. `snapshot` provides the
+  planner CAS input; `discard` removes the planner for an explicit reset.
+- The coordinator pulls before it pushes, so a fresh client adopts the server
+  history before uploading local history. It rejects independent Automerge
+  roots with `history_mismatch`, checks dependencies, marks remote hashes, and
+  commits the page atomically. It then pushes local changes in batches of at
+  most 20; an oversized batch is split recursively before it is treated as a
+  terminal error.
+- Retryable transport results use bounded jitter and `Retry-After`. The
+  coordinator exposes a narrow status callback and uses Web Locks when
+  available. Without Web Locks, a single leader is required; metadata
+  transactions still reject cursor rollback.
+- `discard()` clears the planner, outbox, seen hashes, and sync metadata for
+  the current scope under the same per-document lock. The shell integration
+  and visible status are #143; this module has no UI.
+
+`tests/integration/sync-coordinator.test.mjs` runs the production modules
+against `fake-indexeddb` and a fake transport. It covers local-save enqueueing,
+batch push and prune, duplicate delivery after prune failure, dependency-valid
+pull, fresh-client history adoption, independent-root rejection, missing
+dependencies, cursor rollback, page-commit failure and retry, stale-planner
+CAS, oversized-batch splitting, server gaps, discard, Web Lock use, retry and
+`Retry-After`, bootstrap, and status callbacks.
+
 ## Local evidence
 
 `just test-d1` builds the API and runs the repository, shared-contract, and
