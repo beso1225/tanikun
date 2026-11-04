@@ -55,7 +55,9 @@ the final cursor read all share one `DB.batch()` transaction. An identical
 canonical envelope returns its sequence. A differing envelope fails the whole
 transaction. A later statement failure rolls back earlier rows and counters.
 
-Pull reads its cursor, integrity state, and rows in one batch. These binding
+Pull reads its cursor, integrity state, and rows in one batch. SQL first
+bounds candidate payload sizes before retrieving BLOBs; the repository then
+counts each encoded envelope once to select the exact JSON byte-capped prefix. These binding
 operations use D1's primary, without opting into read replicas. No application
 read-modify-write counter allocation or cross-await transaction is used.
 

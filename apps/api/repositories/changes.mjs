@@ -6,6 +6,10 @@ import {
   validateAppend,
 } from "../../../packages/sync-contract/contract.mjs";
 
+const encoder = new TextEncoder();
+const rowColumns =
+  "c.document_id, c.seq, c.change_id, c.payload, c.envelope_version, c.crypto_alg, c.key_version, c.nonce";
+
 // Errors crossing this boundary expose only protocol codes, never SQL, bound
 // values, payloads, or the original exception's cause/stack.
 function databaseError(error) {
@@ -158,7 +162,7 @@ export function createChangeRepository(
       try {
         const row = await db
           .prepare(
-            "SELECT c.* FROM changes c JOIN documents d ON d.id = c.document_id WHERE c.document_id = ?1 AND d.owner_id = ?2 AND c.change_id = ?3",
+            `SELECT ${rowColumns} FROM changes c JOIN documents d ON d.id = c.document_id WHERE c.document_id = ?1 AND d.owner_id = ?2 AND c.change_id = ?3`,
           )
           .bind(documentId, ownerId, changeId)
           .first();
@@ -192,9 +196,26 @@ export function createChangeRepository(
             .bind(documentId, ownerId),
           db
             .prepare(
-              "SELECT c.* FROM changes c JOIN documents d ON d.id = c.document_id WHERE d.id = ?1 AND d.owner_id = ?2 AND c.seq > ?3 ORDER BY c.seq LIMIT ?4",
+              // Size only the candidate IDs before retrieving BLOBs. Include the
+              // first payload crossing the byte budget for exact JSON sizing.
+              `WITH sizes AS (
+                SELECT c.seq,
+                  4 * ((length(c.payload) + 2) / 3) AS payload_bytes,
+                  SUM(4 * ((length(c.payload) + 2) / 3)) OVER (ORDER BY c.seq) AS encoded_bytes
+                FROM changes c JOIN documents d ON d.id = c.document_id
+                WHERE d.id = ?1 AND d.owner_id = ?2 AND c.seq > ?3
+              )
+              SELECT ${rowColumns} FROM changes c JOIN sizes s ON s.seq = c.seq
+              WHERE c.document_id = ?1 AND s.encoded_bytes - s.payload_bytes < ?5
+              ORDER BY c.seq LIMIT ?4`,
             )
-            .bind(documentId, ownerId, after, limit + 1),
+            .bind(
+              documentId,
+              ownerId,
+              after,
+              limit + 1,
+              SYNC_LIMITS.maxResponseBytes,
+            ),
         ]);
         const document = results[0].results[0];
         if (!document) throw new SyncError("not_found");
@@ -211,21 +232,29 @@ export function createChangeRepository(
           has_more: rows.length > 0,
           cursor,
         };
+        let changeBytes = 0;
         for (const row of rows.slice(0, limit)) {
           const change = envelopeFromRow(row);
-          response.changes.push(change);
-          response.next_cursor = row.seq;
-          response.has_more = row.seq < cursor;
-          if (
-            new TextEncoder().encode(JSON.stringify(response)).length >
-            SYNC_LIMITS.maxResponseBytes
-          ) {
-            response.changes.pop();
-            response.next_cursor =
-              response.changes.at(-1)?.server_sequence ?? after;
+          const entryBytes = encoder.encode(JSON.stringify(change)).length;
+          const header = {
+            ...response,
+            changes: [],
+            next_cursor: row.seq,
+            has_more: row.seq < cursor,
+          };
+          const total =
+            encoder.encode(JSON.stringify(header)).length +
+            changeBytes +
+            entryBytes +
+            response.changes.length;
+          if (total > SYNC_LIMITS.maxResponseBytes) {
             response.has_more = true;
             break;
           }
+          changeBytes += entryBytes;
+          response.changes.push(change);
+          response.next_cursor = row.seq;
+          response.has_more = row.seq < cursor;
         }
         return response;
       } catch (error) {
