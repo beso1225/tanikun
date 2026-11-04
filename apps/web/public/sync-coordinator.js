@@ -85,6 +85,7 @@ const retryable = (result) =>
     let currentStatus = "starting";
     let running;
     let epoch = 0;
+    let discarding = false;
     const pendingEnqueues = new Set();
     let origin;
     try {
@@ -146,16 +147,17 @@ const retryable = (result) =>
     };
 
     const enqueueChange = async (change, expectedEpoch = epoch) => {
-      if (!documentId || epoch !== expectedEpoch) return false;
+      if (discarding || !documentId || epoch !== expectedEpoch) return false;
       const changeId = decodeHash(change);
       const seen = await syncStore.seenHashes(syncScope());
       if (seen.has(changeId)) return false;
       const outbox = await syncStore.outboxHashes(syncScope());
       if (outbox.has(changeId)) return false;
-      if (epoch !== expectedEpoch) return false;
+      if (discarding || epoch !== expectedEpoch) return false;
       const index = storage
         .changes()
         .findIndex((candidate) => decodeHash(candidate) === changeId);
+      if (discarding || epoch !== expectedEpoch) return false;
       await syncStore.enqueue(syncScope(), [
         {
           change_id: changeId,
@@ -375,16 +377,24 @@ const retryable = (result) =>
     };
 
     const discard = async () => {
-      if (running) await running;
-      epoch += 1;
-      await Promise.allSettled(pendingEnqueues);
-      await withLock(async () => {
-        if (documentId) {
-          await syncStore.clear(syncScope());
-          await metadataStore.clear(metadataKey());
-        }
-        await storage.discard?.();
-      });
+      discarding = true;
+      try {
+        if (running) await running;
+        epoch += 1;
+        await withLock(async () => {
+          // Remove the planner first so an in-flight save queues behind this
+          // operation, then drain any hook that had already started before
+          // the discarding flag was set, and only then clear sync state.
+          await storage.discard?.();
+          await Promise.allSettled(pendingEnqueues);
+          if (documentId) {
+            await syncStore.clear(syncScope());
+            await metadataStore.clear(metadataKey());
+          }
+        });
+      } finally {
+        discarding = false;
+      }
     };
 
     return {
