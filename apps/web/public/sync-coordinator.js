@@ -248,6 +248,9 @@ const retryable = (result) =>
       await scanLocalChanges();
       await pushOutbox();
       const metadata = await pullPages();
+      // A local save can land while a pull is in progress; flush it before
+      // reporting synced so the outbox is not silently left behind.
+      await pushOutbox();
       emit("synced", {
         cursor: metadata.mergedCursor,
         pending: (await syncStore.listOutbox()).length,
