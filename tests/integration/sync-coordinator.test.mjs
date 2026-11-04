@@ -977,3 +977,48 @@ test("pushes a large local history in bounded batches", async () => {
   );
   assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
+
+test("discard drains an in-flight save before clearing the outbox", async () => {
+  const context = await setup();
+  const originalSeen = context.syncStore.seenHashes.bind(context.syncStore);
+  let release;
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  let started;
+  const seenStarted = new Promise((resolve) => {
+    started = resolve;
+  });
+  const wrappedStore = {
+    ...context.syncStore,
+    async seenHashes(scope) {
+      started();
+      await blocked;
+      return originalSeen(scope);
+    },
+  };
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: wrappedStore,
+    metadataStore: context.metadataStore,
+    sleep: async () => {},
+    random: () => 0,
+    locks: null,
+  });
+  const save = context.storage.save(
+    JSON.stringify({ ...source, program_id: "during-discard" }),
+  );
+  await seenStarted;
+  const discard = coordinator.discard();
+  release();
+  await Promise.all([save, discard]);
+  assert.equal(await context.storage.load(), null);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  const pushes = context.transport.pushes.length;
+  const result = await coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(context.transport.pushes.length, pushes);
+});
