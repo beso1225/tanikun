@@ -126,10 +126,13 @@ let
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-api
       node --test tests/integration/moonbit-export.test.mjs
     '';
-    # Keep the bridge's relative import intact; no npm/runtime dependency is needed.
+    # Keep the bridge's relative imports intact; no npm/runtime dependency is needed.
     installPhase = ''
-      mkdir -p "$out/apps/api/bridges" "$out/_build/js/release/build/beso1225/tanikun-api"
+      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/worker.mjs "$out/apps/api/bridges/"
+      cp apps/api/http/*.mjs "$out/apps/api/http/"
+      cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
+      cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
     '';
   };
