@@ -244,10 +244,11 @@ const retryable = (result) =>
         const after = metadata.mergedCursor;
         if (
           !Number.isSafeInteger(result.cursor) ||
-          !Number.isSafeInteger(result.next_cursor) ||
-          result.cursor < after ||
-          result.next_cursor > result.cursor
+          !Number.isSafeInteger(result.next_cursor)
         )
+          throw new SyncCoordinatorError("inconsistent_cursor");
+        if (result.cursor < after) throw new SyncCoordinatorError("rollback");
+        if (result.next_cursor > result.cursor)
           throw new SyncCoordinatorError("inconsistent_cursor");
         if (result.changes.length === 0) {
           if (
