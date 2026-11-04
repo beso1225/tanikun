@@ -99,8 +99,9 @@ media type, batch, payload, query, method, and owned-resource rules. It maps
 expected failures to stable status codes and redacted JSON bodies.
 `apps/api/http/respond.mjs` adds `Vary: Origin` to every sync response and the
 exact allow origin only for `http://127.0.0.1:4300`; gate failures keep their
-404 status. Request and response bodies never include SQL, exception messages,
-tokens, or payload bytes.
+404 status. Error bodies and diagnostics never include SQL, exception messages,
+tokens, or payload bytes; operation bodies carry only the contract-defined
+envelope fields.
 
 ## Local evidence
 
