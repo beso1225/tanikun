@@ -127,6 +127,23 @@ test("the browser artifact uses the shared contract module unchanged", () => {
   );
 });
 
+test("parseWireJson rejects nested duplicates and keeps prototype keys safe", () => {
+  assert.throws(
+    () => shared.parseWireJson('{"a":{"x":1,"x":2}}'),
+    /invalid JSON/,
+  );
+  assert.throws(
+    () => shared.parseWireJson('{"a":1,"\\u0061":2}'),
+    /invalid JSON/,
+  );
+  const value = shared.parseWireJson(
+    '{"__proto__":{"polluted":true},"constructor":1}',
+  );
+  assert.ok(Object.hasOwn(value, "__proto__"));
+  assert.equal(Object.getPrototypeOf(value), Object.prototype);
+  assert.equal({}.polluted, undefined);
+});
+
 test("bootstrap parses the exact ADR fixture response", async () => {
   const row = caseByName("bootstrap-new");
   const { calls, fetch } = scriptedFetch(() => responseFrom(row));
@@ -615,6 +632,66 @@ test("malformed JSON, content type, and envelopes are explicit results", async (
     scriptedFetch(() => oversizedResponse).fetch,
   ).bootstrap();
   assert.deepEqual(oversizedResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+
+  let cancelled = false;
+  const declaredResponse = {
+    status: 200,
+    headers: new Headers({
+      "Content-Type": "application/json",
+      "Content-Length": String(SYNC_LIMITS.maxResponseBytes + 1),
+    }),
+    body: {
+      cancel() {
+        cancelled = true;
+      },
+      getReader() {
+        throw new Error("body was read");
+      },
+    },
+  };
+  const declaredResult = await transportFor(
+    scriptedFetch(() => declaredResponse).fetch,
+  ).bootstrap();
+  assert.deepEqual(declaredResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+  assert.equal(cancelled, true);
+
+  const twoChanges = structuredClone(
+    caseByName("append-two-new-in-request-order").request.body.changes,
+  );
+  const repeatedSequence = {
+    document_id: documentId,
+    accepted: [
+      { change_id: twoChanges[0].change_id, server_sequence: 1 },
+      { change_id: twoChanges[0].change_id, server_sequence: 2 },
+    ],
+    cursor: 2,
+  };
+  const repeatedSequenceResult = await transportFor(
+    scriptedFetch(() => jsonResponse(repeatedSequence)).fetch,
+  ).push(documentId, twoChanges);
+  assert.deepEqual(repeatedSequenceResult, {
+    kind: K.MALFORMED_RESPONSE,
+    retryable: false,
+  });
+
+  const duplicatedSequence = {
+    document_id: documentId,
+    accepted: [
+      { change_id: twoChanges[0].change_id, server_sequence: 1 },
+      { change_id: twoChanges[1].change_id, server_sequence: 1 },
+    ],
+    cursor: 2,
+  };
+  const duplicatedSequenceResult = await transportFor(
+    scriptedFetch(() => jsonResponse(duplicatedSequence)).fetch,
+  ).push(documentId, twoChanges);
+  assert.deepEqual(duplicatedSequenceResult, {
     kind: K.MALFORMED_RESPONSE,
     retryable: false,
   });
