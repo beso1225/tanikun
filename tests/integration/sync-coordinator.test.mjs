@@ -120,7 +120,7 @@ function createFakeTransport() {
   const pushes = [];
   const pullCalls = [];
   const sequences = new Map();
-  let cursor = 0;
+  const entries = [];
   let pullHandler;
   return {
     pushes,
@@ -134,8 +134,11 @@ function createFakeTransport() {
     async push(_documentId, envelopes) {
       pushes.push(envelopes);
       const accepted = envelopes.map((envelope) => {
-        if (!sequences.has(envelope.change_id))
-          sequences.set(envelope.change_id, ++cursor);
+        if (!sequences.has(envelope.change_id)) {
+          const sequence = entries.length + 1;
+          sequences.set(envelope.change_id, sequence);
+          entries.push({ envelope, sequence });
+        }
         return {
           change_id: envelope.change_id,
           server_sequence: sequences.get(envelope.change_id),
@@ -145,18 +148,26 @@ function createFakeTransport() {
         kind: "pushed",
         document_id: documentId,
         accepted,
-        cursor,
+        cursor: entries.length,
       };
     },
     async pull(_documentId, options) {
       pullCalls.push(options);
       if (pullHandler) return pullHandler(options);
+      const cursor = entries.length;
+      const rows = entries
+        .filter((entry) => entry.sequence > options.after)
+        .slice(0, options.limit);
+      const nextCursor = rows.length ? rows.at(-1).sequence : options.after;
       return {
         kind: "pulled",
         document_id: documentId,
-        changes: [],
-        next_cursor: options.after,
-        has_more: false,
+        changes: rows.map((entry) => ({
+          ...entry.envelope,
+          server_sequence: entry.sequence,
+        })),
+        next_cursor: nextCursor,
+        has_more: nextCursor < cursor,
         cursor,
       };
     },
@@ -212,6 +223,7 @@ async function setup() {
 }
 
 const metadataKey = () => "sync:" + JSON.stringify([apiOrigin, documentId]);
+const syncScope = `${apiOrigin}:${documentId}`;
 
 const waitFor = async (predicate, timeout = 2_000) => {
   const started = Date.now();
@@ -232,7 +244,7 @@ test("pushes local changes and prunes the outbox after acknowledgement", async (
     context.transport.pushes[0].map((envelope) => envelope.change_id),
     context.baseChanges.map((change) => Automerge.decodeChange(change).hash),
   );
-  assert.deepEqual(await context.syncStore.listOutbox(), []);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
   assert.equal(metadata.observedHighWater, 2);
@@ -245,19 +257,30 @@ test("applies a dependency-valid remote page and never re-uploads it", async () 
     JSON.stringify({ ...source, program_id: "remote" }),
   );
   const remoteChange = Automerge.getLastLocalChange(remote);
-  context.transport.setPull(() => ({
-    kind: "pulled",
-    document_id: documentId,
-    changes: [
-      ...context.baseChanges.map((change, index) =>
-        storedEnvelope(change, index + 1),
-      ),
-      storedEnvelope(remoteChange, 3),
-    ],
-    next_cursor: 3,
-    has_more: false,
-    cursor: 3,
-  }));
+  context.transport.setPull((options) =>
+    options.after >= 3
+      ? {
+          kind: "pulled",
+          document_id: documentId,
+          changes: [],
+          next_cursor: 3,
+          has_more: false,
+          cursor: 3,
+        }
+      : {
+          kind: "pulled",
+          document_id: documentId,
+          changes: [
+            ...context.baseChanges.map((change, index) =>
+              storedEnvelope(change, index + 1),
+            ),
+            storedEnvelope(remoteChange, 3),
+          ],
+          next_cursor: 3,
+          has_more: false,
+          cursor: 3,
+        },
+  );
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "synced");
   assert.equal(result.cursor, 3);
@@ -270,7 +293,7 @@ test("applies a dependency-valid remote page and never re-uploads it", async () 
   const second = await context.coordinator.sync();
   assert.equal(second.kind, "synced");
   assert.equal(context.transport.pushes.length, 0);
-  assert.deepEqual(await context.syncStore.listOutbox(), []);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
 
 test("fails closed on a missing dependency without advancing the cursor", async () => {
@@ -322,12 +345,12 @@ test("keeps the outbox when acknowledgement fails and prunes after retry", async
   let fail = true;
   const flakyStore = {
     ...context.syncStore,
-    async acknowledge(changeIds) {
+    async acknowledge(scope, changeIds) {
       if (fail) {
         fail = false;
         throw new Error("acknowledgement failed");
       }
-      return context.syncStore.acknowledge(changeIds);
+      return context.syncStore.acknowledge(scope, changeIds);
     },
   };
   const coordinator = createSyncCoordinator({
@@ -343,10 +366,10 @@ test("keeps the outbox when acknowledgement fails and prunes after retry", async
   });
   const first = await coordinator.sync();
   assert.equal(first.kind, "error");
-  assert.equal((await context.syncStore.listOutbox()).length, 2);
+  assert.equal((await context.syncStore.listOutbox(syncScope)).length, 2);
   const second = await coordinator.sync();
   assert.equal(second.kind, "synced");
-  assert.deepEqual(await context.syncStore.listOutbox(), []);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
   assert.equal(context.transport.pushes.length, 2);
 });
 
@@ -356,8 +379,8 @@ test("discard clears the planner and sync state without re-uploading history", a
   const pushes = context.transport.pushes.length;
   await context.coordinator.discard();
   assert.equal(await context.storage.load(), null);
-  assert.deepEqual(await context.syncStore.listOutbox(), []);
-  assert.deepEqual(await context.syncStore.seenHashes(), new Set());
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  assert.deepEqual(await context.syncStore.seenHashes(syncScope), new Set());
   assert.deepEqual(await context.metadataStore.read(metadataKey()), {
     syncVersion: 1,
     mergedCursor: 0,
@@ -384,7 +407,9 @@ test("enqueues a local save through the change hook and only pushes it once", as
   await context.storage.save(
     JSON.stringify({ ...source, program_id: "local" }),
   );
-  await waitFor(async () => (await context.syncStore.listOutbox()).length >= 1);
+  await waitFor(
+    async () => (await context.syncStore.listOutbox(syncScope)).length >= 1,
+  );
   const first = await context.coordinator.sync();
   assert.equal(first.kind, "synced");
   assert.equal(context.transport.pushes[0].length, 3);
@@ -393,12 +418,12 @@ test("enqueues a local save through the change hook and only pushes it once", as
     JSON.stringify({ ...source, program_id: "local-again" }),
   );
   await waitFor(
-    async () => (await context.syncStore.listOutbox()).length === 1,
+    async () => (await context.syncStore.listOutbox(syncScope)).length === 1,
   );
   const second = await context.coordinator.sync();
   assert.equal(second.kind, "synced");
   assert.equal(context.transport.pushes.at(-1).length, 1);
-  assert.deepEqual(await context.syncStore.listOutbox(), []);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
 
 test("leaves the cursor and planner unchanged when the page commit fails", async () => {
@@ -632,7 +657,7 @@ test("splits an oversized append batch instead of stalling the outbox", async ()
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "synced");
   assert.equal(calls, 3);
-  assert.deepEqual(await context.syncStore.listOutbox(), []);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
 
 test("rejects a page when another tab replaced the planner", async () => {
@@ -713,4 +738,125 @@ test("a fresh client adopts server history before uploading anything", async () 
     "server-history",
   );
   assert.equal(context.transport.pushes.length, 0);
+});
+
+test("rejects inconsistent cursor fields before committing a page", async () => {
+  const context = await setup();
+  context.transport.setPull(() => ({
+    kind: "pulled",
+    document_id: documentId,
+    changes: context.baseChanges.map((change, index) =>
+      storedEnvelope(change, index + 1),
+    ),
+    next_cursor: 4,
+    has_more: false,
+    cursor: 3,
+  }));
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "inconsistent_cursor");
+  const metadata = await context.metadataStore.read(metadataKey());
+  assert.equal(metadata.mergedCursor, 0);
+  assert.equal(metadata.observedHighWater, 0);
+});
+
+test("keeps outbox entries scoped to their origin and document", async () => {
+  const context = await setup();
+  await context.syncStore.enqueue("other-scope", [
+    {
+      change_id: "a".repeat(64),
+      envelope: { document_id: "other-document" },
+      order: 0,
+    },
+  ]);
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(context.transport.pushes[0].length, 2);
+  assert.equal((await context.syncStore.listOutbox("other-scope")).length, 1);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+});
+
+test("retains the outbox through offline retry exhaustion and reconnects", async () => {
+  const context = await setup();
+  const originalPush = context.transport.push.bind(context.transport);
+  let offline = true;
+  context.transport.push = async (...args) =>
+    offline ? { kind: "offline", retryable: true } : originalPush(...args);
+  const statuses = [];
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    maxRetry: 2,
+    sleep: async () => {},
+    random: () => 0,
+    locks: null,
+    onStatus: (status) => statuses.push(status.state),
+  });
+  const first = await coordinator.sync();
+  assert.equal(first.kind, "offline");
+  assert.ok(statuses.includes("offline"));
+  assert.equal((await context.syncStore.listOutbox(syncScope)).length, 2);
+  offline = false;
+  const second = await coordinator.sync();
+  assert.equal(second.kind, "synced");
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  assert.equal(context.transport.pushes.length, 1);
+});
+
+test("two coordinators under one lock keep the cursor monotonic", async () => {
+  const context = await setup();
+  const transact = createTransactions({
+    indexedDB: context.factory,
+    timers: { setTimeout, clearTimeout },
+    timeout: 5_000,
+  });
+  const storage = createStorage({ Automerge, codec, transact });
+  storage.configure(validSource);
+  await storage.load();
+  const lockState = new Map();
+  const locks = {
+    request(name, _options, callback) {
+      const previous = lockState.get(name) ?? Promise.resolve();
+      const current = previous.then(() => callback());
+      lockState.set(
+        name,
+        current.catch(() => {}),
+      );
+      return current;
+    },
+  };
+  const first = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    locks,
+    sleep: async () => {},
+    random: () => 0,
+  });
+  const second = createSyncCoordinator({
+    storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    locks,
+    sleep: async () => {},
+    random: () => 0,
+  });
+  const [left, right] = await Promise.all([first.sync(), second.sync()]);
+  assert.equal(left.kind, "synced");
+  assert.equal(right.kind, "synced");
+  const metadata = await context.metadataStore.read(metadataKey());
+  assert.equal(metadata.mergedCursor, 2);
+  assert.ok(metadata.observedHighWater >= 2);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  assert.equal(context.transport.pushes.length, 1);
 });
