@@ -192,6 +192,9 @@ it("applies the exact-Origin CORS contract including preflight", async () => {
   expect(preflight.headers.get("Access-Control-Allow-Headers")).toBe(
     "Authorization, Content-Type",
   );
+  expect(preflight.headers.get("Access-Control-Expose-Headers")).toBe(
+    "Retry-After",
+  );
   expect(preflight.headers.get("Access-Control-Max-Age")).toBe("0");
   expect(preflight.headers.get("Vary")).toBe("Origin");
   expect(preflight.headers.get("Cache-Control")).toBe("no-store");
@@ -237,6 +240,7 @@ it("applies the exact-Origin CORS contract including preflight", async () => {
   });
   expect(forbidden.status).toBe(403);
   expect(forbidden.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  expect(forbidden.headers.get("Access-Control-Expose-Headers")).toBeNull();
   expect(forbidden.headers.get("Vary")).toBe("Origin");
   expect(forbidden.headers.get("Cache-Control")).toBe("no-store");
   expect(await forbidden.json()).toEqual({

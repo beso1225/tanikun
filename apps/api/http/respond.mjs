@@ -62,8 +62,10 @@ export function withCors(response, request) {
     headers.set("Vary", `${vary}, Origin`);
   if (request.headers.get("Origin") === ALLOWED_ORIGIN) {
     headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+    headers.set("Access-Control-Expose-Headers", "Retry-After");
   } else {
     headers.delete("Access-Control-Allow-Origin");
+    headers.delete("Access-Control-Expose-Headers");
   }
   return new Response(response.body, {
     status: response.status,
