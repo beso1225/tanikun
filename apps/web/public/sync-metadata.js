@@ -9,6 +9,12 @@ const emptyMetadata = () => ({
   observedHighWater: 0,
 });
 
+const sameBytes = (left, right) =>
+  left instanceof Uint8Array &&
+  right instanceof Uint8Array &&
+  left.length === right.length &&
+  left.every((byte, index) => byte === right[index]);
+
 {
   const databaseName = "tanikun-planner";
   const databaseVersion = 1;
@@ -163,6 +169,7 @@ const emptyMetadata = () => ({
     const applyPage = async ({
       key,
       expectedMergedCursor,
+      expectedPlannerBytes,
       changes,
       nextMergedCursor,
       observedHighWater,
@@ -210,14 +217,26 @@ const emptyMetadata = () => ({
           remaining -= 1;
           if (remaining !== 0) return;
           try {
-            if (!planner || planner.storageVersion !== 2)
-              throw new SyncMetadataError("missing_planner");
             const current = validateMetadata(metadata);
             if (current.mergedCursor !== expectedMergedCursor)
               throw new SyncMetadataError("stale_cursor");
             if (nextMergedCursor < current.mergedCursor)
               throw new SyncMetadataError("cursor_regression");
-            const document = automerge.load(planner.bytes);
+            let document;
+            if (expectedPlannerBytes === null) {
+              if (planner !== undefined)
+                throw new SyncMetadataError("stale_planner");
+              document = automerge.init();
+            } else {
+              if (
+                planner?.storageVersion !== 2 ||
+                !(planner.bytes instanceof Uint8Array) ||
+                !sameBytes(planner.bytes, expectedPlannerBytes)
+              ) {
+                throw new SyncMetadataError("stale_planner");
+              }
+              document = automerge.load(planner.bytes);
+            }
             const next = automerge.applyChanges(
               automerge.clone(document),
               changes,
@@ -308,32 +327,11 @@ const emptyMetadata = () => ({
       });
     };
 
-    const reset = async (key) => {
-      const database = await open();
-      await new Promise((resolve, reject) => {
-        const transaction = database.transaction(storeName, "readwrite");
-        transaction.objectStore(storeName).put(emptyMetadata(), key);
-        transaction.addEventListener("complete", () => resolve(), {
-          once: true,
-        });
-        transaction.addEventListener(
-          "abort",
-          () =>
-            reject(
-              transaction.error ??
-                new Error("同期メタデータの保存が中断されました"),
-            ),
-          { once: true },
-        );
-      });
-    };
-
     return {
       read,
       observe,
       applyPage,
       clear,
-      reset,
       close: () => {
         opening?.then((database) => database.close()).catch(() => {});
         opening = undefined;

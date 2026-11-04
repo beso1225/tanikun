@@ -84,6 +84,8 @@ const retryable = (result) =>
     let documentId = initialDocumentId;
     let currentStatus = "starting";
     let running;
+    let epoch = 0;
+    const pendingEnqueues = new Set();
     let origin;
     try {
       origin = new URL(apiOrigin).origin;
@@ -111,7 +113,7 @@ const retryable = (result) =>
         const result = await operation();
         if (!retryable(result) || attempt >= maxRetry) {
           if (retryable(result))
-            throw new SyncCoordinatorError(result.kind, result);
+            throw new SyncCoordinatorError(result.code ?? result.kind, result);
           return result;
         }
         const minimum =
@@ -122,22 +124,34 @@ const retryable = (result) =>
       }
     };
 
+    const withLock = (operation) => {
+      if (locks?.request) {
+        return locks.request(
+          `tanikun-sync:${origin}:${documentId}`,
+          { mode: "exclusive" },
+          operation,
+        );
+      }
+      return operation();
+    };
+
     const ensureDocument = async () => {
       if (documentId) return;
       const result = await retry(() => transport.bootstrap());
       if (result.kind !== "bootstrapped")
-        throw new SyncCoordinatorError(result.kind, result);
+        throw new SyncCoordinatorError(result.code ?? result.kind, result);
       documentId = result.document_id;
       await metadataStore.observe(metadataKey(), result.cursor);
     };
 
-    const enqueueChange = async (change) => {
-      if (!documentId) return false;
+    const enqueueChange = async (change, expectedEpoch = epoch) => {
+      if (!documentId || epoch !== expectedEpoch) return false;
       const changeId = decodeHash(change);
       const seen = await syncStore.seenHashes();
       if (seen.has(changeId)) return false;
       const outbox = await syncStore.outboxHashes();
       if (outbox.has(changeId)) return false;
+      if (epoch !== expectedEpoch) return false;
       const index = storage
         .changes()
         .findIndex((candidate) => decodeHash(candidate) === changeId);
@@ -153,9 +167,12 @@ const retryable = (result) =>
 
     storage.onLocalChange?.((change) => {
       if (!documentId) return;
-      void enqueueChange(change).catch(() => {
+      const expectedEpoch = epoch;
+      const pending = enqueueChange(change, expectedEpoch).catch(() => {
         emit("error", { code: "outbox_failure" });
       });
+      pendingEnqueues.add(pending);
+      void pending.finally(() => pendingEnqueues.delete(pending));
     });
 
     const scanLocalChanges = async () => {
@@ -175,26 +192,41 @@ const retryable = (result) =>
       await syncStore.enqueue(entries);
     };
 
+    const pushBatch = async (batch) => {
+      const result = await retry(() =>
+        transport.push(
+          documentId,
+          batch.map((entry) => entry.envelope),
+        ),
+      );
+      if (
+        batch.length > 1 &&
+        (result.kind === "invalid_request" ||
+          result.kind === "request_rejected") &&
+        result.code === "request_too_large"
+      ) {
+        const middle = Math.ceil(batch.length / 2);
+        await pushBatch(batch.slice(0, middle));
+        await pushBatch(batch.slice(middle));
+        return;
+      }
+      if (result.kind !== "pushed")
+        throw new SyncCoordinatorError(result.code ?? result.kind, result);
+      await metadataStore.observe(metadataKey(), result.cursor);
+      await syncStore.acknowledge(batch.map((entry) => entry.change_id));
+    };
+
     const pushOutbox = async () => {
       while (true) {
         const entries = await syncStore.listOutbox();
         if (entries.length === 0) return;
-        const batch = entries.slice(0, maxBatch);
-        const result = await retry(() =>
-          transport.push(
-            documentId,
-            batch.map((entry) => entry.envelope),
-          ),
-        );
-        if (result.kind !== "pushed")
-          throw new SyncCoordinatorError(result.kind, result);
-        await metadataStore.observe(metadataKey(), result.cursor);
-        await syncStore.acknowledge(batch.map((entry) => entry.change_id));
+        await pushBatch(entries.slice(0, maxBatch));
       }
     };
 
     const pullPages = async () => {
       await storage.load();
+      let snapshot = storage.snapshot();
       let metadata = await metadataStore.read(metadataKey());
       for (let pages = 0; pages < 10_000; pages += 1) {
         const result = await retry(() =>
@@ -204,39 +236,71 @@ const retryable = (result) =>
           }),
         );
         if (result.kind !== "pulled")
-          throw new SyncCoordinatorError(result.kind, result);
-        metadata = await metadataStore.observe(metadataKey(), result.cursor);
+          throw new SyncCoordinatorError(result.code ?? result.kind, result);
         if (result.changes.length === 0) {
           if (result.has_more)
             throw new SyncCoordinatorError("empty_page_with_more");
+          metadata = await metadataStore.observe(metadataKey(), result.cursor);
           return metadata;
         }
-        const known = new Set(
-          storage.changes().map((change) => decodeHash(change)),
+
+        const local = storage.changes().map((change) => ({
+          bytes: change,
+          decoded: globalThis.Automerge.decodeChange(change),
+        }));
+        const page = result.changes.map((envelope) => {
+          const bytes = base64ToBytes(envelope.payload);
+          return {
+            envelope,
+            bytes,
+            decoded: globalThis.Automerge.decodeChange(bytes),
+          };
+        });
+        const localRoots = new Set(
+          local
+            .filter((entry) => entry.decoded.deps.length === 0)
+            .map((entry) => entry.decoded.hash),
         );
+        const pageRoots = new Set(
+          page
+            .filter((entry) => entry.decoded.deps.length === 0)
+            .map((entry) => entry.decoded.hash),
+        );
+        if (localRoots.size > 1 || pageRoots.size > 1)
+          throw new SyncCoordinatorError("history_mismatch");
+        if (
+          localRoots.size > 0 &&
+          pageRoots.size > 0 &&
+          [...pageRoots].some((root) => !localRoots.has(root))
+        )
+          throw new SyncCoordinatorError("history_mismatch");
+
+        const known = new Set(local.map((entry) => entry.decoded.hash));
         const hashes = [];
         const changes = [];
-        for (const envelope of result.changes) {
-          const bytes = base64ToBytes(envelope.payload);
-          const decoded = globalThis.Automerge.decodeChange(bytes);
-          if (decoded.hash !== envelope.change_id)
+        for (const entry of page) {
+          if (entry.decoded.hash !== entry.envelope.change_id)
             throw new SyncCoordinatorError("malformed_response");
-          if (decoded.deps.some((dependency) => !known.has(dependency)))
+          if (entry.decoded.deps.some((dependency) => !known.has(dependency)))
             throw new SyncCoordinatorError("missing_dependency");
-          known.add(decoded.hash);
-          hashes.push(decoded.hash);
-          changes.push(bytes);
+          known.add(entry.decoded.hash);
+          hashes.push(entry.decoded.hash);
+          changes.push(entry.bytes);
         }
+
+        metadata = await metadataStore.observe(metadataKey(), result.cursor);
         await syncStore.markRemote(hashes);
         await metadataStore.applyPage({
           key: metadataKey(),
           expectedMergedCursor: metadata.mergedCursor,
+          expectedPlannerBytes: snapshot?.bytes ?? null,
           changes,
           nextMergedCursor: result.next_cursor,
           observedHighWater: result.cursor,
           validate: (text) => storage.validateText?.(text) === true,
         });
         await storage.load();
+        snapshot = storage.snapshot();
         metadata = await metadataStore.read(metadataKey());
         if (!result.has_more) return metadata;
       }
@@ -245,12 +309,13 @@ const retryable = (result) =>
 
     const runSync = async () => {
       await ensureDocument();
+      // Pull first: a fresh client must obtain the server history before it
+      // uploads local history. The first page root check rejects independent
+      // Automerge roots instead of silently merging two histories.
+      await pullPages();
       await scanLocalChanges();
       await pushOutbox();
-      const metadata = await pullPages();
-      // A local save can land while a pull is in progress; flush it before
-      // reporting synced so the outbox is not silently left behind.
-      await pushOutbox();
+      const metadata = await metadataStore.read(metadataKey());
       emit("synced", {
         cursor: metadata.mergedCursor,
         pending: (await syncStore.listOutbox()).length,
@@ -269,14 +334,7 @@ const retryable = (result) =>
         emit("syncing");
         try {
           await ensureDocument();
-          if (locks?.request) {
-            return await locks.request(
-              `tanikun-sync:${origin}:${documentId}`,
-              { mode: "exclusive" },
-              runSync,
-            );
-          }
-          return await runSync();
+          return await withLock(runSync);
         } catch (error) {
           const code = error?.code ?? "sync_failed";
           const state =
@@ -292,21 +350,18 @@ const retryable = (result) =>
 
     const discard = async () => {
       if (running) await running;
-      await syncStore.clear();
-      if (documentId) await metadataStore.clear(metadataKey());
-    };
-
-    const resync = async () => {
-      if (running) await running;
-      await ensureDocument();
-      await metadataStore.reset(metadataKey());
-      return sync();
+      epoch += 1;
+      await Promise.allSettled(pendingEnqueues);
+      await withLock(async () => {
+        await syncStore.clear();
+        if (documentId) await metadataStore.clear(metadataKey());
+        await storage.discard?.();
+      });
     };
 
     return {
       sync,
       discard,
-      resync,
       status: () => currentStatus,
       documentId: () => documentId,
     };

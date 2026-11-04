@@ -141,6 +141,29 @@ const storageFailure = (error) =>
       onLocalChange: (listener) => {
         localChangeListener = listener;
       },
+      snapshot: () => {
+        if (lastRecord === undefined) return null;
+        if (
+          lastRecord?.storageVersion === 2 &&
+          lastRecord.bytes instanceof Uint8Array
+        )
+          return {
+            storageVersion: 2,
+            bytes: new Uint8Array(lastRecord.bytes),
+          };
+        return {
+          storageVersion:
+            typeof lastRecord === "string" ? 1 : lastRecord?.storageVersion,
+        };
+      },
+      discard: () =>
+        enqueue(async () => {
+          await transact("readwrite", (store) => store.delete("planner"));
+          document = null;
+          lastRecord = undefined;
+          adoptedVersion = ++nextVersion;
+          attempts.clear();
+        }),
       load,
       save,
       // Device-local exchange boundary, with no transport or background sync.
