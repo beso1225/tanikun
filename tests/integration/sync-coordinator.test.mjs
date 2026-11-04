@@ -578,3 +578,38 @@ test("bootstraps a document when no ID is supplied", async () => {
   assert.equal(coordinator.documentId(), documentId);
   assert.equal(context.transport.pushes.length, 1);
 });
+
+test("retries transient results with bounded jitter and Retry-After", async () => {
+  const context = await setup();
+  const originalPush = context.transport.push.bind(context.transport);
+  let attempts = 0;
+  context.transport.push = async (...args) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return {
+        kind: "server_error",
+        status: 503,
+        code: "temporarily_unavailable",
+        retryable: true,
+        retry_after: 2,
+      };
+    }
+    return originalPush(...args);
+  };
+  const delays = [];
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    sleep: async (milliseconds) => delays.push(milliseconds),
+    random: () => 0,
+    locks: null,
+  });
+  const result = await coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(attempts, 2);
+  assert.deepEqual(delays, [2_000]);
+});
