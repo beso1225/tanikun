@@ -59,6 +59,11 @@ function assertJsonRequest(request) {
     throw new ApiError("unsupported_media_type");
 }
 
+function assertNoQuery(url) {
+  if (url.searchParams.toString() !== "")
+    throw new ApiError("malformed_request");
+}
+
 function appendChanges(body) {
   if (
     !body ||
@@ -90,8 +95,15 @@ async function dispatch(request, env) {
   if (!route.methods.includes(request.method))
     throw methodNotAllowed(route.allow);
 
-  const repository = createChangeRepository(env.DB);
+  const repository = createChangeRepository(
+    env.DB,
+    typeof env.TEST_NEW_DOCUMENT_ID === "string" &&
+      env.TEST_NEW_DOCUMENT_ID.length > 0
+      ? { newDocumentId: () => env.TEST_NEW_DOCUMENT_ID }
+      : undefined,
+  );
   if (route.kind === "bootstrap") {
+    assertNoQuery(url);
     return jsonResponse(200, await repository.bootstrap(identity.ownerId));
   }
 
@@ -99,6 +111,7 @@ async function dispatch(request, env) {
   await repository.findOwnedDocument(identity.ownerId, route.documentId);
   if (request.method === "POST") {
     assertJsonRequest(request);
+    assertNoQuery(url);
     const body = await readJsonBody(request, SYNC_LIMITS.maxRequestBytes);
     const changes = appendChanges(body);
     return jsonResponse(
