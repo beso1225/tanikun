@@ -516,7 +516,7 @@ test("reports a server gap as a closed error without advancing the cursor", asyn
   assert.equal(result.code, "log_gap");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 0);
-  assert.equal(metadata.observedHighWater, 0);
+  assert.equal(metadata.observedHighWater, 2);
 });
 
 test("runs under the per-document Web Lock and reports lifecycle status", async () => {
@@ -1019,6 +1019,21 @@ test("discard drains an in-flight save before clearing the outbox", async () => 
   assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
   const pushes = context.transport.pushes.length;
   const result = await coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.equal(context.transport.pushes.length, pushes);
+});
+
+test("discard handles a save queued before its hook starts", async () => {
+  const context = await setup();
+  const save = context.storage.save(
+    JSON.stringify({ ...source, program_id: "queued-before-discard" }),
+  );
+  const discard = context.coordinator.discard();
+  await Promise.all([save, discard]);
+  assert.equal(await context.storage.load(), null);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  const pushes = context.transport.pushes.length;
+  const result = await context.coordinator.sync();
   assert.equal(result.kind, "synced");
   assert.equal(context.transport.pushes.length, pushes);
 });
