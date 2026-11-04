@@ -288,11 +288,13 @@ const retryable = (result) =>
     };
 
     const discard = async () => {
+      if (running) await running;
       await syncStore.clear();
       if (documentId) await metadataStore.clear(metadataKey());
     };
 
     const resync = async () => {
+      if (running) await running;
       await ensureDocument();
       await metadataStore.reset(metadataKey());
       return sync();
