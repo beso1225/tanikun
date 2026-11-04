@@ -357,6 +357,11 @@ const retryable = (result) =>
     };
 
     const sync = () => {
+      if (discarding)
+        return Promise.resolve({
+          kind: "error",
+          code: "discard_in_progress",
+        });
       if (running) return running;
       running = (async () => {
         emit("syncing");
