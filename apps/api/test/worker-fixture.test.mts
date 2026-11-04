@@ -152,7 +152,17 @@ async function rowCounts() {
   };
 }
 
-function assertExpectedWrites(testCase, before, after) {
+function documentIdFromPath(path) {
+  return /^\/api\/v1\/sync\/documents\/([^/]+)\/changes/.exec(path)?.[1];
+}
+
+async function documentLastSequence(documentId) {
+  return env.DB.prepare("SELECT last_seq FROM documents WHERE id = ?1")
+    .bind(documentId)
+    .first();
+}
+
+async function assertExpectedWrites(testCase, documentId, before, after) {
   const expectation = testCase.expect ?? {};
   if (expectation.writes === false) {
     assert.deepEqual(after, before);
@@ -168,6 +178,18 @@ function assertExpectedWrites(testCase, before, after) {
       expectation.documents_created,
     );
   }
+  if (expectation.last_sequence !== undefined) {
+    const document = await documentLastSequence(documentId);
+    assert.equal(document.last_seq, expectation.last_sequence);
+  }
+  for (const changeId of expectation.absent_change_ids ?? []) {
+    const change = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM changes WHERE document_id = ?1 AND change_id = ?2",
+    )
+      .bind(documentId, changeId)
+      .first();
+    assert.equal(change.count, 0);
+  }
 }
 
 beforeEach(async () => {
@@ -180,6 +202,7 @@ it.each(serverCases)(
   async (testCase) => {
     await applySetup(testCase.setup);
     const before = await rowCounts();
+    const documentId = documentIdFromPath(testCase.request.path);
     const request = requestFor(testCase);
     const response =
       testCase.name === "bootstrap-new"
@@ -211,6 +234,6 @@ it.each(serverCases)(
     const actualBody =
       expected.body === null ? await response.text() : await response.json();
     expect(actualBody).toEqual(expected.body === null ? "" : expected.body);
-    assertExpectedWrites(testCase, before, after);
+    await assertExpectedWrites(testCase, documentId, before, after);
   },
 );
