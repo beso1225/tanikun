@@ -8,6 +8,15 @@
     "command": "moon build --target js --release --deny-warn",
     "watch_dir": ["apps/api"],
   },
+  // Local-only placeholder; no remote database has been provisioned.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tanikun-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "apps/api/migrations",
+    },
+  ],
   "dev": {
     "ip": "127.0.0.1",
     "port": 8787,

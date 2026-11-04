@@ -43,6 +43,10 @@ test: build
     node --test tests/integration/moonbit-export.test.mjs
     node --test tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs
 
+# Apply versioned sync migrations to the local D1 database only.
+migrate-local:
+    XDG_CONFIG_HOME="$PWD/.cache/wrangler-config" WRANGLER_LOG_PATH=.wrangler/logs pnpm exec wrangler d1 migrations apply tanikun-local --local --config wrangler.jsonc
+
 # Serve the API with local workerd; Wrangler rebuilds MoonBit on changes.
 dev-api:
     WRANGLER_LOG_PATH=.wrangler/logs pnpm exec wrangler dev --local --config wrangler.jsonc
@@ -90,7 +94,7 @@ test-automerge: build
     node --test tests/integration/automerge-ffi.test.mjs
 
 # Verify the Workers Vitest plugin with a local D1 binding.
-test-d1:
+test-d1: build
     XDG_CONFIG_HOME="$PWD/.cache/wrangler-config" WRANGLER_LOG_PATH=.wrangler/logs pnpm exec vitest run --config vitest.config.mts
 
 # Install the mutation-testing tool inside `nix develop` (network required).
