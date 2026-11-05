@@ -49,6 +49,29 @@ pub fn find_course(
 }
 
 ///|
+/// Effective display name and credits for a course with its optional
+/// enrollment. A passed enrollment keeps its frozen snapshot; otherwise the
+/// current overrides apply.
+fn effective_display_values(
+  enrollment : @tanikun-domain.Enrollment?,
+  course : @tanikun-domain.Course,
+  overrides : @tanikun-domain.Overrides,
+) -> (String, @tanikun-domain.Credits) {
+  match enrollment {
+    Some(value) =>
+      (
+        @tanikun-domain.effective_name(value, course, overrides),
+        @tanikun-domain.effective_credits(value, course, overrides),
+      )
+    None =>
+      (
+        @tanikun-domain.effective_course_name(course, overrides),
+        @tanikun-domain.effective_course_credits(course, overrides),
+      )
+  }
+}
+
+///|
 /// Effective values for the course detail popup.
 pub struct OfferingDisplay {
   name : String
@@ -79,18 +102,11 @@ pub fn PlannerState::offering_display_with(
     Some(value) => value
     None => return None
   }
-  let (name, credits) = match self.enrollment_for(offering_id) {
-    Some(enrollment) =>
-      (
-        @tanikun-domain.effective_name(enrollment, course, self.overrides),
-        @tanikun-domain.effective_credits(enrollment, course, self.overrides),
-      )
-    None =>
-      (
-        @tanikun-domain.effective_course_name(course, self.overrides),
-        @tanikun-domain.effective_course_credits(course, self.overrides),
-      )
-  }
+  let (name, credits) = effective_display_values(
+    self.enrollment_for(offering_id),
+    course,
+    self.overrides,
+  )
   let slots = enrollment_slots_in_term(
     self,
     offering,
@@ -127,35 +143,17 @@ pub fn PlannerState::catalogue_entries_with(
       match find_course(self.catalogue, offering.course_id) {
         Some(course) => {
           let enrollment = self.enrollment_for(offering.id)
-          let (name, credits, slots) = match enrollment {
-            Some(value) =>
-              if value.is_passed() {
-                (
-                  @tanikun-domain.effective_name(value, course, self.overrides),
-                  @tanikun-domain.effective_credits(
-                    value,
-                    course,
-                    self.overrides,
-                  ),
-                  enrollment_slots_in_term(self, offering, self.overrides, term),
-                )
-              } else {
-                (
-                  @tanikun-domain.effective_course_name(course, self.overrides),
-                  @tanikun-domain.effective_course_credits(
-                    course,
-                    self.overrides,
-                  ),
-                  enrollment_slots_in_term(self, offering, self.overrides, term),
-                )
-              }
-            None =>
-              (
-                @tanikun-domain.effective_course_name(course, self.overrides),
-                @tanikun-domain.effective_course_credits(course, self.overrides),
-                enrollment_slots_in_term(self, offering, self.overrides, term),
-              )
-          }
+          let (name, credits) = effective_display_values(
+            enrollment,
+            course,
+            self.overrides,
+          )
+          let slots = enrollment_slots_in_term(
+            self,
+            offering,
+            self.overrides,
+            term,
+          )
           if self.catalogue_query.is_empty() ||
             name.contains(self.catalogue_query) {
             entries.push({
@@ -240,6 +238,11 @@ pub fn PlannerState::scheduled_blocks_with(
           offering_occupies_term(offering, term) {
           match find_course(self.catalogue, offering.course_id) {
             Some(course) => {
+              let (name, credits) = effective_display_values(
+                Some(enrollment),
+                course,
+                self.overrides,
+              )
               let slots = enrollment_slots_in_term(
                 self,
                 offering,
@@ -249,17 +252,9 @@ pub fn PlannerState::scheduled_blocks_with(
               for slot in slots {
                 blocks.push({
                   offering_id: offering.id,
-                  course_name: @tanikun-domain.effective_name(
-                    enrollment,
-                    course,
-                    self.overrides,
-                  ),
+                  course_name: name,
                   category_name: categories.name_for(course.id),
-                  credits: @tanikun-domain.effective_credits(
-                    enrollment,
-                    course,
-                    self.overrides,
-                  ),
+                  credits,
                   day: slot.day,
                   period: slot.period,
                   status: enrollment.status,
@@ -298,23 +293,21 @@ pub fn PlannerState::off_grid_entries_with(
           match offering.schedule() {
             @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
               match find_course(self.catalogue, offering.course_id) {
-                Some(course) =>
+                Some(course) => {
+                  let (name, credits) = effective_display_values(
+                    Some(enrollment),
+                    course,
+                    self.overrides,
+                  )
                   entries.push({
                     offering_id: offering.id,
-                    course_name: @tanikun-domain.effective_name(
-                      enrollment,
-                      course,
-                      self.overrides,
-                    ),
+                    course_name: name,
                     category_name: categories.name_for(course.id),
-                    credits: @tanikun-domain.effective_credits(
-                      enrollment,
-                      course,
-                      self.overrides,
-                    ),
+                    credits,
                     status: enrollment.status,
                     winter: semester == @tanikun-domain.Semester::W,
                   })
+                }
                 None => ()
               }
             _ => ()
