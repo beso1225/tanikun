@@ -26,11 +26,78 @@ const authorized = () =>
 it("rejects duplicate JSON keys at any nesting depth", () => {
   expect(() => parseJson('{"a":1,"a":2}')).toThrow("invalid JSON");
   expect(() => parseJson('{"a":{"b":1,"b":2}}')).toThrow("invalid JSON");
+  expect(() => parseJson('{"a":1,"\\u0061":2}')).toThrow("invalid JSON");
+  expect(() => parseJson('{"a":{"b":1,"\\u0062":2}}')).toThrow("invalid JSON");
+  expect(() => parseJson('{"__proto__":1,"__proto__":2}')).toThrow(
+    "invalid JSON",
+  );
   expect(() => parseJson('{"a":[1,2,3]}')).not.toThrow();
   expect(parseJson('{"a":[1,2,3]}')).toEqual({ a: [1, 2, 3] });
   expect(() => parseJson("[".repeat(65) + "]".repeat(65))).toThrow(
     "invalid JSON",
   );
+});
+
+it("keeps the shared parser's depth, trailing-data, and grammar boundaries", () => {
+  expect(parseJson('{"a":{"b":[1,2,{"c":"d"}]}}')).toEqual({
+    a: { b: [1, 2, { c: "d" }] },
+  });
+  expect(parseJson(' \n\t{"a":1} \r\n')).toEqual({ a: 1 });
+  let nested = parseJson("[".repeat(64) + "]".repeat(64));
+  let depth = 0;
+  while (Array.isArray(nested)) {
+    depth += 1;
+    nested = nested[0];
+  }
+  expect(depth).toBe(64);
+  expect(() => parseJson("[".repeat(65) + "]".repeat(65))).toThrow(
+    "invalid JSON",
+  );
+
+  for (const text of ["{}x", "{} {}", "[] []"]) {
+    expect(() => parseJson(text)).toThrow("trailing data");
+  }
+  for (const text of ['{"a":1,}', "[1,]"]) {
+    expect(() => parseJson(text)).toThrow("invalid JSON");
+  }
+
+  expect(parseJson("[0,-0,1,-1,10,1.5,1e2,1E+2,1e-2]")).toEqual([
+    0, -0, 1, -1, 10, 1.5, 100, 100, 0.01,
+  ]);
+  for (const [text, message] of [
+    ["01", "trailing data"],
+    ["-01", "trailing data"],
+    ["0x10", "trailing data"],
+    ["+1", "invalid JSON"],
+    [".5", "invalid JSON"],
+    ["1.", "invalid JSON"],
+    ["1e", "invalid JSON"],
+    ["1e+", "invalid JSON"],
+    ["Infinity", "invalid JSON"],
+    ["NaN", "invalid JSON"],
+  ]) {
+    expect(() => parseJson(text)).toThrow(message);
+  }
+
+  expect(parseJson('"a\\"b\\\\c\\/d\\b\\f\\n\\r\\t\\u0041"')).toBe(
+    'a"b\\c/d\b\f\n\r\tA',
+  );
+  for (const text of ['"\\x41"', '"abc', '"a\nb"']) {
+    expect(() => parseJson(text)).toThrow("invalid JSON");
+  }
+});
+
+it("keeps prototype keys as own data without polluting prototypes", () => {
+  const value = parseJson('{"__proto__":{"polluted":true},"constructor":1}');
+  expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+  expect(Object.hasOwn(value, "__proto__")).toBe(true);
+  expect(Object.hasOwn(value, "constructor")).toBe(true);
+  expect(value.__proto__).toEqual({ polluted: true });
+  expect(value.constructor).toBe(1);
+  expect(Object.keys(value)).toEqual(["__proto__", "constructor"]);
+  expect({}.polluted).toBeUndefined();
+  expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+  expect(Object.hasOwn(parseJson("{}"), "constructor")).toBe(false);
 });
 
 it("rejects a streamed body above the limit and a declared oversized body", async () => {
@@ -52,6 +119,34 @@ it("rejects a streamed body above the limit and a declared oversized body", asyn
   });
   await expect(readJsonBody(declared, 16)).rejects.toMatchObject({
     code: "request_too_large",
+  });
+});
+
+it("converts malformed wire input into the existing request errors", async () => {
+  for (const body of [
+    '{"a":1,"a":2}',
+    "{}x",
+    "not json",
+    new Uint8Array([0xff]),
+  ]) {
+    const request = new Request(url, { method: "POST", body });
+    await expect(readJsonBody(request, 1024)).rejects.toMatchObject({
+      code: "malformed_request",
+    });
+  }
+
+  const missing = new Request(url, { method: "POST" });
+  await expect(readJsonBody(missing, 1024)).rejects.toMatchObject({
+    code: "malformed_request",
+  });
+
+  const encoded = new Request(url, {
+    method: "POST",
+    body: "{}",
+    headers: { "Content-Encoding": "gzip" },
+  });
+  await expect(readJsonBody(encoded, 1024)).rejects.toMatchObject({
+    code: "unsupported_media_type",
   });
 });
 
