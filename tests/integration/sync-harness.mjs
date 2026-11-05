@@ -1471,7 +1471,7 @@ export class SyncHarness {
         },
         { apiOrigin: this.apiOrigin, token: identity.token },
       );
-      if (beforeGoto) await beforeGoto(context, page);
+      if (beforeGoto) await beforeGoto(page, context);
       this.#assertOpen("page navigation");
       await page.goto(this.webOrigin);
       this.#assertOpen("page navigation");

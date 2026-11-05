@@ -563,7 +563,7 @@ test(
           const unavailable = await harness.d1Query(
             "SELECT COUNT(*) AS count FROM changes_unavailable_145",
           );
-          assert.equal(Number(unavailable[0].count), 0);
+          assert.equal(Number(unavailable[0].count), before.changes.length);
         } finally {
           await harness.d1(
             "ALTER TABLE changes_unavailable_145 RENAME TO changes",

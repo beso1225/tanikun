@@ -32,7 +32,7 @@ export function canonicalSource(source) {
   return JSON.stringify(normalize(source));
 }
 
-async function inPagePlannerState(apiOrigin, documentId) {
+async function inPagePlannerState({ apiOrigin, documentId }) {
   // oxlint-disable-next-line unicorn/consistent-function-scoping
   const openDatabase = () =>
     new Promise((resolve, reject) => {
@@ -99,7 +99,7 @@ async function inPagePlannerState(apiOrigin, documentId) {
 
 /** Read the committed planner source, Automerge heads, and sync metadata. */
 export async function readPlannerState(page, { apiOrigin, documentId } = {}) {
-  return page.evaluate(inPagePlannerState, apiOrigin, documentId);
+  return page.evaluate(inPagePlannerState, { apiOrigin, documentId });
 }
 
 /** Read local-only sync state without reading or changing the planner. */

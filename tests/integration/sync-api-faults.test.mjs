@@ -110,6 +110,7 @@ test(
   { timeout: 120_000 },
   async (t) => {
     const harness = new SyncHarness({ serveWeb: false });
+    t.after(() => harness.close());
     await harness.start();
     const proxy = await startResponseDroppingProxy(harness.apiOrigin);
     t.after(async () => {
