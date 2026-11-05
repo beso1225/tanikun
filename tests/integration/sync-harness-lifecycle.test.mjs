@@ -503,6 +503,60 @@ function startedHarnessWithEvidence(root, tempRoot) {
   return harness;
 }
 
+test("group setup failure retains evidence for previously opened pages", async (t) => {
+  const root = await evidenceRoot(t);
+  const tempRoot = await mkdtemp(join(tmpdir(), "tanikun-sync-temp-"));
+  t.after(() => rm(tempRoot, { recursive: true, force: true }));
+  const contexts = [];
+  const browser = fakeBrowser({
+    newContext: () => {
+      const context = fakeTraceContext({
+        newPage: async () => fakeScreenshotPage(),
+      });
+      contexts.push(context);
+      return context;
+    },
+  });
+  await installFakeChromium(t, async () => browser);
+  const harness = startedHarnessWithEvidence(root, tempRoot);
+  t.after(() => harness.close().catch(() => {}));
+  await assert.rejects(
+    harness.runJourneyGroup(
+      "group-setup",
+      [
+        { label: "first", identity: "alice" },
+        {
+          label: "second",
+          identity: "alice",
+          beforeGoto() {
+            throw new Error("injected second-page setup failure");
+          },
+        },
+      ],
+      () => assert.fail("drive must not run"),
+    ),
+    /injected second-page setup failure/,
+  );
+  for (const label of ["first", "second"]) {
+    const prefix = join(root, `group-setup-${label}-failure`);
+    assert.match(
+      await readFile(`${prefix}.log`, "utf8"),
+      /injected second-page setup failure/,
+    );
+    assert.ok(await pathExists(`${prefix}.png`));
+    const entries = await readTraceArchiveEntries(`${prefix}-trace.zip`);
+    assert.deepEqual([...entries.keys()].toSorted(), [
+      "trace.network",
+      "trace.trace",
+    ]);
+  }
+  assert.deepEqual(
+    contexts.map((context) => context.state.closeCount),
+    [1, 1],
+  );
+  assert.equal(harness.activeContexts, 0);
+});
+
 test(
   "page-setup failures write named failure evidence before closing the context",
   { timeout: 30_000 },

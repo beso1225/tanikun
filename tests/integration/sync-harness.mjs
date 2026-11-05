@@ -1656,6 +1656,13 @@ export class SyncHarness {
             failureState,
             error,
           );
+          for (const state of states) {
+            await this.#writeJourneyFailure(
+              `${name}-${state.label}`,
+              { ...state, tracingStarted: true },
+              error,
+            );
+          }
           if (failureState.context) {
             this.contexts.delete(failureState.context);
             await failureState.context.close().catch(() => {});

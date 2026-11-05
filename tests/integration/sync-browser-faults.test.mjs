@@ -127,6 +127,15 @@ test(
         const before = await readD1State(harness);
         let accepted = null;
         let lost = false;
+        const posts = [];
+        const path = `/api/v1/sync/documents/${document.document_id}/changes`;
+        bobPage.on("request", (request) => {
+          if (
+            request.method() === "POST" &&
+            new URL(request.url()).pathname === path
+          )
+            posts.push(request.postDataJSON());
+        });
         await bobPage.route(changesGlob, async (route) => {
           if (lost || route.request().method() !== "POST") {
             await route.continue();
@@ -140,6 +149,18 @@ test(
         await addCustomCourse(bobPage, "Lost response 145");
         await waitForSync(bobPage, "オフライン", 30_000);
         assert.ok(accepted, "the push reached the real Worker");
+        assert.equal(accepted.accepted.length, 1);
+        assert.equal(posts.length, 1);
+        assert.deepEqual(
+          (
+            await readSyncState(bobPage, {
+              apiOrigin: harness.apiOrigin,
+              documentId: document.document_id,
+            })
+          ).outbox,
+          accepted.accepted.map((entry) => entry.change_id),
+          "the unacknowledged change remains queued after response loss",
+        );
         await waitFor(
           async () =>
             (await readD1State(harness)).changes.length ===
@@ -162,8 +183,26 @@ test(
         assert.equal(gate.offline, false);
 
         await bobPage.unroute(changesGlob);
+        const retryResponse = bobPage.waitForResponse(
+          (response) =>
+            response.request().method() === "POST" &&
+            new URL(response.url()).pathname === path,
+        );
         await bobPage.locator("#sync-retry").click();
         await waitForSync(bobPage, "同期済み", 30_000);
+        const response = await retryResponse;
+        assert.equal(response.status(), 200);
+        assert.deepEqual(await response.json(), accepted);
+        assert.equal(
+          posts.length,
+          2,
+          "retry sent a second POST to the real Worker",
+        );
+        assert.deepEqual(
+          posts[1],
+          posts[0],
+          "retry resent identical envelopes",
+        );
         const retried = await readD1State(harness);
         assert.deepEqual(retried, committed);
         // A push acknowledges the outbox at the push cursor. Pull once more so

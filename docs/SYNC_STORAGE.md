@@ -189,8 +189,8 @@ The release test checks the packaged config and a writable copy of the artifact
 passes `wrangler deploy --dry-run`; CI also starts the real Worker and D1 from
 the same packaged config.
 
-`just test-sync` runs three fault-focused suites after the harness self-tests
-and the single-document journey.
+`just test-sync` includes three convergence and fault suites alongside the
+harness self-tests and the single-document journey.
 
 - `sync-api-faults.test.mjs` starts the harness with `serveWeb: false` and
   exercises the real Worker and D1 without the fixed browser origin. It covers

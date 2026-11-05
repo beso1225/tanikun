@@ -96,7 +96,7 @@ test-browser: build-web
     node --test tests/integration/browser-allocations.test.mjs
     node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs
 
-# Run built-page convergence and fault suites against a real local Worker and D1.
+# Run sync convergence and fault suites against a real local Worker and D1.
 # Set both TANIKUN_WEB_DIST and TANIKUN_API_DIST to reuse packaged artifacts.
 test-sync:
     @if [ -n "${TANIKUN_WEB_DIST:-}" ] && [ -n "${TANIKUN_API_DIST:-}" ]; then \

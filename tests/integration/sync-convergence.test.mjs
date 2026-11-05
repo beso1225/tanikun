@@ -251,17 +251,39 @@ test(
         await syncNow(alicePage, "同期済み");
         await syncNow(bobPage, "同期済み");
 
+        const aliceAfter = await readPlannerState(alicePage, {
+          apiOrigin: harness.apiOrigin,
+          documentId,
+        });
+        const bobAfter = await readPlannerState(bobPage, {
+          apiOrigin: harness.apiOrigin,
+          documentId,
+        });
         assertConverged(
-          await readPlannerState(alicePage, {
-            apiOrigin: harness.apiOrigin,
-            documentId,
-          }),
-          await readPlannerState(bobPage, {
-            apiOrigin: harness.apiOrigin,
-            documentId,
-          }),
+          aliceConverged,
+          aliceAfter,
+          "Alice retains both edits after second exchange",
+        );
+        assertConverged(
+          bobConverged,
+          bobAfter,
+          "Bob retains both edits after second exchange",
+        );
+        assertConverged(
+          aliceAfter,
+          bobAfter,
           "after reload and second exchange",
         );
+        for (const state of [aliceAfter, bobAfter]) {
+          assert.equal(state.metadata.mergedCursor, serverCursor);
+          assert.ok(state.metadata.observedHighWater >= serverCursor);
+          assert.ok(
+            state.source.enrollments.some(
+              (row) => row.offering_id === aliceOffering,
+            ),
+          );
+          assert.ok(state.source.catalogue.some((row) => row.name === canary));
+        }
         assert.deepEqual(await readD1State(harness), d1);
         for (const page of [alicePage, bobPage]) {
           assert.deepEqual(
