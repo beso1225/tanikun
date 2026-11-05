@@ -234,6 +234,10 @@ function withTimeout(promise, timeoutMs, label) {
   ]).finally(() => clearTimeout(timer));
 }
 
+function harnessClosedError(action) {
+  return new Error(`sync harness closed during ${action}`);
+}
+
 function startWebServer(root) {
   const server = createServer(async (request, response) => {
     let pathname;
@@ -318,9 +322,13 @@ export class SyncHarness {
     this.browser = null;
     this.contexts = new Set();
     this.ownedChildren = new Set();
+    this.pendingAcquisitions = new Set();
+    this.cleanupProblems = [];
     this.signalHandlers = new Map();
     this.startPromise = null;
     this.closePromise = null;
+    this.closing = false;
+    this.abortController = new AbortController();
     this.started = false;
   }
 
@@ -328,30 +336,35 @@ export class SyncHarness {
     return this.contexts.size;
   }
 
-  async start() {
+  start() {
+    if (this.closePromise)
+      return Promise.reject(new Error("sync harness is closed"));
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.#start().catch(async (error) => {
       await this.#writeEvidence(
         "startup-error.log",
         `${error.stack ?? String(error)}\n`,
       );
-      await this.close();
+      if (!this.closing) await this.#releaseResources();
       throw error;
     });
     return this.startPromise;
   }
 
   async #start() {
+    this.#assertOpen("startup");
     const runId = `${new Date()
       .toISOString()
       .replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
     this.evidenceDir = join(SYNC_EVIDENCE_ROOT, runId);
     await mkdir(this.evidenceDir, { recursive: true });
+    this.#assertOpen("startup");
     this.tempDir = await mkdtemp(join(tmpdir(), "tanikun-sync-"));
-    await mkdir(join(this.tempDir, "home"), { recursive: true });
-    await mkdir(join(this.tempDir, "config"), { recursive: true });
-    await mkdir(join(this.tempDir, "cache"), { recursive: true });
-    await mkdir(join(this.tempDir, "persistence"), { recursive: true });
+    this.#assertOpen("startup");
+    for (const directory of ["home", "config", "cache", "persistence"]) {
+      await mkdir(join(this.tempDir, directory), { recursive: true });
+      this.#assertOpen("startup");
+    }
     this.#installSignalHandlers();
     await this.#writeEvidence(
       "harness.log",
@@ -363,6 +376,7 @@ export class SyncHarness {
         `evidenceDir=${this.evidenceDir}`,
       ].join("\n") + "\n",
     );
+    this.#assertOpen("startup");
 
     await requireFile(join(this.options.webDist, "index.html"), "web index");
     for (const file of [
@@ -376,10 +390,15 @@ export class SyncHarness {
     ]) {
       await requireFile(join(this.options.webDist, file), `web asset ${file}`);
     }
+    this.#assertOpen("startup");
 
     const paths = await this.#readArtifact();
-    this.server = await startWebServer(this.options.webDist);
+    this.#assertOpen("startup");
+    const server = await startWebServer(this.options.webDist);
+    this.server = server;
+    this.#assertOpen("startup");
     await this.#appendEvidence("harness.log", `web server listening\n`);
+    this.#assertOpen("startup");
 
     const configPath = join(this.tempDir, "wrangler.jsonc");
     const generated = {
@@ -401,9 +420,12 @@ export class SyncHarness {
       dev: { ip: "127.0.0.1", port: 0 },
     };
     await writeFile(configPath, `${JSON.stringify(generated, null, 2)}\n`);
+    this.#assertOpen("startup");
 
     await this.#applyMigrations(configPath);
+    this.#assertOpen("startup");
     await this.#startWrangler(configPath);
+    this.#assertOpen("startup");
     this.started = true;
   }
 
@@ -516,6 +538,7 @@ export class SyncHarness {
   }
 
   async #runCommand(label, args, { cwd, env, timeoutMs }) {
+    this.#assertOpen(`${label} command`);
     const child = spawn(process.execPath, args, {
       cwd,
       env,
@@ -523,6 +546,12 @@ export class SyncHarness {
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.ownedChildren.add(child);
+    const onAbort = () => {
+      void this.#terminateGroup(child).catch(() => {});
+    };
+    this.abortController.signal.addEventListener("abort", onAbort, {
+      once: true,
+    });
     let output = "";
     child.stdout.on("data", (data) => {
       output += data;
@@ -530,33 +559,43 @@ export class SyncHarness {
     child.stderr.on("data", (data) => {
       output += data;
     });
-    const exited = await waitForChildExit(child, timeoutMs);
-    let timedOut = false;
-    if (!exited) {
-      timedOut = true;
-      await this.#terminateGroup(child);
-    } else {
-      await waitForGroupGone(child.pid, 1_000);
+    try {
+      const exited = await waitForChildExit(child, timeoutMs);
+      let timedOut = false;
+      if (!exited) {
+        timedOut = true;
+        await this.#terminateGroup(child);
+      } else {
+        await waitForGroupGone(child.pid, 1_000);
+      }
+      if (this.closing) {
+        const error = harnessClosedError(`${label} command`);
+        error.commandOutput = output;
+        throw error;
+      }
+      if (timedOut) {
+        const error = new Error(
+          `${label} timed out after ${timeoutMs}ms\n${output.slice(-4_000)}`,
+        );
+        error.commandOutput = output;
+        throw error;
+      }
+      if (child.exitCode !== 0) {
+        const error = new Error(
+          `${label} exited with ${child.exitCode ?? child.signalCode}\n${output.slice(-8_000)}`,
+        );
+        error.commandOutput = output;
+        throw error;
+      }
+      return output;
+    } finally {
+      this.abortController.signal.removeEventListener("abort", onAbort);
+      this.ownedChildren.delete(child);
     }
-    this.ownedChildren.delete(child);
-    if (timedOut) {
-      const error = new Error(
-        `${label} timed out after ${timeoutMs}ms\n${output.slice(-4_000)}`,
-      );
-      error.commandOutput = output;
-      throw error;
-    }
-    if (child.exitCode !== 0) {
-      const error = new Error(
-        `${label} exited with ${child.exitCode ?? child.signalCode}\n${output.slice(-8_000)}`,
-      );
-      error.commandOutput = output;
-      throw error;
-    }
-    return output;
   }
 
   async #startWrangler(configPath) {
+    this.#assertOpen("Wrangler startup");
     const mapping = Object.fromEntries(
       SYNC_IDENTITIES.map(({ token, ownerId }) => [token, ownerId]),
     );
@@ -610,16 +649,22 @@ export class SyncHarness {
     child.stderr.on("data", record);
 
     const origin = await this.#waitForReady(child, () => output);
+    this.#assertOpen("Wrangler startup");
     this.apiOrigin = origin.replace(/\/+$/, "");
     await this.#appendEvidence(
       "harness.log",
       `wrangler ready at ${this.apiOrigin}\n`,
     );
+    this.#assertOpen("Wrangler startup");
     await this.#waitForHealth();
   }
 
   #waitForReady(child, output) {
     return new Promise((resolvePromise, reject) => {
+      if (this.closing) {
+        reject(harnessClosedError("Wrangler readiness"));
+        return;
+      }
       let buffer = "";
       const timer = setTimeout(
         () =>
@@ -637,6 +682,10 @@ export class SyncHarness {
         if (error) reject(error);
         else resolvePromise(origin);
       }
+      const onAbort = () => finish(harnessClosedError("Wrangler readiness"));
+      this.abortController.signal.addEventListener("abort", onAbort, {
+        once: true,
+      });
       const onData = (data) => {
         buffer += data.toString();
         const match = buffer.match(/Ready on (http:\/\/127\.0\.0\.1:\d+)/);
@@ -659,6 +708,7 @@ export class SyncHarness {
         child.stderr.off("data", onData);
         child.off("exit", onExit);
         child.off("error", onError);
+        this.abortController.signal.removeEventListener("abort", onAbort);
       });
     });
   }
@@ -667,14 +717,19 @@ export class SyncHarness {
     const deadline = Date.now() + 20_000;
     let lastError = null;
     while (Date.now() < deadline) {
+      this.#assertOpen("Worker health check");
       try {
         const response = await fetch(`${this.apiOrigin}/api/health`, {
-          signal: AbortSignal.timeout(2_000),
+          signal: AbortSignal.any([
+            AbortSignal.timeout(2_000),
+            this.abortController.signal,
+          ]),
         });
         await response.body?.cancel();
         if (response.status === 200) return;
         lastError = new Error(`health returned ${response.status}`);
       } catch (error) {
+        if (this.closing) throw harnessClosedError("Worker health check");
         lastError = error;
       }
       await delay(100);
@@ -779,6 +834,7 @@ export class SyncHarness {
   }
 
   async #browserInstance() {
+    this.#assertOpen("browser launch");
     if (this.browser) return this.browser;
     const core = process.env.PLAYWRIGHT_CORE;
     assert.ok(
@@ -788,21 +844,37 @@ export class SyncHarness {
     const { chromium } = await import(
       pathToFileURL(join(core, "index.mjs")).href
     );
-    this.browser = await chromium.launch();
-    return this.browser;
+    this.#assertOpen("browser launch");
+    return this.#acquire("browser launch", () => chromium.launch(), {
+      register: (browser) => {
+        this.browser = browser;
+      },
+      dispose: (browser) =>
+        this.#disposeLate("browser", () => browser.close(), 15_000),
+    });
   }
 
   async #newPage(identityName, viewport, { traceName } = {}) {
     this.#assertStarted();
     const identity = identityFor(identityName);
     const browser = await this.#browserInstance();
-    const context = await browser.newContext({
-      viewport: viewport ?? { width: 1280, height: 900 },
-    });
-    this.contexts.add(context);
+    this.#assertOpen("browser context creation");
+    const context = await this.#acquire(
+      "browser context creation",
+      () =>
+        browser.newContext({
+          viewport: viewport ?? { width: 1280, height: 900 },
+        }),
+      {
+        register: (created) => this.contexts.add(created),
+        dispose: (created) =>
+          this.#disposeLate("browser context", () => created.close()),
+      },
+    );
     try {
       if (traceName)
         await context.tracing.start({ screenshots: true, snapshots: true });
+      this.#assertOpen("page creation");
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -819,7 +891,9 @@ export class SyncHarness {
         },
         { apiOrigin: this.apiOrigin, token: identity.token },
       );
+      this.#assertOpen("page navigation");
       await page.goto(this.webOrigin);
+      this.#assertOpen("page navigation");
       return { context, page, errors };
     } catch (error) {
       this.contexts.delete(context);
@@ -882,11 +956,44 @@ export class SyncHarness {
   }
 
   #assertStarted() {
+    this.#assertOpen("harness use");
     if (!this.started || !this.apiOrigin)
       throw new Error("sync harness is not running");
   }
 
+  #assertOpen(action = "operation") {
+    if (this.closing) throw harnessClosedError(action);
+  }
+
+  async #acquire(label, produce, { register, dispose }) {
+    this.#assertOpen(label);
+    const acquisition = (async () => {
+      const resource = await produce();
+      if (this.closing) {
+        await dispose(resource);
+        throw harnessClosedError(label);
+      }
+      register(resource);
+      return resource;
+    })();
+    this.pendingAcquisitions.add(acquisition);
+    try {
+      return await acquisition;
+    } finally {
+      this.pendingAcquisitions.delete(acquisition);
+    }
+  }
+
+  async #disposeLate(label, close, timeoutMs = 10_000) {
+    try {
+      await withTimeout(Promise.resolve(close()), timeoutMs, `${label} close`);
+    } catch (error) {
+      this.cleanupProblems.push(`${label} close: ${error.message}`);
+    }
+  }
+
   #installSignalHandlers() {
+    this.#assertOpen("signal handler installation");
     for (const [signal, code] of [
       ["SIGINT", 130],
       ["SIGTERM", 143],
@@ -927,73 +1034,105 @@ export class SyncHarness {
 
   async close() {
     if (this.closePromise) return this.closePromise;
+    this.closing = true;
+    this.#removeSignalHandlers();
+    this.abortController.abort();
     this.closePromise = this.#close();
     return this.closePromise;
   }
 
   async #close() {
+    try {
+      await this.#waitForInFlightWork();
+      await this.#releaseResources();
+    } finally {
+      this.started = false;
+    }
+  }
+
+  async #waitForInFlightWork() {
+    const start = this.startPromise
+      ? this.startPromise.catch(() => {})
+      : Promise.resolve();
+    while (this.pendingAcquisitions.size > 0) {
+      await Promise.allSettled(this.pendingAcquisitions);
+    }
+    await start;
+    while (this.pendingAcquisitions.size > 0) {
+      await Promise.allSettled(this.pendingAcquisitions);
+    }
+  }
+
+  async #releaseResources() {
     this.#removeSignalHandlers();
-    const problems = [];
     for (const context of this.contexts) {
       this.contexts.delete(context);
       try {
         await withTimeout(context.close(), 10_000, "browser context close");
       } catch (error) {
-        problems.push(error.message);
+        this.cleanupProblems.push(`browser context close: ${error.message}`);
       }
     }
-    if (this.browser) {
+    const browser = this.browser;
+    this.browser = null;
+    if (browser) {
       try {
-        await withTimeout(this.browser.close(), 15_000, "browser close");
+        await withTimeout(browser.close(), 15_000, "browser close");
       } catch (error) {
-        problems.push(error.message);
+        this.cleanupProblems.push(`browser close: ${error.message}`);
       }
-      this.browser = null;
     }
-    if (this.wrangler) {
+    const wrangler = this.wrangler;
+    this.wrangler = null;
+    if (wrangler) {
       try {
-        await this.#terminateGroup(this.wrangler);
+        await this.#terminateGroup(wrangler);
       } catch (error) {
-        problems.push(`Wrangler cleanup: ${error.message}`);
+        this.cleanupProblems.push(`Wrangler cleanup: ${error.message}`);
       }
-      this.wrangler = null;
+      this.ownedChildren.delete(wrangler);
     }
     for (const child of this.ownedChildren) {
+      this.ownedChildren.delete(child);
       try {
         await this.#terminateGroup(child);
       } catch (error) {
-        problems.push(`owned command cleanup: ${error.message}`);
+        this.cleanupProblems.push(`owned command cleanup: ${error.message}`);
       }
-      this.ownedChildren.delete(child);
     }
-    if (this.wranglerLogStream) {
+    const logStream = this.wranglerLogStream;
+    this.wranglerLogStream = null;
+    if (logStream) {
       if (this.wranglerLogBuffer) {
-        this.wranglerLogStream.write(redactLogText(this.wranglerLogBuffer));
+        logStream.write(redactLogText(this.wranglerLogBuffer));
         this.wranglerLogBuffer = "";
       }
-      await new Promise((resolvePromise) =>
-        this.wranglerLogStream.end(resolvePromise),
-      );
-      this.wranglerLogStream = null;
+      await new Promise((resolvePromise) => logStream.end(resolvePromise));
     }
-    if (this.server) {
-      this.server.closeAllConnections();
+    const server = this.server;
+    this.server = null;
+    if (server) {
+      server.closeAllConnections();
       await new Promise((resolvePromise) => {
-        this.server.close(() => resolvePromise());
+        server.close(() => resolvePromise());
       });
-      this.server = null;
     }
     const cleanup = {
       wranglerPid: this.wranglerPid,
       processGroupAlive: processGroupExists(this.wranglerPid),
       tempDir: this.tempDir,
-      problems,
+      problems: this.cleanupProblems,
     };
-    if (this.evidenceDir)
-      await this.#writeEvidence(
-        "cleanup.log",
-        `${JSON.stringify(cleanup, null, 2)}\n`,
-      );
+    if (this.evidenceDir) {
+      try {
+        await this.#writeEvidence(
+          "cleanup.log",
+          `${JSON.stringify(cleanup, null, 2)}\n`,
+        );
+      } catch (error) {
+        this.cleanupProblems.push(`cleanup evidence: ${error.message}`);
+      }
+    }
     if (this.tempDir) {
       await rm(this.tempDir, { recursive: true, force: true });
     }
