@@ -320,6 +320,7 @@ export class SyncHarness {
     this.wranglerLogStream = null;
     this.wranglerLogBuffer = "";
     this.browser = null;
+    this.browserLaunchPromise = null;
     this.contexts = new Set();
     this.ownedChildren = new Set();
     this.pendingAcquisitions = new Set();
@@ -833,9 +834,21 @@ export class SyncHarness {
     );
   }
 
-  async #browserInstance() {
+  #browserInstance() {
     this.#assertOpen("browser launch");
-    if (this.browser) return this.browser;
+    if (this.browser) return Promise.resolve(this.browser);
+    if (!this.browserLaunchPromise) {
+      const launch = this.#launchBrowser();
+      this.browserLaunchPromise = launch;
+      void launch.catch(() => {
+        if (this.browserLaunchPromise === launch)
+          this.browserLaunchPromise = null;
+      });
+    }
+    return this.browserLaunchPromise;
+  }
+
+  async #launchBrowser() {
     const core = process.env.PLAYWRIGHT_CORE;
     assert.ok(
       core,
@@ -1075,6 +1088,7 @@ export class SyncHarness {
     }
     const browser = this.browser;
     this.browser = null;
+    this.browserLaunchPromise = null;
     if (browser) {
       try {
         await withTimeout(browser.close(), 15_000, "browser close");

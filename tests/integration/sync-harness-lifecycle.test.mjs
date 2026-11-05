@@ -203,6 +203,146 @@ test(
   },
 );
 
+test(
+  "parallel initial page opens share one browser and close both contexts",
+  { timeout: 30_000 },
+  async (t) => {
+    const before = signalListenerCounts();
+    const launched = [];
+    const contexts = [];
+    let launchCalls = 0;
+    await installFakeChromium(t, async () => {
+      launchCalls += 1;
+      const browser = fakeBrowser({
+        newContext() {
+          const context = fakeContext();
+          contexts.push(context);
+          return context;
+        },
+      });
+      launched.push(browser);
+      return browser;
+    });
+    const harness = startedHarness();
+    t.after(async () => {
+      await harness.close().catch(() => {});
+      for (const browser of launched) {
+        if (browser.state.closeCount === 0)
+          await browser.close().catch(() => {});
+      }
+    });
+
+    const [alice, bob] = await Promise.all([
+      harness.openPage("alice"),
+      harness.openPage("bob"),
+    ]);
+    const activeBeforeClose = harness.activeContexts;
+    await harness.close();
+
+    assert.deepEqual(
+      {
+        launchCalls,
+        contextCount: contexts.length,
+        distinctContexts: new Set([alice.context, bob.context]).size,
+        activeBeforeClose,
+        contextCloseCounts: [
+          alice.context.state.closeCount,
+          bob.context.state.closeCount,
+        ],
+        browserCloseCounts: launched.map((browser) => browser.state.closeCount),
+      },
+      {
+        launchCalls: 1,
+        contextCount: 2,
+        distinctContexts: 2,
+        activeBeforeClose: 2,
+        contextCloseCounts: [1, 1],
+        browserCloseCounts: [1],
+      },
+    );
+    assert.equal(harness.activeContexts, 0);
+    assert.equal(harness.browser, null);
+    assert.equal(harness.started, false);
+    assert.deepEqual(signalListenerCounts(), before);
+  },
+);
+
+test(
+  "close while parallel page opens await one browser launch disposes it once",
+  { timeout: 30_000 },
+  async (t) => {
+    const before = signalListenerCounts();
+    const launch = deferred();
+    let launchCalls = 0;
+    const browser = fakeBrowser();
+    await installFakeChromium(t, () => {
+      launchCalls += 1;
+      return launch.promise;
+    });
+    const harness = startedHarness();
+    t.after(async () => {
+      await harness.close().catch(() => {});
+      if (browser.state.closeCount === 0) await browser.close().catch(() => {});
+    });
+
+    const aliceOpening = harness.openPage("alice");
+    const bobOpening = harness.openPage("bob");
+    await waitUntil(() => launchCalls >= 1, "browser launch did not start");
+    const closing = harness.close();
+    launch.resolve(browser);
+
+    await assert.rejects(aliceOpening, /closed/);
+    await assert.rejects(bobOpening, /closed/);
+    await closing;
+    assert.equal(launchCalls, 1);
+    assert.equal(browser.state.closeCount, 1);
+    assert.equal(harness.activeContexts, 0);
+    assert.equal(harness.browser, null);
+    assert.equal(harness.browserLaunchPromise, null);
+    assert.equal(harness.pendingAcquisitions.size, 0);
+    assert.equal(harness.started, false);
+    await assert.rejects(harness.openPage("alice"), /closed/);
+    assert.equal(launchCalls, 1);
+    assert.deepEqual(signalListenerCounts(), before);
+  },
+);
+
+test(
+  "a failed initial browser launch is retried for a later page open",
+  { timeout: 30_000 },
+  async (t) => {
+    const before = signalListenerCounts();
+    const browser = fakeBrowser();
+    let launchCalls = 0;
+    await installFakeChromium(t, async () => {
+      launchCalls += 1;
+      if (launchCalls === 1) throw new Error("injected launch failure");
+      return browser;
+    });
+    const harness = startedHarness();
+    t.after(async () => {
+      await harness.close().catch(() => {});
+      if (browser.state.closeCount === 0) await browser.close().catch(() => {});
+    });
+
+    await assert.rejects(harness.openPage("alice"), /injected launch failure/);
+    assert.equal(launchCalls, 1);
+    assert.equal(harness.activeContexts, 0);
+    assert.equal(harness.browser, null);
+    assert.equal(harness.browserLaunchPromise, null);
+
+    const bob = await harness.openPage("bob");
+    await harness.close();
+    assert.equal(launchCalls, 2);
+    assert.equal(bob.context.state.closeCount, 1);
+    assert.equal(browser.state.closeCount, 1);
+    assert.equal(harness.activeContexts, 0);
+    assert.equal(harness.browser, null);
+    assert.equal(harness.started, false);
+    assert.deepEqual(signalListenerCounts(), before);
+  },
+);
+
 test("the harness is one-shot after close", async () => {
   const harness = new SyncHarness();
   await harness.close();
