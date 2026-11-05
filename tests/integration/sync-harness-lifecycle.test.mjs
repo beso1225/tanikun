@@ -21,6 +21,7 @@ import { pathToFileURL } from "node:url";
 import {
   SyncHarness,
   WranglerLogSink,
+  acceptBrowserFaults,
   pathExists,
   preparePackagedArtifact,
   readTraceArchiveEntries,
@@ -994,4 +995,90 @@ test("evidence redaction removes non-UUID document route identifiers", () => {
     assert.equal(safe.includes("non-uuid-private-document"), false);
     assert.match(safe, /documents\/<document-id>\/changes/);
   }
+});
+
+test("expected browser faults require exact kind, text, and count", () => {
+  const failed = "Failed to load resource: net::ERR_FAILED";
+  const unavailable =
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
+  const state = {
+    label: "bob",
+    errors: [failed, unavailable],
+    faults: [
+      { kind: "console", text: failed, url: "http://127.0.0.1:1/api" },
+      { kind: "console", text: unavailable, url: "http://127.0.0.1:1/api" },
+    ],
+  };
+  acceptBrowserFaults(state, [
+    {
+      kind: "console",
+      text: failed,
+      count: 1,
+      reason: "the offline gate aborted one request",
+    },
+    {
+      kind: "console",
+      text: /status of 503/,
+      count: 1,
+      reason: "the real Worker returned 503",
+    },
+  ]);
+  assert.deepEqual(state.errors, [failed, unavailable]);
+  assert.equal(
+    state.faults.every((fault) => typeof fault.accepted === "string"),
+    true,
+  );
+});
+
+test("an unexpected page error is never accepted as a console fault", () => {
+  const failed = "Failed to load resource: net::ERR_FAILED";
+  const state = {
+    label: "bob",
+    errors: [failed, "TypeError: real bug"],
+    faults: [
+      { kind: "console", text: failed, url: "http://127.0.0.1:1/api" },
+      { kind: "pageerror", text: "TypeError: real bug", url: null },
+    ],
+  };
+  assert.throws(
+    () =>
+      acceptBrowserFaults(state, [
+        {
+          kind: "console",
+          text: failed,
+          count: 1,
+          reason: "the offline gate aborted one request",
+        },
+      ]),
+    /unexpected browser faults/,
+  );
+  assert.equal(
+    state.faults[0].accepted,
+    "the offline gate aborted one request",
+  );
+  assert.equal(state.faults[1].accepted, undefined);
+});
+
+test("an extra console fault fails even when the expected fault occurred", () => {
+  const failed = "Failed to load resource: net::ERR_FAILED";
+  const state = {
+    label: "alice",
+    errors: [failed, failed],
+    faults: [
+      { kind: "console", text: failed, url: "http://127.0.0.1:1/api" },
+      { kind: "console", text: failed, url: "http://127.0.0.1:1/api" },
+    ],
+  };
+  assert.throws(
+    () =>
+      acceptBrowserFaults(state, [
+        {
+          kind: "console",
+          text: failed,
+          count: 1,
+          reason: "one offline request",
+        },
+      ]),
+    /unexpected browser faults/,
+  );
 });

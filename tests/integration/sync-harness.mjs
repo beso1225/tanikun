@@ -114,6 +114,65 @@ export function processGroupExists(pid) {
   }
 }
 
+export function acceptBrowserFaults(state, expectations) {
+  const faults = state.faults ?? [];
+  const label = state.label ?? "browser";
+  for (const expected of expectations) {
+    assert.ok(
+      Number.isSafeInteger(expected.count) && expected.count > 0,
+      `${label}: expected fault count must be a positive integer`,
+    );
+    assert.ok(
+      typeof expected.reason === "string" && expected.reason.length > 0,
+      `${label}: expected fault needs a reason`,
+    );
+    const candidates = faults.filter((fault) => {
+      if (fault.accepted || expected.kind !== fault.kind) return false;
+      const textMatches =
+        expected.text instanceof RegExp
+          ? expected.text.test(fault.text)
+          : fault.text === expected.text;
+      if (!textMatches) return false;
+      if (expected.url === undefined) return true;
+      return expected.url instanceof RegExp
+        ? expected.url.test(fault.url ?? "")
+        : fault.url === expected.url;
+    });
+    assert.ok(
+      candidates.length >= expected.count,
+      `${label}: expected ${expected.count} ${expected.kind} fault(s) for ${expected.reason}; observed ${JSON.stringify(faults)}`,
+    );
+    for (const fault of candidates.slice(0, expected.count))
+      fault.accepted = expected.reason;
+  }
+  const unexpected = faults.filter((fault) => !fault.accepted);
+  assert.deepEqual(
+    unexpected,
+    [],
+    `${label}: unexpected browser faults: ${JSON.stringify(unexpected)}`,
+  );
+  assert.deepEqual(
+    remainingBrowserErrors(state),
+    [],
+    `${label}: unexpected browser errors: ${JSON.stringify(state.errors)}`,
+  );
+}
+
+function remainingBrowserErrors(state) {
+  const accepted = new Map();
+  for (const fault of state.faults ?? []) {
+    if (!fault.accepted) continue;
+    accepted.set(fault.text, (accepted.get(fault.text) ?? 0) + 1);
+  }
+  const remaining = [];
+  for (const message of state.errors ?? []) {
+    const count = accepted.get(message) ?? 0;
+    if (count > 0) accepted.set(message, count - 1);
+    else remaining.push(message);
+  }
+  return remaining;
+}
+
 export async function waitForSync(page, expected, timeout = 20_000) {
   try {
     await page.waitForFunction(
@@ -1430,6 +1489,7 @@ export class SyncHarness {
       context: null,
       page: null,
       errors: [],
+      faults: [],
       tracingStarted: false,
     };
     const browser = await this.#browserInstance();
@@ -1456,10 +1516,33 @@ export class SyncHarness {
       const page = await context.newPage();
       failureState.page = page;
       const errors = [];
+      const faults = [];
       failureState.errors = errors;
-      page.on("pageerror", (error) => errors.push(error.message));
+      failureState.faults = faults;
+      page.on("pageerror", (error) => {
+        errors.push(error.message);
+        faults.push({
+          kind: "pageerror",
+          text: error.message,
+          url: null,
+          at: Date.now(),
+        });
+      });
       page.on("console", (message) => {
-        if (message.type() === "error") errors.push(message.text());
+        if (message.type() !== "error") return;
+        errors.push(message.text());
+        let url = null;
+        try {
+          url = message.location()?.url ?? null;
+        } catch {
+          // A console message without a location still counts as an error.
+        }
+        faults.push({
+          kind: "console",
+          text: message.text(),
+          url,
+          at: Date.now(),
+        });
       });
       await page.addInitScript(
         ({ apiOrigin, token }) => {
@@ -1475,7 +1558,7 @@ export class SyncHarness {
       this.#assertOpen("page navigation");
       await page.goto(this.webOrigin);
       this.#assertOpen("page navigation");
-      return { context, page, errors };
+      return { context, page, errors, faults };
     } catch (error) {
       if (attachFailureState) {
         if (error && typeof error === "object") {
@@ -1516,6 +1599,7 @@ export class SyncHarness {
           context: null,
           page: null,
           errors: [],
+          faults: [],
           tracingStarted: false,
         };
         context = failureState.context;
@@ -1564,6 +1648,7 @@ export class SyncHarness {
             context: null,
             page: null,
             errors: [],
+            faults: [],
             tracingStarted: false,
           };
           await this.#writeJourneyFailure(
@@ -1585,17 +1670,28 @@ export class SyncHarness {
           states,
         );
         const errors = states.flatMap((state) =>
-          state.errors.map((message) => `[${state.label}] ${message}`),
+          remainingBrowserErrors(state).map(
+            (message) => `[${state.label}] ${message}`,
+          ),
         );
         if (errors.length > 0)
           throw new Error(`browser errors: ${errors.join("; ")}`);
         await this.#writeEvidence(
           `${name}.log`,
           `${states
-            .map(
-              (state) =>
+            .map((state) => {
+              const accepted = (state.faults ?? [])
+                .filter((fault) => fault.accepted)
+                .map((fault) => ({
+                  kind: fault.kind,
+                  text: fault.text,
+                  reason: fault.accepted,
+                }));
+              return [
                 `${state.label}: page errors: ${JSON.stringify(state.errors)}`,
-            )
+                `${state.label}: expected faults: ${JSON.stringify(accepted)}`,
+              ].join("\n");
+            })
             .join("\n")}\n`,
         );
         for (const state of states)
@@ -1612,6 +1708,7 @@ export class SyncHarness {
               context: state.context,
               page: state.page,
               errors: state.errors,
+              faults: state.faults,
               tracingStarted: true,
             },
             error,
@@ -1650,7 +1747,9 @@ export class SyncHarness {
       await this.#writeEvidence(
         `${name}-failure.log`,
         redactEvidenceText(
-          `${error?.stack ?? String(error)}\npage errors: ${JSON.stringify(errors)}\n`,
+          `${error?.stack ?? String(error)}\npage errors: ${JSON.stringify(errors)}\nexpected faults: ${JSON.stringify(
+            (state.faults ?? []).filter((fault) => fault.accepted),
+          )}\n`,
         ),
       );
     } catch (writeError) {

@@ -2,8 +2,27 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { waitForSync } from "./sync-harness.mjs";
+
 export const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/** Start a sync and wait for its final status, not just the first entry. */
+export async function syncNow(page, expected, timeout = 30_000) {
+  const before = await page.evaluate(
+    () => globalThis.tanikunSyncShell.history.length,
+  );
+  await page.evaluate(() => globalThis.tanikunSyncShell.sync());
+  await page.waitForFunction(
+    ({ length, status }) =>
+      globalThis.tanikunSyncShell.history
+        .slice(length)
+        .some((entry) => entry.text === status),
+    { length: before, status: expected },
+    { timeout },
+  );
+  await waitForSync(page, expected, timeout);
+}
 
 export async function waitFor(predicate, label, timeout = 10_000) {
   const deadline = Date.now() + timeout;
@@ -200,7 +219,17 @@ export async function installPlannerPutAbort(page) {
         globalThis["__TANIKUN_SYNC_ABORT_PLANNER_PUT__"] = false;
         globalThis["__TANIKUN_SYNC_ABORT_COUNT__"] =
           (globalThis["__TANIKUN_SYNC_ABORT_COUNT__"] ?? 0) + 1;
-        this.transaction.abort();
+        // Abort after the write is queued but before the transaction commits.
+        // This interrupts a real transaction without making the product code
+        // race a second synchronous abort inside its write error handler.
+        const transaction = this.transaction;
+        queueMicrotask(() => {
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may have committed before the abort ran.
+          }
+        });
       }
       return request;
     };
