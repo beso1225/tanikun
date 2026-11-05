@@ -778,6 +778,7 @@ export class SyncHarness {
       ),
       apiRoot,
       packaged: apiRoot !== repositoryRoot,
+      serveWeb: options.serveWeb ?? true,
       readinessTimeoutMs: options.readinessTimeoutMs ?? 60_000,
       migrationTimeoutMs: options.migrationTimeoutMs ?? 60_000,
       closeGraceMs: options.closeGraceMs ?? 5_000,
@@ -786,6 +787,7 @@ export class SyncHarness {
     this.tempDir = null;
     this.apiOrigin = null;
     this.webOrigin = SYNC_WEB_ORIGIN;
+    this.artifact = null;
     this.server = null;
     this.wrangler = null;
     this.wranglerPid = null;
@@ -843,6 +845,7 @@ export class SyncHarness {
       [
         `webOrigin=${this.webOrigin}`,
         `webDist=${this.options.webDist}`,
+        `serveWeb=${this.options.serveWeb}`,
         `apiRoot=${this.options.apiRoot}`,
         `tempDir=${this.tempDir}`,
         `evidenceDir=${this.evidenceDir}`,
@@ -857,24 +860,29 @@ export class SyncHarness {
       this.#assertOpen("startup");
     }
 
-    await requireFile(join(this.options.webDist, "index.html"), "web index");
-    for (const file of [
-      "index.js",
-      "styles.css",
-      "automerge.js",
-      "planner-document.js",
-      "persistence.js",
-      "sync-contract.mjs",
-      "sync-shell.js",
-    ]) {
-      await requireFile(join(this.options.webDist, file), `web asset ${file}`);
+    if (this.options.serveWeb) {
+      await requireFile(join(this.options.webDist, "index.html"), "web index");
+      for (const file of [
+        "index.js",
+        "styles.css",
+        "automerge.js",
+        "planner-document.js",
+        "persistence.js",
+        "sync-contract.mjs",
+        "sync-shell.js",
+      ]) {
+        await requireFile(
+          join(this.options.webDist, file),
+          `web asset ${file}`,
+        );
+      }
+      this.#assertOpen("startup");
+      const server = await startWebServer(this.options.webDist);
+      this.server = server;
+      this.#assertOpen("startup");
+      await this.#appendEvidence("harness.log", `web server listening\n`);
+      this.#assertOpen("startup");
     }
-    this.#assertOpen("startup");
-    const server = await startWebServer(this.options.webDist);
-    this.server = server;
-    this.#assertOpen("startup");
-    await this.#appendEvidence("harness.log", `web server listening\n`);
-    this.#assertOpen("startup");
 
     let configPath = paths.configPath;
     if (!configPath) {
@@ -901,6 +909,7 @@ export class SyncHarness {
     }
     this.#assertOpen("startup");
 
+    this.artifact = { configPath, cwd: paths.cwd };
     await this.#applyMigrations(configPath, paths.cwd);
     this.#assertOpen("startup");
     await this.#startWrangler(configPath, paths.cwd);
@@ -1330,6 +1339,53 @@ export class SyncHarness {
     );
   }
 
+  // Test-only D1 control for isolated fault setup. Requests still use the real
+  // Worker and repository; callers must not replace the production commit path.
+  async d1(sql, { timeoutMs = 30_000 } = {}) {
+    this.#assertStarted();
+    if (!this.artifact)
+      throw new Error("sync harness has no D1 artifact configuration");
+    return this.#runCommand(
+      "D1 execute",
+      [
+        wranglerBin,
+        "d1",
+        "execute",
+        "DB",
+        "--local",
+        "--persist-to",
+        join(this.tempDir, "persistence"),
+        "--config",
+        this.artifact.configPath,
+        "--command",
+        sql,
+        "--json",
+      ],
+      {
+        cwd: this.artifact.cwd,
+        env: this.#environment("d1"),
+        timeoutMs,
+      },
+    );
+  }
+
+  async d1Query(sql, options) {
+    const output = await this.d1(sql, options);
+    const start = output.indexOf("[");
+    if (start < 0)
+      throw new Error(`D1 query produced no JSON: ${output.slice(-1_000)}`);
+    let parsed;
+    try {
+      parsed = JSON.parse(output.slice(start));
+    } catch (error) {
+      throw new Error(
+        `D1 query JSON could not be parsed: ${output.slice(-1_000)}`,
+        { cause: error },
+      );
+    }
+    return parsed.flatMap((entry) => entry.results ?? []);
+  }
+
   #browserInstance() {
     this.#assertOpen("browser launch");
     if (this.browser) return Promise.resolve(this.browser);
@@ -1366,7 +1422,7 @@ export class SyncHarness {
   async #newPage(
     identityName,
     viewport,
-    { traceName, attachFailureState = false } = {},
+    { traceName, attachFailureState = false, beforeGoto } = {},
   ) {
     this.#assertStarted();
     const identity = identityFor(identityName);
@@ -1415,6 +1471,7 @@ export class SyncHarness {
         },
         { apiOrigin: this.apiOrigin, token: identity.token },
       );
+      if (beforeGoto) await beforeGoto(context, page);
       this.#assertOpen("page navigation");
       await page.goto(this.webOrigin);
       this.#assertOpen("page navigation");
@@ -1436,11 +1493,13 @@ export class SyncHarness {
   }
 
   async openPage(identityName, { viewport } = {}) {
+    this.#assertWebServer();
     return this.#newPage(identityName, viewport);
   }
 
   async runJourney(name, identityName, drive, { viewport } = {}) {
     this.#assertStarted();
+    this.#assertWebServer();
     let context = null;
     let failureState = null;
     try {
@@ -1480,6 +1539,96 @@ export class SyncHarness {
       if (context) {
         this.contexts.delete(context);
         await context.close().catch(() => {});
+      }
+    }
+  }
+
+  // Run several isolated browser contexts in one named journey. Each page gets
+  // its own trace, screenshot, and failure log so a two-browser failure keeps
+  // evidence for both sides.
+  async runJourneyGroup(name, specs, drive) {
+    this.#assertStarted();
+    this.#assertWebServer();
+    const states = [];
+    try {
+      for (const spec of specs) {
+        try {
+          const created = await this.#newPage(spec.identity, spec.viewport, {
+            traceName: `${name}-${spec.label}`,
+            attachFailureState: true,
+            beforeGoto: spec.beforeGoto,
+          });
+          states.push({ ...created, label: spec.label });
+        } catch (error) {
+          const failureState = error.syncHarnessFailureState ?? {
+            context: null,
+            page: null,
+            errors: [],
+            tracingStarted: false,
+          };
+          await this.#writeJourneyFailure(
+            `${name}-${spec.label}`,
+            failureState,
+            error,
+          );
+          if (failureState.context) {
+            this.contexts.delete(failureState.context);
+            await failureState.context.close().catch(() => {});
+          }
+          throw error;
+        }
+      }
+      try {
+        await drive(
+          states.map((state) => state.page),
+          states.map((state) => state.errors),
+          states,
+        );
+        const errors = states.flatMap((state) =>
+          state.errors.map((message) => `[${state.label}] ${message}`),
+        );
+        if (errors.length > 0)
+          throw new Error(`browser errors: ${errors.join("; ")}`);
+        await this.#writeEvidence(
+          `${name}.log`,
+          `${states
+            .map(
+              (state) =>
+                `${state.label}: page errors: ${JSON.stringify(state.errors)}`,
+            )
+            .join("\n")}\n`,
+        );
+        for (const state of states)
+          await this.#stopSafeTrace(
+            state.context,
+            `${name}-${state.label}`,
+            "trace",
+          );
+      } catch (error) {
+        for (const state of states) {
+          await this.#writeJourneyFailure(
+            `${name}-${state.label}`,
+            {
+              context: state.context,
+              page: state.page,
+              errors: state.errors,
+              tracingStarted: true,
+            },
+            error,
+          );
+        }
+        throw error;
+      }
+    } finally {
+      for (const state of states) {
+        this.contexts.delete(state.context);
+        await state.context
+          .close()
+          .catch((error) =>
+            this.cleanupProblems.push(
+              `browser context close: ${error.message}`,
+            ),
+          );
       }
     }
   }
@@ -1536,6 +1685,14 @@ export class SyncHarness {
     this.#assertOpen("harness use");
     if (!this.started || !this.apiOrigin)
       throw new Error("sync harness is not running");
+  }
+
+  #assertWebServer() {
+    this.#assertStarted();
+    if (!this.options.serveWeb)
+      throw new Error(
+        "sync harness web server is disabled; construct it with serveWeb: true for browser journeys",
+      );
   }
 
   #assertOpen(action = "operation") {
