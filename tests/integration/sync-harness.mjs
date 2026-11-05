@@ -7,19 +7,23 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
+import { finished } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const wranglerBin = join(
+export const SYNC_WRANGLER_BIN = join(
   repositoryRoot,
   "node_modules/wrangler/bin/wrangler.js",
 );
+const wranglerBin = SYNC_WRANGLER_BIN;
 
 export const SYNC_WEB_ORIGIN = "http://127.0.0.1:4300";
 export const SYNC_EVIDENCE_ROOT = join(repositoryRoot, ".cache/verify/sync");
@@ -50,14 +54,30 @@ const contentTypes = new Map([
 const delay = (milliseconds) =>
   new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
-function redactLogText(text) {
-  return text
+// Trace archives use the Playwright installation that was active when this
+// module loaded. Lifecycle tests temporarily point PLAYWRIGHT_CORE at a fake
+// chromium module, but still need the real bundled zip implementation.
+const traceArchiveCore = process.env.PLAYWRIGHT_CORE ?? null;
+
+export function redactEvidenceText(text) {
+  let redacted = String(text);
+  for (const identity of SYNC_IDENTITIES) {
+    redacted = redacted
+      .replaceAll(identity.token, "<redacted-token>")
+      .replaceAll(identity.ownerId, "<redacted-owner>");
+  }
+  return redacted
+    .replace(/\bBearer\s+\S+/gi, "Bearer <redacted>")
     .replace(
       /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
       "<document-id>",
     )
     .replace(/\b[0-9a-f]{64}\b/gi, "<change-id>")
-    .replace(/\bBearer\s+\S+/gi, "Bearer <redacted>");
+    .replace(
+      /("(?:envelope|nonce|payload)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi,
+      '$1"<redacted>"',
+    )
+    .replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, "<redacted-binary>");
 }
 
 function identityFor(name) {
@@ -113,7 +133,7 @@ export async function waitForSync(page, expected, timeout = 20_000) {
   }
 }
 
-function parseJsonc(text) {
+export function parseJsonc(text) {
   let withoutComments = "";
   let inString = false;
   let escaped = false;
@@ -190,6 +210,316 @@ function parseJsonc(text) {
   return JSON.parse(withoutTrailingCommas);
 }
 
+const MAX_TRACE_ENTRY_BYTES = 16 * 1024 * 1024;
+const MAX_TRACE_EVENTS = 5_000;
+const MAX_TRACE_NETWORK_EVENTS = 2_000;
+
+let zipModulesPromise = null;
+
+async function loadZipModules() {
+  if (!zipModulesPromise) {
+    zipModulesPromise = (async () => {
+      if (!traceArchiveCore)
+        throw new Error(
+          "PLAYWRIGHT_CORE is not set; run the sync harness inside `nix develop`",
+        );
+      const require = createRequire(import.meta.url);
+      const utils = require(join(traceArchiveCore, "lib/utilsBundle.js"));
+      return { yauzl: utils.yauzl, yazl: utils.yazl };
+    })();
+  }
+  return zipModulesPromise;
+}
+
+async function readZipEntries(
+  path,
+  { names = null, maxEntryBytes = MAX_TRACE_ENTRY_BYTES } = {},
+) {
+  const { yauzl } = await loadZipModules();
+  return new Promise((resolvePromise, reject) => {
+    let settled = false;
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    yauzl.open(path, { lazyEntries: true }, (error, zipFile) => {
+      if (error) {
+        rejectOnce(error);
+        return;
+      }
+      const entries = new Map();
+      zipFile.on("error", rejectOnce);
+      zipFile.on("end", () => {
+        if (settled) return;
+        settled = true;
+        resolvePromise(entries);
+      });
+      zipFile.on("entry", (entry) => {
+        if (settled) return;
+        if (entry.fileName.endsWith("/")) {
+          zipFile.readEntry();
+          return;
+        }
+        if (names && !names.has(entry.fileName)) {
+          zipFile.readEntry();
+          return;
+        }
+        if (entry.uncompressedSize > maxEntryBytes) {
+          rejectOnce(
+            new Error(
+              `trace entry ${entry.fileName} is too large (${entry.uncompressedSize} bytes)`,
+            ),
+          );
+          zipFile.close();
+          return;
+        }
+        zipFile.openReadStream(entry, (streamError, stream) => {
+          if (streamError) {
+            rejectOnce(streamError);
+            return;
+          }
+          const chunks = [];
+          let total = 0;
+          stream.on("data", (chunk) => {
+            total += chunk.length;
+            if (total > maxEntryBytes) {
+              rejectOnce(
+                new Error(
+                  `trace entry ${entry.fileName} exceeds ${maxEntryBytes} bytes`,
+                ),
+              );
+              stream.destroy();
+              return;
+            }
+            chunks.push(chunk);
+          });
+          stream.on("error", rejectOnce);
+          stream.on("end", () => {
+            if (settled) return;
+            entries.set(entry.fileName, Buffer.concat(chunks));
+            zipFile.readEntry();
+          });
+        });
+      });
+      zipFile.readEntry();
+    });
+  });
+}
+
+export function readTraceArchiveEntries(path) {
+  return readZipEntries(path, { maxEntryBytes: 64 * 1024 * 1024 });
+}
+
+async function writeZipFile(path, entries) {
+  const { yazl } = await loadZipModules();
+  const zip = new yazl.ZipFile();
+  for (const [name, buffer] of entries) zip.addBuffer(buffer, name);
+  const output = createWriteStream(path);
+  const done = finished(output);
+  zip.outputStream.pipe(output);
+  zip.end();
+  await done;
+}
+
+function truncateEvidence(value, limit = 4_000) {
+  const text = String(value);
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
+function sanitizeError(value) {
+  if (!value) return null;
+  if (typeof value === "string")
+    return { message: truncateEvidence(redactEvidenceText(value)) };
+  const message = value.message ?? value.error?.message;
+  const stack = value.stack ?? value.error?.stack;
+  const safe = {};
+  if (typeof message === "string")
+    safe.message = truncateEvidence(redactEvidenceText(message));
+  if (typeof stack === "string")
+    safe.stack = truncateEvidence(redactEvidenceText(stack));
+  return Object.keys(safe).length > 0 ? safe : null;
+}
+
+function safeTraceEvent(event) {
+  if (!event || typeof event !== "object") return null;
+  switch (event.type) {
+    case "context-options":
+      return {
+        type: "context-options",
+        version: event.version,
+        origin: event.origin,
+        browserName: event.browserName,
+        playwrightVersion: event.playwrightVersion,
+        platform: event.platform,
+        wallTime: event.wallTime,
+        monotonicTime: event.monotonicTime,
+        sdkLanguage: event.sdkLanguage,
+      };
+    case "before":
+    case "action":
+      return {
+        type: event.type,
+        callId: event.callId,
+        startTime: event.startTime,
+        class: event.class,
+        method: event.method,
+      };
+    case "after": {
+      const safe = {
+        type: "after",
+        callId: event.callId,
+        endTime: event.endTime,
+      };
+      const error = sanitizeError(event.error);
+      if (error) safe.error = error;
+      return safe;
+    }
+    case "error":
+      return {
+        type: "error",
+        message: truncateEvidence(
+          redactEvidenceText(event.message ?? event.error?.message ?? ""),
+        ),
+      };
+    default:
+      return null;
+  }
+}
+
+function sanitizeTraceNdjson(text) {
+  const output = [];
+  let sawContext = false;
+  for (const line of String(text).split("\n")) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event?.type === "context-options") sawContext = true;
+    const safe = safeTraceEvent(event);
+    if (!safe) continue;
+    output.push(JSON.stringify(safe));
+    if (output.length >= MAX_TRACE_EVENTS) break;
+  }
+  if (!sawContext)
+    throw new Error("trace archive has no context-options event");
+  return `${output.join("\n")}\n`;
+}
+
+function sanitizeTraceUrl(value) {
+  if (typeof value !== "string") return "";
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return `${url.origin}${redactEvidenceText(url.pathname)}`;
+  } catch {
+    return truncateEvidence(redactEvidenceText(value), 2_000);
+  }
+}
+
+function sanitizeTimings(value) {
+  const timings = {};
+  for (const key of ["dns", "connect", "ssl", "send", "wait", "receive"]) {
+    if (Number.isFinite(value?.[key])) timings[key] = value[key];
+  }
+  return timings;
+}
+
+function sanitizeNetworkNdjson(text) {
+  const output = [];
+  for (const line of String(text).split("\n")) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event?.type !== "resource-snapshot" || !event.snapshot) continue;
+    const snapshot = event.snapshot;
+    const request = snapshot.request ?? {};
+    const response = snapshot.response ?? {};
+    output.push(
+      JSON.stringify({
+        type: "resource-snapshot",
+        snapshot: {
+          pageref: snapshot.pageref,
+          startedDateTime: snapshot.startedDateTime,
+          time: snapshot.time,
+          request: {
+            method: request.method ?? "GET",
+            url: sanitizeTraceUrl(request.url),
+            httpVersion: request.httpVersion ?? "HTTP/1.1",
+            cookies: [],
+            headers: [],
+            queryString: [],
+            headersSize: -1,
+            bodySize: 0,
+          },
+          response: {
+            status: response.status ?? 0,
+            statusText: "",
+            httpVersion: response.httpVersion ?? "HTTP/1.1",
+            cookies: [],
+            headers: [],
+            content: { size: -1, mimeType: "application/octet-stream" },
+            headersSize: -1,
+            bodySize: -1,
+            redirectURL: "",
+          },
+          cache: {},
+          timings: sanitizeTimings(snapshot.timings),
+        },
+      }),
+    );
+    if (output.length >= MAX_TRACE_NETWORK_EVENTS) break;
+  }
+  return output.length > 0 ? `${output.join("\n")}\n` : "";
+}
+
+export async function sanitizeTraceArchive(sourcePath, destinationPath) {
+  const entries = await readZipEntries(sourcePath, {
+    names: new Set(["trace.trace", "trace.network"]),
+  });
+  const trace = entries.get("trace.trace");
+  if (!trace) throw new Error("trace archive has no trace.trace entry");
+  const safeEntries = new Map();
+  safeEntries.set(
+    "trace.trace",
+    Buffer.from(sanitizeTraceNdjson(trace.toString("utf8"))),
+  );
+  const network = entries.get("trace.network");
+  if (network) {
+    safeEntries.set(
+      "trace.network",
+      Buffer.from(sanitizeNetworkNdjson(network.toString("utf8"))),
+    );
+  }
+  const temporary = `${destinationPath}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    await writeZipFile(temporary, safeEntries);
+    await rename(temporary, destinationPath);
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {});
+  }
+}
+
+export function assertPackagedRuntimeConfig(config, configPath) {
+  for (const key of ["build", "watch_dir"]) {
+    if (Object.hasOwn(config, key)) {
+      throw new Error(
+        `packaged API config must not contain ${key}: ${configPath}`,
+      );
+    }
+  }
+}
+
 function waitForChildExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null)
     return Promise.resolve(true);
@@ -208,6 +538,32 @@ function waitForChildExit(child, timeoutMs) {
       finish(true);
     }
     child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}
+
+function waitForChildClose(child, timeoutMs) {
+  if (!child || child.closed) return Promise.resolve(true);
+  if (child.stdout?.readableEnded && child.stderr?.readableEnded)
+    return Promise.resolve(true);
+  return new Promise((resolvePromise) => {
+    let settled = false;
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    function finish(closed) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off("close", onClose);
+      child.off("error", onError);
+      resolvePromise(closed);
+    }
+    function onClose() {
+      finish(true);
+    }
+    function onError() {
+      finish(false);
+    }
+    child.once("close", onClose);
     child.once("error", onError);
   });
 }
@@ -232,6 +588,87 @@ function withTimeout(promise, timeoutMs, label) {
       );
     }),
   ]).finally(() => clearTimeout(timer));
+}
+
+export class WranglerLogSink {
+  #stream;
+  #child = null;
+  #record = null;
+  #buffer = "";
+  #ended = false;
+  #finishPromise = null;
+  errorMessages = [];
+  droppedLines = 0;
+
+  constructor(stream) {
+    this.#stream = stream;
+    stream.on("error", (error) => {
+      this.errorMessages.push(error.message);
+    });
+  }
+
+  attach(child) {
+    if (this.#child) throw new Error("Wrangler log sink is already attached");
+    this.#child = child;
+    this.#record = (data) => this.#recordChunk(data);
+    child.stdout?.on("data", this.#record);
+    child.stderr?.on("data", this.#record);
+  }
+
+  detach() {
+    const child = this.#child;
+    const record = this.#record;
+    this.#child = null;
+    this.#record = null;
+    if (!child || !record) return;
+    child.stdout?.off("data", record);
+    child.stderr?.off("data", record);
+  }
+
+  async finish(child = this.#child, timeoutMs = 1_000) {
+    if (this.#finishPromise) return this.#finishPromise;
+    this.#finishPromise = (async () => {
+      await waitForChildClose(child, timeoutMs);
+      this.detach();
+      if (this.#buffer) {
+        this.#writeLine(this.#buffer);
+        this.#buffer = "";
+      }
+      this.#ended = true;
+      const stream = this.#stream;
+      this.#stream = null;
+      if (!stream || stream.destroyed || stream.writableEnded) return;
+      await new Promise((resolvePromise) => {
+        const onError = () => resolvePromise();
+        stream.once("error", onError);
+        stream.end(() => {
+          stream.off("error", onError);
+          resolvePromise();
+        });
+      });
+    })();
+    return this.#finishPromise;
+  }
+
+  #recordChunk(data) {
+    this.#buffer += data.toString();
+    const lines = this.#buffer.split("\n");
+    this.#buffer = lines.pop() ?? "";
+    for (const line of lines) this.#writeLine(line);
+  }
+
+  #writeLine(line) {
+    const stream = this.#stream;
+    if (this.#ended || !stream || stream.destroyed || stream.writableEnded) {
+      this.droppedLines += 1;
+      return;
+    }
+    try {
+      stream.write(`${redactEvidenceText(line)}\n`);
+    } catch (error) {
+      this.errorMessages.push(error.message);
+    }
+  }
 }
 
 function harnessClosedError(action) {
@@ -297,15 +734,17 @@ async function requireFile(path, description) {
 
 export class SyncHarness {
   constructor(options = {}) {
+    const apiRoot = resolve(
+      options.apiRoot ?? process.env.TANIKUN_API_DIST ?? repositoryRoot,
+    );
     this.options = {
       webDist: resolve(
         options.webDist ??
           process.env.TANIKUN_WEB_DIST ??
           join(repositoryRoot, "apps/web/dist"),
       ),
-      apiRoot: resolve(
-        options.apiRoot ?? process.env.TANIKUN_API_DIST ?? repositoryRoot,
-      ),
+      apiRoot,
+      packaged: apiRoot !== repositoryRoot,
       readinessTimeoutMs: options.readinessTimeoutMs ?? 60_000,
       migrationTimeoutMs: options.migrationTimeoutMs ?? 60_000,
       closeGraceMs: options.closeGraceMs ?? 5_000,
@@ -317,8 +756,7 @@ export class SyncHarness {
     this.server = null;
     this.wrangler = null;
     this.wranglerPid = null;
-    this.wranglerLogStream = null;
-    this.wranglerLogBuffer = "";
+    this.wranglerLog = null;
     this.browser = null;
     this.browserLaunchPromise = null;
     this.contexts = new Set();
@@ -379,6 +817,9 @@ export class SyncHarness {
     );
     this.#assertOpen("startup");
 
+    const paths = await this.#readArtifact();
+    this.#assertOpen("startup");
+
     await requireFile(join(this.options.webDist, "index.html"), "web index");
     for (const file of [
       "index.js",
@@ -392,40 +833,40 @@ export class SyncHarness {
       await requireFile(join(this.options.webDist, file), `web asset ${file}`);
     }
     this.#assertOpen("startup");
-
-    const paths = await this.#readArtifact();
-    this.#assertOpen("startup");
     const server = await startWebServer(this.options.webDist);
     this.server = server;
     this.#assertOpen("startup");
     await this.#appendEvidence("harness.log", `web server listening\n`);
     this.#assertOpen("startup");
 
-    const configPath = join(this.tempDir, "wrangler.jsonc");
-    const generated = {
-      name: "tanikun-sync-harness",
-      main: paths.main,
-      compatibility_date: paths.compatibilityDate,
-      ...(paths.compatibilityFlags.length > 0
-        ? { compatibility_flags: paths.compatibilityFlags }
-        : {}),
-      send_metrics: false,
-      d1_databases: [
-        {
-          binding: "DB",
-          database_name: "tanikun-sync-harness",
-          database_id: "00000000-0000-0000-0000-000000000000",
-          migrations_dir: paths.migrationsDir,
-        },
-      ],
-      dev: { ip: "127.0.0.1", port: 0 },
-    };
-    await writeFile(configPath, `${JSON.stringify(generated, null, 2)}\n`);
+    let configPath = paths.configPath;
+    if (!configPath) {
+      configPath = join(this.tempDir, "wrangler.jsonc");
+      const generated = {
+        name: "tanikun-sync-harness",
+        main: paths.main,
+        compatibility_date: paths.compatibilityDate,
+        ...(paths.compatibilityFlags.length > 0
+          ? { compatibility_flags: paths.compatibilityFlags }
+          : {}),
+        send_metrics: false,
+        d1_databases: [
+          {
+            binding: "DB",
+            database_name: "tanikun-sync-harness",
+            database_id: "00000000-0000-0000-0000-000000000000",
+            migrations_dir: paths.migrationsDir,
+          },
+        ],
+        dev: { ip: "127.0.0.1", port: 0 },
+      };
+      await writeFile(configPath, `${JSON.stringify(generated, null, 2)}\n`);
+    }
     this.#assertOpen("startup");
 
-    await this.#applyMigrations(configPath);
+    await this.#applyMigrations(configPath, paths.cwd);
     this.#assertOpen("startup");
-    await this.#startWrangler(configPath);
+    await this.#startWrangler(configPath, paths.cwd);
     this.#assertOpen("startup");
     this.started = true;
   }
@@ -437,6 +878,7 @@ export class SyncHarness {
       "API wrangler.jsonc (run just build or point TANIKUN_API_DIST at a packaged API)",
     );
     const config = parseJsonc(await readFile(configPath, "utf8"));
+    if (this.options.packaged) assertPackagedRuntimeConfig(config, configPath);
     if (typeof config.main !== "string" || config.main.length === 0)
       throw new Error(`API config has no main entry: ${configPath}`);
     if (
@@ -451,10 +893,10 @@ export class SyncHarness {
     if (!database || typeof database.migrations_dir !== "string") {
       throw new Error(`API config has no DB migrations_dir: ${configPath}`);
     }
-    const main = resolve(this.options.apiRoot, config.main);
-    const migrationsDir = resolve(
-      this.options.apiRoot,
+    const main = this.#artifactPath(config.main, "main");
+    const migrationsDir = this.#artifactPath(
       database.migrations_dir,
+      "migrations_dir",
     );
     await requireFile(main, "Worker bridge");
     await requireFile(
@@ -483,11 +925,26 @@ export class SyncHarness {
     return {
       main,
       migrationsDir,
+      configPath: this.options.packaged ? configPath : null,
+      cwd: this.options.packaged ? this.options.apiRoot : this.tempDir,
       compatibilityDate: config.compatibility_date,
       compatibilityFlags: Array.isArray(config.compatibility_flags)
         ? config.compatibility_flags
         : [],
     };
+  }
+
+  #artifactPath(value, description) {
+    const path = resolve(this.options.apiRoot, value);
+    if (
+      path !== this.options.apiRoot &&
+      !path.startsWith(this.options.apiRoot + sep)
+    ) {
+      throw new Error(
+        `API config ${description} must stay inside the artifact: ${value}`,
+      );
+    }
+    return path;
   }
 
   #environment(kind) {
@@ -508,7 +965,7 @@ export class SyncHarness {
     };
   }
 
-  async #applyMigrations(configPath) {
+  async #applyMigrations(configPath, cwd) {
     const label = "D1 migration";
     const args = [
       wranglerBin,
@@ -524,7 +981,7 @@ export class SyncHarness {
     ];
     try {
       const output = await this.#runCommand(label, args, {
-        cwd: this.tempDir,
+        cwd,
         env: this.#environment("migration"),
         timeoutMs: this.options.migrationTimeoutMs,
       });
@@ -595,7 +1052,7 @@ export class SyncHarness {
     }
   }
 
-  async #startWrangler(configPath) {
+  async #startWrangler(configPath, cwd) {
     this.#assertOpen("Wrangler startup");
     const mapping = Object.fromEntries(
       SYNC_IDENTITIES.map(({ token, ownerId }) => [token, ownerId]),
@@ -625,7 +1082,7 @@ export class SyncHarness {
       `DEV_AUTH_IDENTITIES:${JSON.stringify(mapping)}`,
     ];
     const child = spawn(process.execPath, args, {
-      cwd: this.tempDir,
+      cwd,
       env: this.#environment("dev"),
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
@@ -633,21 +1090,19 @@ export class SyncHarness {
     this.wrangler = child;
     this.wranglerPid = child.pid ?? null;
     this.ownedChildren.add(child);
-    this.wranglerLogStream = createWriteStream(
-      join(this.evidenceDir, "wrangler.log"),
-      { flags: "a" },
+    this.wranglerLog = new WranglerLogSink(
+      createWriteStream(join(this.evidenceDir, "wrangler.log"), {
+        flags: "a",
+      }),
     );
+    this.wranglerLog.attach(child);
     let output = "";
-    const record = (data) => {
+    child.stdout.on("data", (data) => {
       output += data;
-      this.wranglerLogBuffer += data.toString();
-      const lines = this.wranglerLogBuffer.split("\n");
-      this.wranglerLogBuffer = lines.pop();
-      for (const line of lines)
-        this.wranglerLogStream.write(`${redactLogText(line)}\n`);
-    };
-    child.stdout.on("data", record);
-    child.stderr.on("data", record);
+    });
+    child.stderr.on("data", (data) => {
+      output += data;
+    });
 
     const origin = await this.#waitForReady(child, () => output);
     this.#assertOpen("Wrangler startup");
@@ -867,9 +1322,19 @@ export class SyncHarness {
     });
   }
 
-  async #newPage(identityName, viewport, { traceName } = {}) {
+  async #newPage(
+    identityName,
+    viewport,
+    { traceName, attachFailureState = false } = {},
+  ) {
     this.#assertStarted();
     const identity = identityFor(identityName);
+    const failureState = {
+      context: null,
+      page: null,
+      errors: [],
+      tracingStarted: false,
+    };
     const browser = await this.#browserInstance();
     this.#assertOpen("browser context creation");
     const context = await this.#acquire(
@@ -884,12 +1349,17 @@ export class SyncHarness {
           this.#disposeLate("browser context", () => created.close()),
       },
     );
+    failureState.context = context;
     try {
-      if (traceName)
+      if (traceName) {
         await context.tracing.start({ screenshots: true, snapshots: true });
+        failureState.tracingStarted = true;
+      }
       this.#assertOpen("page creation");
       const page = await context.newPage();
+      failureState.page = page;
       const errors = [];
+      failureState.errors = errors;
       page.on("pageerror", (error) => errors.push(error.message));
       page.on("console", (message) => {
         if (message.type() === "error") errors.push(message.text());
@@ -909,8 +1379,17 @@ export class SyncHarness {
       this.#assertOpen("page navigation");
       return { context, page, errors };
     } catch (error) {
-      this.contexts.delete(context);
-      await context.close().catch(() => {});
+      if (attachFailureState) {
+        if (error && typeof error === "object") {
+          error.syncHarnessFailureState = failureState;
+        } else {
+          this.contexts.delete(context);
+          await context.close().catch(() => {});
+        }
+      } else {
+        this.contexts.delete(context);
+        await context.close().catch(() => {});
+      }
       throw error;
     }
   }
@@ -921,50 +1400,94 @@ export class SyncHarness {
 
   async runJourney(name, identityName, drive, { viewport } = {}) {
     this.#assertStarted();
-    const { context, page, errors } = await this.#newPage(
-      identityName,
-      viewport,
-      { traceName: name },
-    );
+    let context = null;
+    let failureState = null;
     try {
+      let page;
+      let errors;
+      try {
+        ({ context, page, errors } = await this.#newPage(
+          identityName,
+          viewport,
+          { traceName: name, attachFailureState: true },
+        ));
+      } catch (error) {
+        failureState = error.syncHarnessFailureState ?? {
+          context: null,
+          page: null,
+          errors: [],
+          tracingStarted: false,
+        };
+        context = failureState.context;
+        await this.#writeJourneyFailure(name, failureState, error);
+        throw error;
+      }
       try {
         await drive(page, errors);
         if (errors.length > 0)
           throw new Error(`browser errors: ${errors.join("; ")}`);
-        await context.tracing.stop({
-          path: join(this.evidenceDir, `${name}-trace.zip`),
-        });
+        await this.#stopSafeTrace(context, name, "trace");
       } catch (error) {
-        await this.#writeEvidence(
-          `${name}-failure.log`,
-          `${error.stack ?? String(error)}\npage errors: ${JSON.stringify(errors)}\n`,
+        await this.#writeJourneyFailure(
+          name,
+          { context, page, errors, tracingStarted: true },
+          error,
         );
-        try {
-          await page.screenshot({
-            path: join(this.evidenceDir, `${name}-failure.png`),
-            fullPage: true,
-          });
-        } catch (screenshotError) {
-          await this.#appendEvidence(
-            `${name}-failure.log`,
-            `screenshot failed: ${screenshotError.message}\n`,
-          );
-        }
-        try {
-          await context.tracing.stop({
-            path: join(this.evidenceDir, `${name}-failure-trace.zip`),
-          });
-        } catch (traceError) {
-          await this.#appendEvidence(
-            `${name}-failure.log`,
-            `trace failed: ${traceError.message}\n`,
-          );
-        }
         throw error;
       }
     } finally {
-      this.contexts.delete(context);
-      await context.close().catch(() => {});
+      if (context) {
+        this.contexts.delete(context);
+        await context.close().catch(() => {});
+      }
+    }
+  }
+
+  async #stopSafeTrace(context, name, suffix) {
+    const rawPath = join(this.tempDir, `raw-${name}-${suffix}.zip`);
+    const evidencePath = join(this.evidenceDir, `${name}-${suffix}.zip`);
+    try {
+      await context.tracing.stop({ path: rawPath });
+      await sanitizeTraceArchive(rawPath, evidencePath);
+    } finally {
+      await rm(rawPath, { force: true }).catch(() => {});
+    }
+  }
+
+  async #writeJourneyFailure(name, state, error) {
+    const errors = state.errors ?? [];
+    try {
+      await this.#writeEvidence(
+        `${name}-failure.log`,
+        redactEvidenceText(
+          `${error?.stack ?? String(error)}\npage errors: ${JSON.stringify(errors)}\n`,
+        ),
+      );
+    } catch (writeError) {
+      this.cleanupProblems.push(`failure log: ${writeError.message}`);
+    }
+    if (state.page) {
+      try {
+        await state.page.screenshot({
+          path: join(this.evidenceDir, `${name}-failure.png`),
+          fullPage: true,
+        });
+      } catch (screenshotError) {
+        await this.#appendEvidence(
+          `${name}-failure.log`,
+          redactEvidenceText(`screenshot failed: ${screenshotError.message}\n`),
+        ).catch(() => {});
+      }
+    }
+    if (state.context && state.tracingStarted) {
+      try {
+        await this.#stopSafeTrace(state.context, name, "failure-trace");
+      } catch (traceError) {
+        await this.#appendEvidence(
+          `${name}-failure.log`,
+          redactEvidenceText(`trace failed: ${traceError.message}\n`),
+        ).catch(() => {});
+      }
     }
   }
 
@@ -1114,14 +1637,16 @@ export class SyncHarness {
         this.cleanupProblems.push(`owned command cleanup: ${error.message}`);
       }
     }
-    const logStream = this.wranglerLogStream;
-    this.wranglerLogStream = null;
-    if (logStream) {
-      if (this.wranglerLogBuffer) {
-        logStream.write(redactLogText(this.wranglerLogBuffer));
-        this.wranglerLogBuffer = "";
+    const logSink = this.wranglerLog;
+    this.wranglerLog = null;
+    if (logSink) {
+      try {
+        await logSink.finish(wrangler, 2_000);
+      } catch (error) {
+        this.cleanupProblems.push(`Wrangler log close: ${error.message}`);
       }
-      await new Promise((resolvePromise) => logStream.end(resolvePromise));
+      for (const message of logSink.errorMessages)
+        this.cleanupProblems.push(`Wrangler log stream: ${message}`);
     }
     const server = this.server;
     this.server = null;

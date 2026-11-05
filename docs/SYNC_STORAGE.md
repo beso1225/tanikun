@@ -176,12 +176,34 @@ HTTP modules, all migrations, the shared sync contract, and the built MoonBit
 module. When both variables are set, the command does not rebuild from source.
 Setting only one is an error.
 
+The packaged `api` output contains a runtime `wrangler.jsonc` derived from the
+source configuration without `build`, `watch_dir`, or the source schema path.
+The harness consumes that file directly in packaged mode: it does not synthesize
+a replacement config or fall back to the repository root. A package that still
+contains source build hooks is rejected before startup. The source
+`wrangler.jsonc` keeps its Moon build and watch settings for local development.
+The release test checks the packaged config and a writable copy of the artifact
+passes `wrangler deploy --dry-run`; CI also starts the real Worker and D1 from
+the same packaged config.
+
 Each run writes Wrangler, migration, and harness evidence under
-`.cache/verify/sync/<run>/`. A browser journey also writes its trace; a failed
-journey writes a screenshot and failure log. The temporary persistence directory
-and owned process group are removed after success or failure; evidence is kept.
-Linux CI runs the same command against Nix-built artifacts and uploads this
-directory when the job fails.
+`.cache/verify/sync/<run>/`. Wrangler output is redacted and its stdout/stderr
+drain before the log stream closes, including a delayed final line. A browser
+journey retains a redacted trace archive; a failed journey also writes a
+screenshot and failure log. The raw Playwright
+trace stays in the temporary directory and is deleted. The retained archive is
+rebuilt from an allowlist: it keeps the action timeline and sanitized network
+method/status/timing metadata, but no request or response headers, cookies,
+bodies, document identifiers, init-script arguments, console text, DOM
+snapshots, screencast frames, or source stacks. This tradeoff intentionally
+drops Playwright's DOM time travel and visual network detail; the failure log
+and screenshot remain the human-readable evidence. If trace sanitization fails,
+the raw trace is not retained and the failure log records the error. Page
+creation, initialization, and navigation failures follow the same failure-log,
+screenshot (when a page exists), and trace path. The temporary persistence
+directory and owned process group are removed after success or failure;
+evidence is kept. Linux CI runs the same command against Nix-built artifacts
+and uploads this directory when the job fails.
 
 ## Local evidence
 

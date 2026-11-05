@@ -12,6 +12,7 @@ import {
   identityToken,
   pathExists,
   processGroupExists,
+  readTraceArchiveEntries,
   waitForSync,
 } from "./sync-harness.mjs";
 
@@ -246,6 +247,17 @@ test(
     assert.ok(
       await pathExists(join(harness.evidenceDir, "browser-plumbing-trace.zip")),
     );
+    const trace = await readTraceArchiveEntries(
+      join(harness.evidenceDir, "browser-plumbing-trace.zip"),
+    );
+    assert.deepEqual([...trace.keys()].toSorted(), [
+      "trace.network",
+      "trace.trace",
+    ]);
+    const traceText = [...trace.values()].join("\n");
+    assert.equal(traceText.includes(identityToken("alice")), false);
+    assert.equal(traceText.includes(documentId), false);
+    assert.equal(traceText.includes("Authorization"), false);
   },
 );
 
@@ -282,6 +294,12 @@ test(
       ),
       /injected journey failure/,
     );
+    const trace = await readTraceArchiveEntries(
+      join(harness.evidenceDir, "injected-failure-failure-trace.zip"),
+    );
+    const traceText = [...trace.values()].join("\n");
+    assert.equal(traceText.includes(identityToken("alice")), false);
+    assert.equal(traceText.includes("Authorization"), false);
 
     await harness.close();
     assert.equal(harness.activeContexts, 0);
