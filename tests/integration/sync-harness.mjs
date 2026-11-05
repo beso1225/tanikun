@@ -1684,7 +1684,7 @@ export class SyncHarness {
 
   async #writeEvidence(name, text) {
     if (!this.evidenceDir) return;
-    await writeFile(join(this.evidenceDir, name), text);
+    await writeFile(join(this.evidenceDir, name), redactEvidenceText(text));
   }
 
   async #appendEvidence(name, text) {
@@ -1693,6 +1693,6 @@ export class SyncHarness {
     const existing = (await pathExists(path))
       ? await readFile(path, "utf8")
       : "";
-    await writeFile(path, existing + text);
+    await writeFile(path, redactEvidenceText(existing + text));
   }
 }
