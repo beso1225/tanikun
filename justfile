@@ -40,7 +40,7 @@ test: build
         -p beso1225/tanikun-requirements \
         -p beso1225/tanikun-web/app \
         -p beso1225/tanikun-web/cmd/browser
-    node --test tests/integration/moonbit-export.test.mjs
+    node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs
     node --test tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs
 
 # Apply versioned sync migrations to the local D1 database only.
