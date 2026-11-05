@@ -3,6 +3,12 @@ import test from "node:test";
 
 import { waitForPersistence } from "./planner-harness.mjs";
 import {
+  addCustomCourse,
+  addOffering,
+  apiGlob,
+  installApiGate,
+} from "./sync-browser-helpers.mjs";
+import {
   armPlannerPutAbort,
   assertConverged,
   canonicalSource,
@@ -21,7 +27,6 @@ import {
 } from "./sync-harness.mjs";
 import { sqlQuote } from "./sync-http-faults.mjs";
 
-const apiGlob = "**/api/v1/**";
 const changesGlob = "**/api/v1/sync/documents/*/changes*";
 const failedRequest = "Failed to load resource: net::ERR_FAILED";
 const connectionReset = "Failed to load resource: net::ERR_CONNECTION_RESET";
@@ -39,32 +44,9 @@ const statusFault = (status, text, reason) => ({
   count: 1,
   reason,
 });
-async function installApiGate(page) {
-  const gate = { offline: false };
-  await page.route(apiGlob, async (route) => {
-    if (gate.offline) await route.abort("failed");
-    else await route.continue();
-  });
-  return gate;
-}
 
 async function lastSyncStatus(page) {
   return page.evaluate(() => globalThis.tanikunSyncShell.history.at(-1));
-}
-
-async function addOffering(page, offeringId) {
-  await page.locator("#open-catalogue-picker").click();
-  await page.locator(`#add-offering-${offeringId}`).click();
-  await page.locator("#close-picker").click();
-}
-
-async function addCustomCourse(page, name) {
-  await page.locator("#open-catalogue-picker").click();
-  await page.locator("#open-custom-course").click();
-  await page.locator("#custom-name").fill(name);
-  await page.locator("#custom-category").selectOption("lab");
-  await page.locator("#custom-submit").click();
-  await page.locator("#close-picker").click();
 }
 
 async function withPair(harness, name, expectedFaults, drive) {
