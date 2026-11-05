@@ -5,6 +5,12 @@ import test from "node:test";
 
 import { waitForPersistence } from "./planner-harness.mjs";
 import {
+  addCustomCourse,
+  addOffering,
+  apiGlob,
+  installApiGate,
+} from "./sync-browser-helpers.mjs";
+import {
   assertConverged,
   canonicalSource,
   readD1State,
@@ -23,31 +29,6 @@ import {
 } from "./sync-harness.mjs";
 
 const canary = "Sync plaintext canary 145";
-const offlineRoute = "**/api/v1/**";
-
-function installApiGate(page) {
-  const gate = { offline: false };
-  const ready = page.route(offlineRoute, async (route) => {
-    if (gate.offline) await route.abort("failed");
-    else await route.continue();
-  });
-  return { gate, ready };
-}
-
-async function addOffering(page, offeringId) {
-  await page.locator("#open-catalogue-picker").click();
-  await page.locator(`#add-offering-${offeringId}`).click();
-  await page.locator("#close-picker").click();
-}
-
-async function addCustomCourse(page, name) {
-  await page.locator("#open-catalogue-picker").click();
-  await page.locator("#open-custom-course").click();
-  await page.locator("#custom-name").fill(name);
-  await page.locator("#custom-category").selectOption("lab");
-  await page.locator("#custom-submit").click();
-  await page.locator("#close-picker").click();
-}
 
 function sortedHeads(state) {
   return state.heads.toSorted();
@@ -69,7 +50,7 @@ test(
           label: "bob",
           identity: "alice",
           beforeGoto: async (page) => {
-            await page.route(offlineRoute, (route) => route.abort("failed"));
+            await page.route(apiGlob, (route) => route.abort("failed"));
           },
         },
       ],
@@ -122,7 +103,7 @@ test(
           [],
         );
 
-        await bobPage.unroute(offlineRoute);
+        await bobPage.unroute(apiGlob);
         await bobPage.locator("#sync-retry").click();
         await waitForSync(bobPage, "同期済み", 30_000);
         const bobAdopted = await readPlannerState(bobPage, {
@@ -149,11 +130,12 @@ test(
           "B after reload",
         );
 
-        const aliceGate = installApiGate(alicePage);
-        const bobGate = installApiGate(bobPage);
-        await Promise.all([aliceGate.ready, bobGate.ready]);
-        aliceGate.gate.offline = true;
-        bobGate.gate.offline = true;
+        const [aliceGate, bobGate] = await Promise.all([
+          installApiGate(alicePage),
+          installApiGate(bobPage),
+        ]);
+        aliceGate.offline = true;
+        bobGate.offline = true;
 
         const aliceOffering = "phy302-s";
         await addOffering(alicePage, aliceOffering);
@@ -189,8 +171,8 @@ test(
           "Bob offline edit survived reload",
         );
 
-        aliceGate.gate.offline = false;
-        bobGate.gate.offline = false;
+        aliceGate.offline = false;
+        bobGate.offline = false;
         await alicePage.locator("#sync-retry").click();
         await waitForSync(alicePage, "同期済み", 30_000);
         await bobPage.locator("#sync-retry").click();
