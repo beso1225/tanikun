@@ -3,10 +3,13 @@ import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import {
   access,
+  chmod,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   writeFile,
@@ -14,7 +17,7 @@ import {
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 import { finished } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 
@@ -694,9 +697,9 @@ function startWebServer(root) {
       response.writeHead(204).end();
       return;
     }
-    const relative =
+    const relativePath =
       pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-    const file = resolve(root, relative);
+    const file = resolve(root, relativePath);
     if (file !== root && !file.startsWith(root + sep)) {
       response.writeHead(403).end();
       return;
@@ -734,6 +737,15 @@ function startWebServer(root) {
 async function requireFile(path, description) {
   if (!(await pathExists(path)))
     throw new Error(`missing ${description}: ${path}`);
+}
+
+async function makeTreeWritable(root) {
+  await chmod(root, 0o755);
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) await makeTreeWritable(path);
+    else if (!entry.isSymbolicLink()) await chmod(path, 0o644);
+  }
 }
 
 export class SyncHarness {
@@ -821,8 +833,12 @@ export class SyncHarness {
     );
     this.#assertOpen("startup");
 
-    const paths = await this.#readArtifact();
+    let paths = await this.#readArtifact();
     this.#assertOpen("startup");
+    if (this.options.packaged) {
+      paths = await this.#preparePackagedArtifact(paths);
+      this.#assertOpen("startup");
+    }
 
     await requireFile(join(this.options.webDist, "index.html"), "web index");
     for (const file of [
@@ -949,6 +965,28 @@ export class SyncHarness {
       );
     }
     return path;
+  }
+
+  async #preparePackagedArtifact(paths) {
+    const runtimeRoot = join(this.tempDir, "api");
+    await cp(await realpath(this.options.apiRoot), runtimeRoot, {
+      recursive: true,
+    });
+    await makeTreeWritable(runtimeRoot);
+    const relocate = (path) => {
+      const relativePath = relative(this.options.apiRoot, path);
+      if (relativePath.startsWith("..") || relativePath === "") {
+        throw new Error(`API artifact path is not relocatable: ${path}`);
+      }
+      return join(runtimeRoot, relativePath);
+    };
+    return {
+      ...paths,
+      main: relocate(paths.main),
+      migrationsDir: relocate(paths.migrationsDir),
+      configPath: relocate(paths.configPath),
+      cwd: runtimeRoot,
+    };
   }
 
   #environment(kind) {
