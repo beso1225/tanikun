@@ -119,6 +119,7 @@ test(
   { timeout: 180_000 },
   async (t) => {
     const first = new SyncHarness();
+    t.after(() => first.close());
     await first.start();
     const firstOrigin = first.apiOrigin;
     const firstDocument = await first.bootstrap("alice");
