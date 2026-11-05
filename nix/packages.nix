@@ -129,7 +129,7 @@ let
       moon fmt --check
       moon check --frozen --target js --deny-warn
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-api
-      node --test tests/integration/moonbit-export.test.mjs
+      node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs
     '';
     # Keep the bridge's relative imports intact; no npm/runtime dependency is needed.
     # Include every production module, migration, and a runtime config that does
@@ -146,7 +146,7 @@ let
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
       node --input-type=module <<'NODE'
       import { readFileSync, writeFileSync } from "node:fs";
-      import { parseJsonc } from "./tests/integration/sync-harness.mjs";
+      import { parseJsonc } from "./scripts/parse-jsonc.mjs";
       const config = parseJsonc(readFileSync("wrangler.jsonc", "utf8"));
       delete config.build;
       delete config.watch_dir;
