@@ -417,7 +417,11 @@ function sanitizeTraceUrl(value) {
     url.password = "";
     url.search = "";
     url.hash = "";
-    return `${url.origin}${redactEvidenceText(url.pathname)}`;
+    const pathname = url.pathname.replace(
+      /(\/api\/v1\/sync\/documents\/)[^/]+/g,
+      "$1<document-id>",
+    );
+    return `${url.origin}${redactEvidenceText(pathname)}`;
   } catch {
     return truncateEvidence(redactEvidenceText(value), 2_000);
   }
