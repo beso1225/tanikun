@@ -24,6 +24,7 @@ import {
   pathExists,
   preparePackagedArtifact,
   readTraceArchiveEntries,
+  redactEvidenceText,
   sanitizeTraceArchive,
 } from "./sync-harness.mjs";
 
@@ -388,7 +389,7 @@ async function writeZip(path, entries) {
 }
 
 const TRACE_TOKEN = "retained-trace-token-alice";
-const TRACE_DOCUMENT_ID = "123e4567-e89b-42d3-a456-426614174000";
+const TRACE_DOCUMENT_ID = "non-uuid-private-document";
 const TRACE_CHANGE_ID = "a".repeat(64);
 const TRACE_PAYLOAD = "planner-payload-secret";
 const TRACE_ENVELOPE = JSON.stringify({
@@ -722,7 +723,9 @@ test(
 
     const finishing = sink.finish(child, 5_000);
     setImmediate(() => {
-      child.stdout.write("delayed final line\n");
+      child.stdout.write(
+        "delayed final line /api/v1/sync/documents/non-uuid-private-document/changes\n",
+      );
       child.stdout.end();
       child.stderr.end();
       child.closed = true;
@@ -735,6 +738,8 @@ test(
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
     const text = await readFile(logPath, "utf8");
     assert.match(text, /delayed final line/);
+    assert.equal(text.includes("non-uuid-private-document"), false);
+    assert.match(text, /documents\/<document-id>\/changes/);
     assert.doesNotMatch(text, /late output after close/);
     assert.deepEqual(sink.errorMessages, []);
   },
@@ -978,4 +983,15 @@ test("the harness is one-shot after close", async () => {
   await harness.close();
   await assert.rejects(harness.start(), /closed/);
   assert.equal(harness.started, false);
+});
+
+test("evidence redaction removes non-UUID document route identifiers", () => {
+  for (const text of [
+    "GET /api/v1/sync/documents/non-uuid-private-document/changes?after=0",
+    "navigation failed: http://127.0.0.1:1/api/v1/sync/documents/non-uuid-private-document/changes",
+  ]) {
+    const safe = redactEvidenceText(text);
+    assert.equal(safe.includes("non-uuid-private-document"), false);
+    assert.match(safe, /documents\/<document-id>\/changes/);
+  }
 });

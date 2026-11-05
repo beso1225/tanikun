@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import test from "node:test";
@@ -95,6 +95,15 @@ test(
     assert.equal(foreignOwn.status, 404);
     assert.deepEqual(foreignOwn.json(), { error: { code: "not_found" } });
 
+    assert.ok(
+      await pathExists(join(harness.tempDir, "migration-wrangler-internal")),
+    );
+    assert.equal(
+      (await readdir(harness.evidenceDir)).some((name) =>
+        name.includes("wrangler-internal"),
+      ),
+      false,
+    );
     await harness.close();
     assert.equal(await pathExists(harness.tempDir), false);
     assert.ok(await pathExists(join(harness.evidenceDir, "migration.log")));

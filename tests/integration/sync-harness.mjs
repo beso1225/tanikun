@@ -71,6 +71,7 @@ export function redactEvidenceText(text) {
   }
   return redacted
     .replace(/\bBearer\s+\S+/gi, "Bearer <redacted>")
+    .replace(/(\/api\/v1\/sync\/documents\/)[^/\s?#"'<>]+/g, "$1<document-id>")
     .replace(
       /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
       "<document-id>",
@@ -420,11 +421,7 @@ function sanitizeTraceUrl(value) {
     url.password = "";
     url.search = "";
     url.hash = "";
-    const pathname = url.pathname.replace(
-      /(\/api\/v1\/sync\/documents\/)[^/]+/g,
-      "$1<document-id>",
-    );
-    return `${url.origin}${redactEvidenceText(pathname)}`;
+    return `${url.origin}${redactEvidenceText(url.pathname)}`;
   } catch {
     return truncateEvidence(redactEvidenceText(value), 2_000);
   }
@@ -1001,7 +998,7 @@ export class SyncHarness {
       XDG_CONFIG_HOME: join(this.tempDir, "config"),
       XDG_CACHE_HOME: join(this.tempDir, "cache"),
       WRANGLER_SEND_METRICS: "false",
-      WRANGLER_LOG_PATH: join(this.evidenceDir, `${kind}-wrangler-internal`),
+      WRANGLER_LOG_PATH: join(this.tempDir, `${kind}-wrangler-internal`),
       BROWSER: "none",
       NO_COLOR: "1",
       FORCE_COLOR: "0",
