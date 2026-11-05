@@ -33,6 +33,7 @@ let
       ../package.json
       ../pnpm-lock.yaml
       ../pnpm-workspace.yaml
+      ../wrangler.jsonc
     ];
   };
   pnpmDeps = pkgs.fetchPnpmDeps {
@@ -131,13 +132,30 @@ let
       node --test tests/integration/moonbit-export.test.mjs
     '';
     # Keep the bridge's relative imports intact; no npm/runtime dependency is needed.
+    # Include every production module, migration, and a runtime config that does
+    # not depend on the source tree's Moon project. The source config keeps its
+    # build/watch hooks for local development; the packaged copy strips them and
+    # the missing schema path so Wrangler can start inside the Nix output.
     installPhase = ''
-      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
-      cp apps/api/bridges/worker.mjs "$out/apps/api/bridges/"
+      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
+      cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
       cp apps/api/http/*.mjs "$out/apps/api/http/"
       cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
+      cp apps/api/migrations/*.sql "$out/apps/api/migrations/"
       cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
+      node --input-type=module <<'NODE'
+      import { readFileSync, writeFileSync } from "node:fs";
+      import { parseJsonc } from "./tests/integration/sync-harness.mjs";
+      const config = parseJsonc(readFileSync("wrangler.jsonc", "utf8"));
+      delete config.build;
+      delete config.watch_dir;
+      delete config.$schema;
+      writeFileSync(
+        process.env.out + "/wrangler.jsonc",
+        JSON.stringify(config, null, 2) + "\n",
+      );
+      NODE
     '';
   };
   pure = pkgs.stdenvNoCC.mkDerivation {

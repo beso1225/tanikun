@@ -154,6 +154,61 @@ dependencies, cursor rollback, page-commit failure and retry, stale-planner
 CAS, oversized-batch splitting, server gaps, discard, Web Lock use, retry and
 `Retry-After`, bootstrap, and status callbacks.
 
+## End-to-end sync harness
+
+`nix develop -c just test-sync` builds the static page and API, applies the D1
+migrations to an isolated temporary persistence directory, starts the real
+Worker bridge with Wrangler on an ephemeral port, serves the built page on
+`http://127.0.0.1:4300`, and runs the harness self-tests and browser journey. The
+API URL from Wrangler readiness and the selected Alice or Bob dev identity are
+injected before page modules load through
+`globalThis["__TANIKUN_SYNC_CONFIG__"]`.
+
+The page origin is fixed at `http://127.0.0.1:4300` because ADR-0014 allows
+exactly that Origin. The harness fails with a clear message when the port is
+occupied and never reuses or stops the existing listener. The API port is never
+hardcoded.
+
+Set both `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST` to run the same harness
+against prebuilt artifacts. The values are roots of the Nix `web` and `api`
+outputs. `TANIKUN_API_DIST` must contain `wrangler.jsonc`, the Worker bridge and
+HTTP modules, all migrations, the shared sync contract, and the built MoonBit
+module. When both variables are set, the command does not rebuild from source.
+Setting only one is an error.
+
+The packaged `api` output contains a runtime `wrangler.jsonc` derived from the
+source configuration without `build`, `watch_dir`, or the source schema path.
+The harness copies the packaged API into the run's writable temporary directory
+and consumes that copy of `wrangler.jsonc` directly: it does not synthesize a
+replacement config or fall back to the repository root. The copy is required
+because Wrangler creates `.wrangler/tmp` beside the config, and a Nix store
+output is read-only. A package that still
+contains source build hooks is rejected before startup. The source
+`wrangler.jsonc` keeps its Moon build and watch settings for local development.
+The release test checks the packaged config and a writable copy of the artifact
+passes `wrangler deploy --dry-run`; CI also starts the real Worker and D1 from
+the same packaged config.
+
+Each run writes Wrangler, migration, and harness evidence under
+`.cache/verify/sync/<run>/`. Wrangler output is redacted and its stdout/stderr
+drain before the log stream closes, including a delayed final line. A browser
+journey retains a redacted trace archive; a failed journey also writes a
+screenshot and failure log. The raw Playwright
+trace stays in the temporary directory and is deleted. The retained archive is
+rebuilt from an allowlist: it keeps the action timeline and sanitized network
+method/status/timing metadata, but no request or response headers, cookies,
+bodies, document identifiers, init-script arguments, console text, DOM
+snapshots, screencast frames, or source stacks. This tradeoff intentionally
+drops Playwright's DOM time travel and visual network detail; the failure log
+and screenshot remain the human-readable evidence. The rebuild is bounded by
+entry size and event count. If trace sanitization fails or exceeds a bound, the
+raw trace is not retained and the failure log records the error. Page
+creation, initialization, and navigation failures follow the same failure-log,
+screenshot (when a page exists), and trace path. The temporary persistence
+directory and owned process group are removed after success or failure;
+evidence is kept. Linux CI runs the same command against Nix-built artifacts
+and uploads this directory when the job fails.
+
 ## Local evidence
 
 `just test-d1` builds the API and runs the repository, shared-contract, and
