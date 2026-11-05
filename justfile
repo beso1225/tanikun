@@ -102,13 +102,13 @@ test-sync:
     @if [ -n "${TANIKUN_WEB_DIST:-}" ] && [ -n "${TANIKUN_API_DIST:-}" ]; then \
         echo "Using prebuilt TANIKUN_WEB_DIST and TANIKUN_API_DIST"; \
     elif [ -z "${TANIKUN_WEB_DIST:-}" ] && [ -z "${TANIKUN_API_DIST:-}" ]; then \
-        just build-web; \
+        just build-web && \
         just build; \
     else \
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/sync-journey.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-journey.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
