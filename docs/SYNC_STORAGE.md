@@ -154,6 +154,35 @@ dependencies, cursor rollback, page-commit failure and retry, stale-planner
 CAS, oversized-batch splitting, server gaps, discard, Web Lock use, retry and
 `Retry-After`, bootstrap, and status callbacks.
 
+## End-to-end sync harness
+
+`nix develop -c just test-sync` builds the static page and API, applies the D1
+migrations to an isolated temporary persistence directory, starts the real
+Worker bridge with Wrangler on an ephemeral port, serves the built page on
+`http://127.0.0.1:4300`, and runs the harness self-tests and browser journey. The
+API URL from Wrangler readiness and the selected Alice or Bob dev identity are
+injected before page modules load through
+`globalThis["__TANIKUN_SYNC_CONFIG__"]`.
+
+The page origin is fixed at `http://127.0.0.1:4300` because ADR-0014 allows
+exactly that Origin. The harness fails with a clear message when the port is
+occupied and never reuses or stops the existing listener. The API port is never
+hardcoded.
+
+Set both `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST` to run the same harness
+against prebuilt artifacts. The values are roots of the Nix `web` and `api`
+outputs. `TANIKUN_API_DIST` must contain `wrangler.jsonc`, the Worker bridge and
+HTTP modules, all migrations, the shared sync contract, and the built MoonBit
+module. When both variables are set, the command does not rebuild from source.
+Setting only one is an error.
+
+Each run writes Wrangler, migration, and harness evidence under
+`.cache/verify/sync/<run>/`. A browser journey also writes its trace; a failed
+journey writes a screenshot and failure log. The temporary persistence directory
+and owned process group are removed after success or failure; evidence is kept.
+Linux CI runs the same command against Nix-built artifacts and uploads this
+directory when the job fails.
+
 ## Local evidence
 
 `just test-d1` builds the API and runs the repository, shared-contract, and
