@@ -220,8 +220,12 @@ and the single-document journey.
 The harness supports these suites with `runJourneyGroup`, which gives each
 isolated context its own trace, screenshot, and failure log, and with
 `d1`/`d1Query`, which run Wrangler against the same isolated persistence
-directory. D1 mutation is limited to fault setup; normal reads and writes still
-go through the production Worker bridge and request path.
+directory. A browser journey declares each expected injected fault with its
+kind, exact text or pattern, count, and reason. The harness accepts only those
+records and still fails on an unaccounted page error or console error. The
+retained log includes the raw error array and the accepted fault reasons. D1
+mutation is limited to fault setup; normal reads and writes still go through
+the production Worker bridge and request path.
 
 Each run writes Wrangler, migration, and harness evidence under
 `.cache/verify/sync/<run>/`. Wrangler output is redacted and its stdout/stderr

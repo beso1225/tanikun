@@ -10,14 +10,35 @@ import {
   readD1State,
   readPlannerState,
   readSyncState,
+  syncNow,
   waitFor,
   waitForPlannerSource,
 } from "./sync-convergence-helpers.mjs";
-import { SyncHarness, waitForSync } from "./sync-harness.mjs";
+import {
+  SyncHarness,
+  acceptBrowserFaults,
+  waitForSync,
+} from "./sync-harness.mjs";
 import { sqlQuote } from "./sync-http-faults.mjs";
 
 const apiGlob = "**/api/v1/**";
 const changesGlob = "**/api/v1/sync/documents/*/changes*";
+const failedRequest = "Failed to load resource: net::ERR_FAILED";
+const connectionReset = "Failed to load resource: net::ERR_CONNECTION_RESET";
+const offlineFault = (reason) => ({
+  kind: "console",
+  text: failedRequest,
+  count: 1,
+  reason,
+});
+const statusFault = (status, text, reason) => ({
+  kind: "console",
+  text: new RegExp(
+    `^Failed to load resource: the server responded with a status of ${status} \\(${text}\\)$`,
+  ),
+  count: 1,
+  reason,
+});
 async function installApiGate(page) {
   const gate = { offline: false };
   await page.route(apiGlob, async (route) => {
@@ -25,18 +46,6 @@ async function installApiGate(page) {
     else await route.continue();
   });
   return gate;
-}
-
-async function kickSync(page) {
-  const before = await page.evaluate(
-    () => globalThis.tanikunSyncShell.history.length,
-  );
-  await page.evaluate(() => globalThis.tanikunSyncShell.sync());
-  await page.waitForFunction(
-    (length) => globalThis.tanikunSyncShell.history.length > length,
-    before,
-    { timeout: 10_000 },
-  );
 }
 
 async function lastSyncStatus(page) {
@@ -58,7 +67,7 @@ async function addCustomCourse(page, name) {
   await page.locator("#close-picker").click();
 }
 
-async function withPair(harness, name, drive) {
+async function withPair(harness, name, expectedFaults, drive) {
   await harness.runJourneyGroup(
     name,
     [
@@ -71,7 +80,7 @@ async function withPair(harness, name, drive) {
         },
       },
     ],
-    async ([alicePage, bobPage], [aliceErrors, bobErrors]) => {
+    async ([alicePage, bobPage], _errors, states) => {
       await waitForPersistence(alicePage);
       await waitForSync(alicePage, "同期済み", 30_000);
       await waitForPersistence(bobPage);
@@ -86,8 +95,8 @@ async function withPair(harness, name, drive) {
       await waitForSync(bobPage, "同期済み", 30_000);
       const gate = await installApiGate(bobPage);
       await drive(alicePage, bobPage, { document, gate });
-      assert.deepEqual(aliceErrors, []);
-      assert.deepEqual(bobErrors, []);
+      for (const state of states)
+        acceptBrowserFaults(state, expectedFaults[state.label] ?? []);
     },
   );
 }
@@ -102,6 +111,18 @@ test(
     await withPair(
       harness,
       "sync-fault-lost-response",
+      {
+        alice: [],
+        bob: [
+          offlineFault("bob started with API requests gated offline"),
+          {
+            kind: "console",
+            text: connectionReset,
+            count: 1,
+            reason: "the push response was lost after the real commit",
+          },
+        ],
+      },
       async (alicePage, bobPage, { document, gate }) => {
         const before = await readD1State(harness);
         let accepted = null;
@@ -147,7 +168,7 @@ test(
         assert.deepEqual(retried, committed);
         // A push acknowledges the outbox at the push cursor. Pull once more so
         // the merged pull cursor also covers the change this browser uploaded.
-        await kickSync(bobPage);
+        await syncNow(bobPage, "同期済み");
         await waitForSync(bobPage, "同期済み", 30_000);
         const syncState = await readSyncState(bobPage, {
           apiOrigin: harness.apiOrigin,
@@ -174,6 +195,13 @@ test(
     await withPair(
       harness,
       "sync-fault-cursor-interrupt",
+      {
+        alice: [],
+        bob: [
+          offlineFault("bob started with API requests gated offline"),
+          offlineFault("bob reloaded while the API gate was offline"),
+        ],
+      },
       async (alicePage, bobPage, { document, gate }) => {
         gate.offline = true;
         await addOffering(alicePage, "phy302-s");
@@ -280,16 +308,29 @@ test(
     await withPair(
       harness,
       "sync-fault-gap-rollback",
+      {
+        alice: [],
+        bob: [
+          offlineFault("bob started with API requests gated offline"),
+          statusFault(409, "Conflict", "the real D1 log gap was rejected"),
+          statusFault(
+            409,
+            "Conflict",
+            "the real counter rollback was rejected before local metadata moved",
+          ),
+        ],
+      },
       async (alicePage, bobPage, { document, gate }) => {
         const quotedId = sqlQuote(document.document_id);
+        const gapCourse = "Gap fixture 145";
         gate.offline = true;
-        await addOffering(alicePage, "phy103-s2");
+        await addCustomCourse(alicePage, gapCourse);
         await waitForPlannerSource(
           alicePage,
-          'source.enrollments.some((row) => row.offering_id === "phy103-s2")',
-          "Alice gap fixture offering committed",
+          `source.catalogue.some((row) => row.name === ${JSON.stringify(gapCourse)})`,
+          "Alice gap fixture custom course committed",
         );
-        await waitForSync(alicePage, "同期済み", 30_000);
+        await syncNow(alicePage, "同期済み");
         const beforeGap = await readD1State(harness);
         const gapSeq = beforeGap.changes.length;
         assert.ok(gapSeq > 0);
@@ -305,8 +346,7 @@ test(
             `DELETE FROM changes WHERE document_id = ${quotedId} AND seq = ${gapSeq}`,
           );
           gate.offline = false;
-          await kickSync(bobPage);
-          await waitForSync(bobPage, "同期エラー", 30_000);
+          await syncNow(bobPage, "同期エラー");
           assert.equal((await lastSyncStatus(bobPage)).code, "log_gap");
           const afterGap = await readPlannerState(bobPage, {
             apiOrigin: harness.apiOrigin,
@@ -330,7 +370,7 @@ test(
           );
           await harness.d1("DROP TABLE changes_backup_145");
         }
-        await kickSync(bobPage);
+        await syncNow(bobPage, "同期済み");
         await waitForSync(bobPage, "同期済み", 30_000);
         assertConverged(
           await readPlannerState(alicePage, {
@@ -344,14 +384,15 @@ test(
           "after gap repair",
         );
 
+        const rollbackCourse = "Rollback fixture 145";
         gate.offline = true;
-        await addOffering(alicePage, "phy102-s2");
+        await addCustomCourse(alicePage, rollbackCourse);
         await waitForPlannerSource(
           alicePage,
-          'source.enrollments.some((row) => row.offering_id === "phy102-s2")',
-          "Alice rollback fixture offering committed",
+          `source.catalogue.some((row) => row.name === ${JSON.stringify(rollbackCourse)})`,
+          "Alice rollback fixture custom course committed",
         );
-        await waitForSync(alicePage, "同期済み", 30_000);
+        await syncNow(alicePage, "同期済み");
         const beforeRollback = await readPlannerState(bobPage, {
           apiOrigin: harness.apiOrigin,
           documentId: document.document_id,
@@ -361,8 +402,7 @@ test(
         );
         try {
           gate.offline = false;
-          await kickSync(bobPage);
-          await waitForSync(bobPage, "同期エラー", 30_000);
+          await syncNow(bobPage, "同期エラー");
           assert.equal((await lastSyncStatus(bobPage)).code, "rollback");
           const afterRollback = await readPlannerState(bobPage, {
             apiOrigin: harness.apiOrigin,
@@ -385,7 +425,7 @@ test(
             `UPDATE documents SET last_seq = (SELECT COUNT(*) FROM changes) WHERE id = ${quotedId}`,
           );
         }
-        await kickSync(bobPage);
+        await syncNow(bobPage, "同期済み");
         await waitForSync(bobPage, "同期済み", 30_000);
         assertConverged(
           await readPlannerState(alicePage, {
@@ -429,22 +469,28 @@ test(
     await withPair(
       harness,
       "sync-fault-missing-dependency",
+      {
+        alice: [],
+        bob: [offlineFault("bob started with API requests gated offline")],
+      },
       async (alicePage, bobPage, { document, gate }) => {
+        const dependencyBase = "Dependency base 145";
+        const dependencyChild = "Dependency child 145";
         gate.offline = true;
-        await addOffering(alicePage, "phy102-s2");
+        await addCustomCourse(alicePage, dependencyBase);
         await waitForPlannerSource(
           alicePage,
-          'source.enrollments.some((row) => row.offering_id === "phy102-s2")',
-          "Alice first dependency offering committed",
+          `source.catalogue.some((row) => row.name === ${JSON.stringify(dependencyBase)})`,
+          "Alice dependency base custom course committed",
         );
-        await waitForSync(alicePage, "同期済み", 30_000);
-        await addOffering(alicePage, "phy103-s2");
+        await syncNow(alicePage, "同期済み");
+        await addCustomCourse(alicePage, dependencyChild);
         await waitForPlannerSource(
           alicePage,
-          'source.enrollments.some((row) => row.offering_id === "phy103-s2")',
-          "Alice dependent offering committed",
+          `source.catalogue.some((row) => row.name === ${JSON.stringify(dependencyChild)})`,
+          "Alice dependent custom course committed",
         );
-        await waitForSync(alicePage, "同期済み", 30_000);
+        await syncNow(alicePage, "同期済み");
         const server = await readD1State(harness);
         const beforeFailure = await readPlannerState(bobPage, {
           apiOrigin: harness.apiOrigin,
@@ -464,7 +510,16 @@ test(
           delete headers["content-length"];
           if (!mutated && body.changes.length >= 2) {
             mutated = true;
-            body.changes = body.changes.slice(1);
+            // Remove the change that the next one depends on. Keep the wire
+            // page contiguous by renumbering the remaining server sequences;
+            // the real cursor still reports the true D1 high-water so the
+            // client records it before it rejects the missing dependency.
+            body.changes = body.changes.slice(1).map((change) => ({
+              ...change,
+              server_sequence: change.server_sequence - 1,
+            }));
+            body.next_cursor = body.changes.at(-1).server_sequence;
+            body.has_more = body.next_cursor < body.cursor;
             await route.fulfill({
               status: response.status(),
               headers,
@@ -480,8 +535,7 @@ test(
         });
 
         gate.offline = false;
-        await kickSync(bobPage);
-        await waitForSync(bobPage, "同期エラー", 30_000);
+        await syncNow(bobPage, "同期エラー");
         assert.equal(
           (await lastSyncStatus(bobPage)).code,
           "missing_dependency",
@@ -509,7 +563,7 @@ test(
         assert.deepEqual(await readD1State(harness), server);
 
         await bobPage.unroute(changesGlob);
-        await kickSync(bobPage);
+        await syncNow(bobPage, "同期済み");
         await waitForSync(bobPage, "同期済み", 30_000);
         assertConverged(
           await readPlannerState(alicePage, {
@@ -538,6 +592,18 @@ test(
     await withPair(
       harness,
       "sync-fault-503-offline",
+      {
+        alice: [],
+        bob: [
+          offlineFault("bob started with API requests gated offline"),
+          statusFault(
+            503,
+            "Service Unavailable",
+            "the renamed D1 changes table caused one real 503",
+          ),
+          offlineFault("bob edited while the API gate was offline"),
+        ],
+      },
       async (_alicePage, bobPage, { document, gate }) => {
         const before = await readD1State(harness);
         await harness.d1(

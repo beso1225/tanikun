@@ -11,10 +11,12 @@ import {
   readPlannerState,
   readSyncState,
   readWorkerLog,
+  syncNow,
   waitForPlannerSource,
 } from "./sync-convergence-helpers.mjs";
 import {
   SyncHarness,
+  acceptBrowserFaults,
   identityToken,
   readTraceArchiveEntries,
   waitForSync,
@@ -30,19 +32,6 @@ function installApiGate(page) {
     else await route.continue();
   });
   return { gate, ready };
-}
-
-async function triggerSync(page) {
-  const before = await page.evaluate(
-    () => globalThis.tanikunSyncShell.history.length,
-  );
-  await page.evaluate(() => globalThis.tanikunSyncShell.sync());
-  await page.waitForFunction(
-    (length) => globalThis.tanikunSyncShell.history.length > length,
-    before,
-    { timeout: 10_000 },
-  );
-  await waitForSync(page, "同期済み");
 }
 
 async function addOffering(page, offeringId) {
@@ -84,7 +73,7 @@ test(
           },
         },
       ],
-      async ([alicePage, bobPage], [aliceErrors, bobErrors], states) => {
+      async ([alicePage, bobPage], _errors, states) => {
         const aliceContext = states[0].context;
         const bobContext = states[1].context;
         assert.notEqual(aliceContext, bobContext);
@@ -93,7 +82,7 @@ test(
         await waitForSync(alicePage, "同期済み", 30_000);
         // The first sync only pushes the seed history. Pull it once so Alice's
         // merged cursor also starts at the server high-water.
-        await triggerSync(alicePage);
+        await syncNow(alicePage, "同期済み");
         await waitForPersistence(bobPage);
         await waitForSync(bobPage, "オフライン", 30_000);
 
@@ -206,8 +195,8 @@ test(
         await waitForSync(alicePage, "同期済み", 30_000);
         await bobPage.locator("#sync-retry").click();
         await waitForSync(bobPage, "同期済み", 30_000);
-        await triggerSync(alicePage);
-        await triggerSync(bobPage);
+        await syncNow(alicePage, "同期済み");
+        await syncNow(bobPage, "同期済み");
 
         const aliceConverged = await readPlannerState(alicePage, {
           apiOrigin: harness.apiOrigin,
@@ -259,8 +248,8 @@ test(
         await bobPage.reload();
         await waitForPersistence(bobPage);
         await waitForSync(bobPage, "同期済み", 30_000);
-        await triggerSync(alicePage);
-        await triggerSync(bobPage);
+        await syncNow(alicePage, "同期済み");
+        await syncNow(bobPage, "同期済み");
 
         assertConverged(
           await readPlannerState(alicePage, {
@@ -286,8 +275,24 @@ test(
           );
         }
 
-        assert.deepEqual(aliceErrors, []);
-        assert.deepEqual(bobErrors, []);
+        acceptBrowserFaults(states[0], [
+          {
+            kind: "console",
+            text: "Failed to load resource: net::ERR_FAILED",
+            count: 2,
+            reason:
+              "alice offline edit and offline reload each failed one sync request",
+          },
+        ]);
+        acceptBrowserFaults(states[1], [
+          {
+            kind: "console",
+            text: "Failed to load resource: net::ERR_FAILED",
+            count: 3,
+            reason:
+              "bob started offline and then edited and reloaded while offline",
+          },
+        ]);
       },
     );
 
@@ -295,8 +300,8 @@ test(
       join(harness.evidenceDir, "sync-convergence.log"),
       "utf8",
     );
-    assert.match(runLog, /alice: page errors: \[\]/);
-    assert.match(runLog, /bob: page errors: \[\]/);
+    assert.match(runLog, /alice: expected faults: .*net::ERR_FAILED/);
+    assert.match(runLog, /bob: expected faults: .*net::ERR_FAILED/);
 
     const traceText = (
       await Promise.all(
