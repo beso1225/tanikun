@@ -96,7 +96,7 @@ test-browser: build-web
     node --test tests/integration/browser-allocations.test.mjs
     node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs
 
-# Run the built page against a real local Worker and isolated D1 database.
+# Run sync convergence and fault suites against a real local Worker and D1.
 # Set both TANIKUN_WEB_DIST and TANIKUN_API_DIST to reuse packaged artifacts.
 test-sync:
     @if [ -n "${TANIKUN_WEB_DIST:-}" ] && [ -n "${TANIKUN_API_DIST:-}" ]; then \
@@ -108,7 +108,7 @@ test-sync:
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-journey.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
