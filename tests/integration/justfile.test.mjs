@@ -105,6 +105,7 @@ test(
     assert.match(calls[2], /^node --test /);
     assert.match(calls[2], /sync-harness\.test\.mjs/);
     assert.match(calls[2], /sync-harness-lifecycle\.test\.mjs/);
+    assert.match(calls[2], /packaged-api\.test\.mjs/);
     assert.match(calls[2], /justfile\.test\.mjs/);
     assert.match(calls[2], /sync-journey\.test\.mjs/);
     assert.equal(calls.length, 3);

@@ -59,8 +59,21 @@ test("packaged API includes every Worker module, migration, and runtime config",
   ];
   for (const path of required) await access(join(api, path));
 
-  const config = await readFile(join(api, "wrangler.jsonc"), "utf8");
-  assert.match(config, /"main":\s*"apps\/api\/bridges\/worker\.mjs"/);
-  assert.match(config, /"migrations_dir":\s*"apps\/api\/migrations"/);
-  await access(join(api, "apps/api/migrations"));
+  const configText = await readFile(join(api, "wrangler.jsonc"), "utf8");
+  assert.match(configText, /"main":\s*"apps\/api\/bridges\/worker\.mjs"/);
+  assert.match(configText, /"migrations_dir":\s*"apps\/api\/migrations"/);
+  assert.doesNotMatch(configText, /"build"|watch_dir|\$schema/);
+
+  const config = JSON.parse(configText);
+  assert.equal(Object.hasOwn(config, "build"), false);
+  assert.equal(Object.hasOwn(config, "watch_dir"), false);
+  assert.equal(Object.hasOwn(config, "$schema"), false);
+  for (const relative of [
+    config.main,
+    config.d1_databases.find((database) => database.binding === "DB")
+      .migrations_dir,
+  ]) {
+    assert.equal(relative.startsWith("/"), false);
+    await access(join(api, relative));
+  }
 });
