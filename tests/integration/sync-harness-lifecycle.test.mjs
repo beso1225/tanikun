@@ -733,6 +733,47 @@ test(
 );
 
 test(
+  "cleanup drains a delayed Wrangler line before closing evidence",
+  { timeout: 30_000 },
+  async (t) => {
+    const root = await evidenceRoot(t);
+    const tempRoot = await mkdtemp(join(tmpdir(), "tanikun-sync-temp-"));
+    t.after(() => rm(tempRoot, { recursive: true, force: true }));
+    const harness = startedHarnessWithEvidence(root, tempRoot);
+    const child = new EventEmitter();
+    child.pid = null;
+    child.exitCode = 0;
+    child.signalCode = null;
+    child.closed = false;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    const sink = new WranglerLogSink(
+      createWriteStream(join(root, "wrangler.log")),
+    );
+    sink.attach(child);
+    harness.wrangler = child;
+    harness.wranglerLog = sink;
+
+    const closing = harness.close();
+    setImmediate(() => {
+      child.stdout.write("delayed cleanup line\n");
+      child.stdout.end();
+      child.stderr.end();
+      child.closed = true;
+      child.emit("close", 0, null);
+    });
+    await closing;
+
+    const log = await readFile(join(root, "wrangler.log"), "utf8");
+    assert.match(log, /delayed cleanup line/);
+    assert.deepEqual(harness.cleanupProblems, []);
+    assert.equal(harness.started, false);
+    assert.equal(await pathExists(tempRoot), false);
+    assert.ok(await pathExists(join(root, "cleanup.log")));
+  },
+);
+
+test(
   "a packaged API config with source build hooks is rejected before startup",
   { timeout: 30_000 },
   async (t) => {
