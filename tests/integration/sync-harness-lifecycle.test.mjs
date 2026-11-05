@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -15,6 +22,7 @@ import {
   SyncHarness,
   WranglerLogSink,
   pathExists,
+  preparePackagedArtifact,
   readTraceArchiveEntries,
   sanitizeTraceArchive,
 } from "./sync-harness.mjs";
@@ -770,6 +778,47 @@ test(
     assert.equal(harness.started, false);
     assert.equal(await pathExists(tempRoot), false);
     assert.ok(await pathExists(join(root, "cleanup.log")));
+  },
+);
+
+test(
+  "packaged artifacts are relocated to a writable runtime root",
+  { timeout: 30_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "tanikun-packaged-source-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const source = join(root, "source");
+    await mkdir(join(source, "apps/api/bridges"), { recursive: true });
+    await mkdir(join(source, "apps/api/migrations"), { recursive: true });
+    const configPath = join(source, "wrangler.jsonc");
+    const main = join(source, "apps/api/bridges/worker.mjs");
+    const migrationsDir = join(source, "apps/api/migrations");
+    const config = JSON.stringify({
+      name: "packaged",
+      main: "apps/api/bridges/worker.mjs",
+      migrations_dir: "apps/api/migrations",
+    });
+    await writeFile(configPath, config);
+    await writeFile(main, "export default {};\n");
+    await writeFile(join(migrationsDir, "0001_sync.sql"), "select 1;\n");
+    await chmod(configPath, 0o444);
+    const tempRoot = join(root, "runtime");
+    await mkdir(tempRoot);
+
+    const prepared = await preparePackagedArtifact(source, tempRoot, {
+      main,
+      migrationsDir,
+      configPath,
+    });
+
+    assert.equal(prepared.cwd, join(tempRoot, "api"));
+    assert.notEqual(prepared.configPath, configPath);
+    assert.ok(prepared.configPath.startsWith(`${prepared.cwd}/`));
+    assert.equal(await readFile(prepared.configPath, "utf8"), config);
+    assert.ok(await pathExists(prepared.main));
+    assert.ok(await pathExists(prepared.migrationsDir));
+    await writeFile(prepared.configPath, "{}\n");
+    assert.equal(await readFile(configPath, "utf8"), config);
   },
 );
 

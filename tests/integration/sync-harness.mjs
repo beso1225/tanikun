@@ -748,6 +748,26 @@ async function makeTreeWritable(root) {
   }
 }
 
+export async function preparePackagedArtifact(apiRoot, tempRoot, paths) {
+  const runtimeRoot = join(tempRoot, "api");
+  await cp(await realpath(apiRoot), runtimeRoot, { recursive: true });
+  await makeTreeWritable(runtimeRoot);
+  const relocate = (path) => {
+    const relativePath = relative(apiRoot, path);
+    if (relativePath.startsWith("..") || relativePath === "") {
+      throw new Error(`API artifact path is not relocatable: ${path}`);
+    }
+    return join(runtimeRoot, relativePath);
+  };
+  return {
+    ...paths,
+    main: relocate(paths.main),
+    migrationsDir: relocate(paths.migrationsDir),
+    configPath: relocate(paths.configPath),
+    cwd: runtimeRoot,
+  };
+}
+
 export class SyncHarness {
   constructor(options = {}) {
     const apiRoot = resolve(
@@ -968,25 +988,7 @@ export class SyncHarness {
   }
 
   async #preparePackagedArtifact(paths) {
-    const runtimeRoot = join(this.tempDir, "api");
-    await cp(await realpath(this.options.apiRoot), runtimeRoot, {
-      recursive: true,
-    });
-    await makeTreeWritable(runtimeRoot);
-    const relocate = (path) => {
-      const relativePath = relative(this.options.apiRoot, path);
-      if (relativePath.startsWith("..") || relativePath === "") {
-        throw new Error(`API artifact path is not relocatable: ${path}`);
-      }
-      return join(runtimeRoot, relativePath);
-    };
-    return {
-      ...paths,
-      main: relocate(paths.main),
-      migrationsDir: relocate(paths.migrationsDir),
-      configPath: relocate(paths.configPath),
-      cwd: runtimeRoot,
-    };
+    return preparePackagedArtifact(this.options.apiRoot, this.tempDir, paths);
   }
 
   #environment(kind) {
