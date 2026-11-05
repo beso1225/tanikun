@@ -178,8 +178,9 @@ Setting only one is an error.
 
 The packaged `api` output contains a runtime `wrangler.jsonc` derived from the
 source configuration without `build`, `watch_dir`, or the source schema path.
-The harness consumes that file directly in packaged mode: it does not synthesize
-a replacement config or fall back to the repository root. A package that still
+The harness copies the packaged API into the run's writable temporary directory
+and consumes that copy of `wrangler.jsonc` directly: it does not synthesize a
+replacement config or fall back to the repository root. A package that still
 contains source build hooks is rejected before startup. The source
 `wrangler.jsonc` keeps its Moon build and watch settings for local development.
 The release test checks the packaged config and a writable copy of the artifact
