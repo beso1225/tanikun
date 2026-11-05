@@ -426,6 +426,8 @@ it("rejects query strings on bootstrap and append before writing", async () => {
 it("rejects malformed bodies, duplicate keys, unknown fields, and limits", async () => {
   const { document_id: documentId } = await bootstrap();
   const envelope = envelopeFor(documentId);
+  const changesJson = JSON.stringify([envelope]);
+  const wireBody = `{"changes":${changesJson}}`;
   const cases = [
     ["not json", "malformed_request", 400],
     [JSON.stringify({ changes: [] }), "malformed_request", 400],
@@ -456,6 +458,57 @@ it("rejects malformed bodies, duplicate keys, unknown fields, and limits", async
       400,
     ],
     [
+      `{"changes":${changesJson},"\\u0063hanges":${changesJson}}`,
+      "malformed_request",
+      400,
+    ],
+    [
+      wireBody.replace(
+        '"payload":"AQIDBA=="',
+        '"payload":"AQIDBA==","\\u0070ayload":"BQY="',
+      ),
+      "malformed_request",
+      400,
+    ],
+    [
+      wireBody.replace(
+        '"api_version":1',
+        '"api_version":1,"\\u0061pi_version":1',
+      ),
+      "malformed_request",
+      400,
+    ],
+    [
+      wireBody.replace(
+        '{"changes":',
+        '{"__proto__":{"polluted":true},"changes":',
+      ),
+      "malformed_request",
+      400,
+    ],
+    [
+      wireBody.replace(
+        '{"changes":',
+        '{"constructor":{"polluted":true},"changes":',
+      ),
+      "malformed_request",
+      400,
+    ],
+    [
+      wireBody.replace(
+        '"envelope_version":1',
+        '"__proto__":{"polluted":true},"envelope_version":1',
+      ),
+      "malformed_request",
+      400,
+    ],
+    [
+      wireBody.replace('"api_version":1', '"constructor":1,"api_version":1'),
+      "malformed_request",
+      400,
+    ],
+    [`${wireBody}x`, "malformed_request", 400],
+    [
       JSON.stringify({ changes: Array.from({ length: 21 }, () => envelope) }),
       "request_too_large",
       413,
@@ -473,6 +526,8 @@ it("rejects malformed bodies, duplicate keys, unknown fields, and limits", async
     expect(response.status).toBe(status);
     expect(await response.json()).toEqual({ error: { code } });
   }
+  expect({}.polluted).toBeUndefined();
+  expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
 });
 
 it("rejects unsupported media types and content encodings", async () => {
