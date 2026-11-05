@@ -200,8 +200,9 @@ method/status/timing metadata, but no request or response headers, cookies,
 bodies, document identifiers, init-script arguments, console text, DOM
 snapshots, screencast frames, or source stacks. This tradeoff intentionally
 drops Playwright's DOM time travel and visual network detail; the failure log
-and screenshot remain the human-readable evidence. If trace sanitization fails,
-the raw trace is not retained and the failure log records the error. Page
+and screenshot remain the human-readable evidence. The rebuild is bounded by
+entry size and event count. If trace sanitization fails or exceeds a bound, the
+raw trace is not retained and the failure log records the error. Page
 creation, initialization, and navigation failures follow the same failure-log,
 screenshot (when a page exists), and trace path. The temporary persistence
 directory and owned process group are removed after success or failure;
