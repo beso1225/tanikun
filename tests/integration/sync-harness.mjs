@@ -50,6 +50,16 @@ const contentTypes = new Map([
 const delay = (milliseconds) =>
   new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
+function redactLogText(text) {
+  return text
+    .replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+      "<document-id>",
+    )
+    .replace(/\b[0-9a-f]{64}\b/gi, "<change-id>")
+    .replace(/\bBearer\s+\S+/gi, "Bearer <redacted>");
+}
+
 function identityFor(name) {
   const identity = SYNC_IDENTITIES.find((candidate) => candidate.name === name);
   if (!identity) throw new Error(`unknown dev identity: ${name}`);
@@ -304,6 +314,7 @@ export class SyncHarness {
     this.wrangler = null;
     this.wranglerPid = null;
     this.wranglerLogStream = null;
+    this.wranglerLogBuffer = "";
     this.browser = null;
     this.contexts = new Set();
     this.ownedChildren = new Set();
@@ -587,14 +598,16 @@ export class SyncHarness {
       { flags: "a" },
     );
     let output = "";
-    child.stdout.on("data", (data) => {
+    const record = (data) => {
       output += data;
-      this.wranglerLogStream.write(data);
-    });
-    child.stderr.on("data", (data) => {
-      output += data;
-      this.wranglerLogStream.write(data);
-    });
+      this.wranglerLogBuffer += data.toString();
+      const lines = this.wranglerLogBuffer.split("\n");
+      this.wranglerLogBuffer = lines.pop();
+      for (const line of lines)
+        this.wranglerLogStream.write(`${redactLogText(line)}\n`);
+    };
+    child.stdout.on("data", record);
+    child.stderr.on("data", record);
 
     const origin = await this.#waitForReady(child, () => output);
     this.apiOrigin = origin.replace(/\/+$/, "");
@@ -954,6 +967,10 @@ export class SyncHarness {
       this.ownedChildren.delete(child);
     }
     if (this.wranglerLogStream) {
+      if (this.wranglerLogBuffer) {
+        this.wranglerLogStream.write(redactLogText(this.wranglerLogBuffer));
+        this.wranglerLogBuffer = "";
+      }
       await new Promise((resolvePromise) =>
         this.wranglerLogStream.end(resolvePromise),
       );

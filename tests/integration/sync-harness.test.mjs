@@ -98,6 +98,12 @@ test(
     assert.equal(await pathExists(harness.tempDir), false);
     assert.ok(await pathExists(join(harness.evidenceDir, "migration.log")));
     assert.ok(await pathExists(join(harness.evidenceDir, "wrangler.log")));
+    const wranglerLog = await readFile(
+      join(harness.evidenceDir, "wrangler.log"),
+      "utf8",
+    );
+    assert.ok(!wranglerLog.includes(aliceDocument.document_id));
+    assert.ok(!wranglerLog.includes(bobDocument.document_id));
     assert.equal(harness.wranglerPid !== null, true);
     assert.equal(processGroupExists(harness.wranglerPid), false);
     await assert.rejects(
