@@ -189,6 +189,40 @@ The release test checks the packaged config and a writable copy of the artifact
 passes `wrangler deploy --dry-run`; CI also starts the real Worker and D1 from
 the same packaged config.
 
+`just test-sync` runs three fault-focused suites after the harness self-tests
+and the single-document journey.
+
+- `sync-api-faults.test.mjs` starts the harness with `serveWeb: false` and
+  exercises the real Worker and D1 without the fixed browser origin. It covers
+  identical duplicate append, same-hash/different-bytes rejection with batch
+  rollback, a response lost after the server commits, an actual 503 caused by
+  renaming the isolated `changes` table, a real log gap and counter rollback,
+  and foreign versus missing document reads and writes for Bob. This suite
+  does not bind the browser origin, so it can run while another local server
+  owns `127.0.0.1:4300`.
+- `sync-convergence.test.mjs` uses two isolated browser contexts with the same
+  Alice identity and document. Browser B starts with API requests gated
+  offline, clears its seeded planner through the production `discard` API, and
+  pulls from cursor 0 without receiving bytes from browser A. Both browsers
+  then edit with API requests gated offline, reload, reconnect, exchange
+  changes, reload again, and run a second exchange. The test compares
+  normalized source and sorted Automerge heads, checks D1 sequence uniqueness,
+  cursor equality, and an empty outbox, and asserts a distinctive planner
+  string never appears in the retained Wrangler log or sanitized traces.
+- `sync-browser-faults.test.mjs` uses the same two-context shape for a lost
+  push response after `route.fetch()` reaches the real commit, a planner
+  transaction abort at the IndexedDB `put` boundary followed by a duplicate
+  page reload, an actual D1 gap and counter rollback, a mutated pull page with
+  a missing dependency, and an actual 503 plus offline recovery. Each step
+  asserts D1 rows, sequences, cursors, and local metadata rather than only an
+  HTTP status.
+
+The harness supports these suites with `runJourneyGroup`, which gives each
+isolated context its own trace, screenshot, and failure log, and with
+`d1`/`d1Query`, which run Wrangler against the same isolated persistence
+directory. D1 mutation is limited to fault setup; normal reads and writes still
+go through the production Worker bridge and request path.
+
 Each run writes Wrangler, migration, and harness evidence under
 `.cache/verify/sync/<run>/`. Wrangler output is redacted and its stdout/stderr
 drain before the log stream closes, including a delayed final line. A browser

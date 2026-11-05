@@ -107,7 +107,10 @@ test(
     assert.match(calls[2], /sync-harness-lifecycle\.test\.mjs/);
     assert.match(calls[2], /packaged-api\.test\.mjs/);
     assert.match(calls[2], /justfile\.test\.mjs/);
+    assert.match(calls[2], /sync-api-faults\.test\.mjs/);
     assert.match(calls[2], /sync-journey\.test\.mjs/);
+    assert.match(calls[2], /sync-convergence\.test\.mjs/);
+    assert.match(calls[2], /sync-browser-faults\.test\.mjs/);
     assert.equal(calls.length, 3);
   },
 );
