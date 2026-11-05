@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
@@ -40,4 +40,27 @@ test("packaged Worker imports and handles requests without build-tree files", as
   );
   assert.equal(post.status, 405);
   assert.equal(post.headers.get("Allow"), "GET");
+});
+
+test("packaged API includes every Worker module, migration, and runtime config", async () => {
+  const api = join(release, "api");
+  const required = [
+    "apps/api/bridges/worker.mjs",
+    "apps/api/http/auth.mjs",
+    "apps/api/http/errors.mjs",
+    "apps/api/http/json.mjs",
+    "apps/api/http/respond.mjs",
+    "apps/api/http/sync.mjs",
+    "apps/api/repositories/changes.mjs",
+    "apps/api/migrations/0001_sync.sql",
+    "packages/sync-contract/contract.mjs",
+    "_build/js/release/build/beso1225/tanikun-api/tanikun-api.js",
+    "wrangler.jsonc",
+  ];
+  for (const path of required) await access(join(api, path));
+
+  const config = await readFile(join(api, "wrangler.jsonc"), "utf8");
+  assert.match(config, /"main":\s*"apps\/api\/bridges\/worker\.mjs"/);
+  assert.match(config, /"migrations_dir":\s*"apps\/api\/migrations"/);
+  await access(join(api, "apps/api/migrations"));
 });

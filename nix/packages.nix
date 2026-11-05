@@ -33,6 +33,7 @@ let
       ../package.json
       ../pnpm-lock.yaml
       ../pnpm-workspace.yaml
+      ../wrangler.jsonc
     ];
   };
   pnpmDeps = pkgs.fetchPnpmDeps {
@@ -131,13 +132,17 @@ let
       node --test tests/integration/moonbit-export.test.mjs
     '';
     # Keep the bridge's relative imports intact; no npm/runtime dependency is needed.
+    # Include every production module, migration, and the root runtime config so
+    # the packaged Worker does not fall back to the source tree.
     installPhase = ''
-      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
-      cp apps/api/bridges/worker.mjs "$out/apps/api/bridges/"
+      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
+      cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
       cp apps/api/http/*.mjs "$out/apps/api/http/"
       cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
+      cp apps/api/migrations/*.sql "$out/apps/api/migrations/"
       cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
+      cp wrangler.jsonc "$out/wrangler.jsonc"
     '';
   };
   pure = pkgs.stdenvNoCC.mkDerivation {
