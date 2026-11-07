@@ -1,8 +1,26 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import test, { after } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import * as Automerge from "@automerge/automerge";
 import { IDBFactory } from "fake-indexeddb";
+
+import { SYNC_LIMITS } from "../../packages/sync-contract/contract.mjs";
+import { buildSyncContract } from "../../scripts/build-sync-contract.mjs";
+
+const root = resolvePath(dirname(fileURLToPath(import.meta.url)), "../..");
+// The coordinator loads the shared contract lazily, so its artifact needs the
+// same two-file copy that `just build-web` produces.
+const artifactDir = mkdtempSync(join(tmpdir(), "tanikun-sync-coordinator-"));
+after(() => rmSync(artifactDir, { recursive: true, force: true }));
+copyFileSync(
+  join(root, "apps/web/public/sync-coordinator.js"),
+  join(artifactDir, "sync-coordinator.js"),
+);
+buildSyncContract(join(artifactDir, "sync-contract.mjs"));
 
 globalThis.Automerge = Automerge;
 await import("../../apps/web/public/planner-document.js");
@@ -10,7 +28,7 @@ await import("../../apps/web/public/persistence-transactions.js");
 await import("../../apps/web/public/persistence.js");
 await import("../../apps/web/public/sync-store.js");
 await import("../../apps/web/public/sync-metadata.js");
-await import("../../apps/web/public/sync-coordinator.js");
+await import(pathToFileURL(join(artifactDir, "sync-coordinator.js")).href);
 
 const codec = globalThis.tanikunDocument;
 const { createStorage } = globalThis.tanikunPersistence;
@@ -927,6 +945,10 @@ test("continues across multiple pull pages and refreshes the planner CAS", async
     context.transport.pullCalls.map((call) => call.after),
     [0, 2],
   );
+  assert.deepEqual(
+    context.transport.pullCalls.map((call) => call.limit),
+    [SYNC_LIMITS.maxPageChanges, SYNC_LIMITS.maxPageChanges],
+  );
   assert.equal(JSON.parse(await context.storage.load()).program_id, "remote-2");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 4);
@@ -959,21 +981,65 @@ test("reports a legacy planner as not migrated without touching it", async () =>
   assert.equal(stored, legacy);
 });
 
-test("pushes a large local history in bounded batches", async () => {
+test("syncs with a legacy custom transport that omits limits", async () => {
   const context = await setup();
+  // A pre-existing direct caller passes only the transport methods. It must
+  // not need a new limits object, and the sync lifecycle loads the shared
+  // wire values lazily.
+  const legacyTransport = {
+    bootstrap: () => context.transport.bootstrap(),
+    push: (id, envelopes) => context.transport.push(id, envelopes),
+    pull: (id, options) => context.transport.pull(id, options),
+  };
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: legacyTransport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    sleep: async () => {},
+    random: () => 0,
+    locks: null,
+  });
+  assert.equal(SYNC_LIMITS.maxBatchChanges, 20);
+  assert.equal(SYNC_LIMITS.maxPageChanges, 100);
   for (let index = 0; index < 45; index += 1) {
     await context.storage.save(
-      JSON.stringify({ ...source, program_id: `large-${index}` }),
+      JSON.stringify({ ...source, program_id: `legacy-${index}` }),
     );
   }
   await waitFor(
     async () => (await context.syncStore.listOutbox(syncScope)).length >= 45,
   );
-  const result = await context.coordinator.sync();
+  const result = await coordinator.sync();
   assert.equal(result.kind, "synced");
   assert.deepEqual(
     context.transport.pushes.map((batch) => batch.length),
     [20, 20, 7],
+  );
+  assert.equal(context.transport.pullCalls[0].limit, 100);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+});
+
+test("pushes a large local history in bounded batches", async () => {
+  const context = await setup();
+  const batchLimit = SYNC_LIMITS.maxBatchChanges;
+  const localSaves = batchLimit * 2 + 5;
+  for (let index = 0; index < localSaves; index += 1) {
+    await context.storage.save(
+      JSON.stringify({ ...source, program_id: `large-${index}` }),
+    );
+  }
+  await waitFor(
+    async () =>
+      (await context.syncStore.listOutbox(syncScope)).length >= localSaves,
+  );
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.deepEqual(
+    context.transport.pushes.map((batch) => batch.length),
+    [batchLimit, batchLimit, context.baseChanges.length + 5],
   );
   assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });

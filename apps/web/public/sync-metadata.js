@@ -1,6 +1,8 @@
 // Sync metadata lives beside the planner in `tanikun-planner`/`documents`.
-// This module owns the two-phase client commit: observe the server high-water,
-// then write the merged planner and merged cursor in one transaction.
+// The shared schema owner in persistence-transactions.js provides the database
+// name, version, store, and upgrade path. This module still owns the two-phase
+// client commit: observe the server high-water, then write the merged planner
+// and merged cursor in one transaction.
 const validCursor = (value) => Number.isSafeInteger(value) && value >= 0;
 
 const emptyMetadata = () => ({
@@ -16,9 +18,8 @@ const sameBytes = (left, right) =>
   left.every((byte, index) => byte === right[index]);
 
 {
-  const databaseName = "tanikun-planner";
-  const databaseVersion = 1;
-  const storeName = "documents";
+  const { storeName, open: openDatabase } =
+    globalThis.tanikunPersistenceTransactions.plannerDatabase;
 
   class SyncMetadataError extends Error {
     constructor(code) {
@@ -51,16 +52,7 @@ const sameBytes = (left, right) =>
     const open = () => {
       if (opening) return opening;
       opening = new Promise((resolve, reject) => {
-        const request = indexedDB.open(databaseName, databaseVersion);
-        request.addEventListener(
-          "upgradeneeded",
-          () => {
-            const database = request.result;
-            if (!database.objectStoreNames.contains(storeName))
-              database.createObjectStore(storeName);
-          },
-          { once: true },
-        );
+        const request = openDatabase(indexedDB);
         request.addEventListener("success", () => resolve(request.result), {
           once: true,
         });
