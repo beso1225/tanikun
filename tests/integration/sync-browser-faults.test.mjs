@@ -171,10 +171,12 @@ test(
             new URL(response.url()).pathname === path,
         );
         await bobPage.locator("#sync-retry").click();
-        await waitForSync(bobPage, "同期済み", 30_000);
+        // Capture the retry body before waiting for subsequent UI activity;
+        // Chromium may otherwise discard the response body from its cache.
         const response = await retryResponse;
         assert.equal(response.status(), 200);
         assert.deepEqual(await response.json(), accepted);
+        await waitForSync(bobPage, "同期済み", 30_000);
         assert.equal(
           posts.length,
           2,

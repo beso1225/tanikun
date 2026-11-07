@@ -83,7 +83,7 @@ export function parsePagination(url) {
     return number;
   };
   const after = read("after", 0);
-  const limit = read("limit", 100);
+  const limit = read("limit", SYNC_LIMITS.maxPageChanges);
   if (limit < 1 || limit > SYNC_LIMITS.maxPageChanges)
     throw new ApiError("malformed_request");
   return { after, limit };
