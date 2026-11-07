@@ -8,8 +8,12 @@ requirement evaluation. Phase 2 adds the in-memory planner UI; its contract and
 evidence are in [docs/PHASE_2.md](docs/PHASE_2.md) and
 [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md). Phase 3 adds local
 persistence and local Automerge replica convergence; its evidence is in
-[docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md). Network sync follows in
-Phase 4.
+[docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md). Phase 4 adds HTTP delta sync
+through a Worker and D1, with local-development authentication and a two-browser
+convergence harness. Its evidence is in
+[docs/PHASE_4_RESULTS.md](docs/PHASE_4_RESULTS.md). Phase 4 is local-development
+only. It does not provide production authentication, E2EE, automatic peer
+discovery, snapshot compaction, or a production deployment.
 
 **日本語版:** [README.ja.md](README.ja.md)
 
@@ -26,7 +30,12 @@ Phase 4.
   and local replica convergence are implemented; the evidence is in
   [docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md), with the storage contract
   in [ADR-0012](docs/adr/0012-automerge-planner-document.md).
-  Phase 4 network sync is not started.
+- Phase 4: implementation and evidence baseline complete. Worker and D1 HTTP
+  delta sync, local-development authentication, the sync status surface, and the
+  two-browser fault harness are implemented. The
+  [Phase 4 results](docs/PHASE_4_RESULTS.md) record the baseline, test counts,
+  and closeout gate. The milestone closeout is a separate administrative gate.
+  The feature remains local-development only.
 
 ## Stack
 
@@ -69,8 +78,8 @@ nix flake check path:.  # sandboxed checks, including pure domain tests
 
 `just test` needs the MoonBit toolchain and `pnpm install --frozen-lockfile`
 for the Automerge document tests. Web tooling and browser, Worker, and D1 tests
-also need the installed packages. The `just` file defines
-`test-css`, `test-browser`, `test-worker`, `test-automerge`, and `test-d1`.
+also need the installed packages. The `just` file defines `test-css`,
+`test-browser`, `test-sync`, `test-worker`, `test-automerge`, and `test-d1`.
 
 Mutation testing is optional and is not a CI gate:
 
@@ -90,6 +99,7 @@ See [docs/MUTATION.md](docs/MUTATION.md) for the baseline and accepted mutants.
 - [Phase 2 planner contract](docs/PHASE_2.md)
 - [Phase 2 results](docs/PHASE_2_RESULTS.md)
 - [Phase 3 results](docs/PHASE_3_RESULTS.md)
+- [Phase 4 results](docs/PHASE_4_RESULTS.md)
 - [Mutation testing](docs/MUTATION.md)
 - [Glossary](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)

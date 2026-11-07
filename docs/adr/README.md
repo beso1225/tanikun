@@ -17,4 +17,8 @@
 | [0013](0013-http-sync-protocol.md)                        | Exchange opaque changes through a versioned HTTP sync log                | accepted |
 | [0014](0014-local-development-auth.md)                    | Restrict temporary sync identities to local development                  | accepted |
 
+ADR-0013 and ADR-0014 are implemented. The
+[Phase 4 results](../PHASE_4_RESULTS.md) record the implementation evidence and
+local-development limits.
+
 See the [documentation index](../README.md) for current contracts.

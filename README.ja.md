@@ -8,8 +8,12 @@ Phase 2 では時間割プランナーの UI を実装しました。契約と�
 [docs/PHASE_2.md](docs/PHASE_2.md) と
 [docs/PHASE_2_RESULTS.md](docs/PHASE_2_RESULTS.md) にあります。Phase 3 では
 ローカル永続化と Automerge のレプリカ間の収束を実装しました。結果は
-[docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md) にあります。
-ネットワーク同期は Phase 4 で対応します。
+[docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md) にあります。Phase 4 では
+Worker と D1 を使った HTTP 差分同期を追加し、ローカル開発用の認証と 2 つの
+ブラウザ間の収束テストを用意しました。実装と証拠は
+[docs/PHASE_4_RESULTS.md](docs/PHASE_4_RESULTS.md) にあります。Phase 4 は
+ローカル開発専用で、本番認証、E2EE、ピアの自動検出、スナップショットによる
+変更履歴の圧縮、本番環境へのデプロイは対象外です。
 
 **English:** [README.md](README.md)
 
@@ -26,7 +30,11 @@ Phase 2 では時間割プランナーの UI を実装しました。契約と�
   レプリカ間の収束を実装しました。結果は
   [docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md)、保存仕様は
   [ADR-0012](docs/adr/0012-automerge-planner-document.md) にあります。
-  Phase 4 のネットワーク同期は未着手です。
+- Phase 4: 実装と証拠は基準コミットまで完了しています。Worker と D1 による
+  HTTP 差分同期、ローカル開発用認証、同期状態の表示、2 つのブラウザの障害テストを
+  実装しました。テスト件数とマイルストーンを終了する条件は
+  [docs/PHASE_4_RESULTS.md](docs/PHASE_4_RESULTS.md) にあります。機能は
+  ローカル開発専用です。
 
 ## 構成
 
@@ -70,8 +78,8 @@ nix flake check path:.  # pure domain を含む sandbox チェック
 `just test` には MoonBit のツールチェーンと、Automerge の文書テストに使うパッケージが
 必要です。`pnpm install --frozen-lockfile` でインストールしてください。
 Web のツール、ブラウザ、Worker、D1 のテストにもこれらのパッケージが必要です。
-`just` には `test-css`、
-`test-browser`、`test-worker`、`test-automerge`、`test-d1` もあります。
+`just` には `test-css`、`test-browser`、`test-sync`、`test-worker`、
+`test-automerge`、`test-d1` もあります。
 
 Mutation testing は任意で、CI の必須チェックではありません。
 
@@ -88,7 +96,10 @@ baseline と accepted mutant は [docs/MUTATION.md](docs/MUTATION.md) にあり�
 - [ドキュメント一覧](docs/README.md)
 - [Phase 1 の契約](docs/PHASE_1.md)
 - [Phase 1 の結果](docs/PHASE_1_RESULTS.md)
+- [Phase 2 の契約](docs/PHASE_2.md)
 - [Phase 2 の結果](docs/PHASE_2_RESULTS.md)
+- [Phase 3 の結果](docs/PHASE_3_RESULTS.md)
+- [Phase 4 の結果](docs/PHASE_4_RESULTS.md)
 - [Mutation testing](docs/MUTATION.md)
 - [用語集](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)
