@@ -1,10 +1,26 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import test, { after } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import * as Automerge from "@automerge/automerge";
 import { IDBFactory } from "fake-indexeddb";
 
 import { SYNC_LIMITS } from "../../packages/sync-contract/contract.mjs";
+import { buildSyncContract } from "../../scripts/build-sync-contract.mjs";
+
+const root = resolvePath(dirname(fileURLToPath(import.meta.url)), "../..");
+// The coordinator loads the shared contract lazily, so its artifact needs the
+// same two-file copy that `just build-web` produces.
+const artifactDir = mkdtempSync(join(tmpdir(), "tanikun-sync-coordinator-"));
+after(() => rmSync(artifactDir, { recursive: true, force: true }));
+copyFileSync(
+  join(root, "apps/web/public/sync-coordinator.js"),
+  join(artifactDir, "sync-coordinator.js"),
+);
+buildSyncContract(join(artifactDir, "sync-contract.mjs"));
 
 globalThis.Automerge = Automerge;
 await import("../../apps/web/public/planner-document.js");
@@ -12,7 +28,7 @@ await import("../../apps/web/public/persistence-transactions.js");
 await import("../../apps/web/public/persistence.js");
 await import("../../apps/web/public/sync-store.js");
 await import("../../apps/web/public/sync-metadata.js");
-await import("../../apps/web/public/sync-coordinator.js");
+await import(pathToFileURL(join(artifactDir, "sync-coordinator.js")).href);
 
 const codec = globalThis.tanikunDocument;
 const { createStorage } = globalThis.tanikunPersistence;
@@ -133,7 +149,7 @@ async function seedLegacyPlanner(factory, text) {
   database.close();
 }
 
-function createFakeTransport(limits = SYNC_LIMITS) {
+function createFakeTransport() {
   const pushes = [];
   const pullCalls = [];
   const sequences = new Map();
@@ -142,7 +158,6 @@ function createFakeTransport(limits = SYNC_LIMITS) {
   return {
     pushes,
     pullCalls,
-    limits,
     setPull(handler) {
       pullHandler = handler;
     },
@@ -192,7 +207,7 @@ function createFakeTransport(limits = SYNC_LIMITS) {
   };
 }
 
-async function setup(limits = SYNC_LIMITS) {
+async function setup() {
   const factory = new IDBFactory();
   const base = Automerge.clone(codec.update(null, JSON.stringify(source)), {
     actor: "aa".repeat(32),
@@ -213,7 +228,7 @@ async function setup(limits = SYNC_LIMITS) {
   await storage.load();
   const syncStore = createSyncStore({ indexedDB: factory });
   const metadataStore = createSyncMetadataStore({ indexedDB: factory });
-  const transport = createFakeTransport(limits);
+  const transport = createFakeTransport();
   const statuses = [];
   const coordinator = createSyncCoordinator({
     storage,
@@ -966,31 +981,45 @@ test("reports a legacy planner as not migrated without touching it", async () =>
   assert.equal(stored, legacy);
 });
 
-test("uses the protocol limits carried by the transport", async () => {
-  const limits = Object.freeze({
-    ...SYNC_LIMITS,
-    maxBatchChanges: 3,
-    maxPageChanges: 2,
+test("syncs with a legacy custom transport that omits limits", async () => {
+  const context = await setup();
+  // A pre-existing direct caller passes only the transport methods. It must
+  // not need a new limits object, and the sync lifecycle loads the shared
+  // wire values lazily.
+  const legacyTransport = {
+    bootstrap: () => context.transport.bootstrap(),
+    push: (id, envelopes) => context.transport.push(id, envelopes),
+    pull: (id, options) => context.transport.pull(id, options),
+  };
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: legacyTransport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    sleep: async () => {},
+    random: () => 0,
+    locks: null,
   });
-  const context = await setup(limits);
-  for (let index = 0; index < 5; index += 1) {
+  assert.equal(SYNC_LIMITS.maxBatchChanges, 20);
+  assert.equal(SYNC_LIMITS.maxPageChanges, 100);
+  for (let index = 0; index < 45; index += 1) {
     await context.storage.save(
-      JSON.stringify({ ...source, program_id: `custom-limit-${index}` }),
+      JSON.stringify({ ...source, program_id: `legacy-${index}` }),
     );
   }
   await waitFor(
-    async () => (await context.syncStore.listOutbox(syncScope)).length >= 5,
+    async () => (await context.syncStore.listOutbox(syncScope)).length >= 45,
   );
-  const result = await context.coordinator.sync();
+  const result = await coordinator.sync();
   assert.equal(result.kind, "synced");
   assert.deepEqual(
-    context.transport.pullCalls.map((call) => call.limit),
-    [2],
-  );
-  assert.deepEqual(
     context.transport.pushes.map((batch) => batch.length),
-    [3, 3, 1],
+    [20, 20, 7],
   );
+  assert.equal(context.transport.pullCalls[0].limit, 100);
+  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });
 
 test("pushes a large local history in bounded batches", async () => {

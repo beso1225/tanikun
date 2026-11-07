@@ -470,5 +470,5 @@ export function createSyncTransport({
     );
   }
 
-  return Object.freeze({ bootstrap, push, pull, limits: SYNC_LIMITS });
+  return Object.freeze({ bootstrap, push, pull });
 }
