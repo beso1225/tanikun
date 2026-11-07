@@ -8,10 +8,12 @@ globalThis.Automerge = Automerge;
 await import("../../apps/web/public/planner-document.js");
 await import("../../apps/web/public/persistence-transactions.js");
 await import("../../apps/web/public/persistence.js");
+await import("../../apps/web/public/sync-metadata.js");
 
 const codec = globalThis.tanikunDocument;
 const { createStorage } = globalThis.tanikunPersistence;
 const { createTransactions } = globalThis.tanikunPersistenceTransactions;
+const { createSyncMetadataStore } = globalThis.tanikunSyncMetadata;
 
 const source = {
   version: 1,
@@ -651,6 +653,186 @@ test("a successful transaction closes its connection", async () => {
   );
   assert.equal(indexedDB.closes.length, 2);
   assert.equal(timers.size, 0);
+});
+
+test("planner and sync metadata share one version 1 documents store", async () => {
+  const factory = new IDBFactory();
+  const calls = [];
+  const indexedDB = {
+    open(name, version) {
+      calls.push([name, version]);
+      return factory.open(name, version);
+    },
+  };
+  const key = "sync:shared-store";
+  const metadata = createSyncMetadataStore({ indexedDB });
+  assert.deepEqual(await metadata.read(key), {
+    syncVersion: 1,
+    mergedCursor: 0,
+    observedHighWater: 0,
+  });
+  const transact = createTransactions({
+    indexedDB,
+    timers: manualTimers(),
+    timeout: 25,
+  });
+  const record = { storageVersion: 2, bytes: new Uint8Array([1, 2, 3]) };
+  await transact("readwrite", (store) => store.put(record, "planner"));
+  await metadata.observe(key, 4);
+  assert.deepEqual(calls, [
+    ["tanikun-planner", 1],
+    ["tanikun-planner", 1],
+  ]);
+
+  const opening = factory.open("tanikun-planner", 1);
+  const database = await new Promise((resolve, reject) => {
+    opening.addEventListener("success", () => resolve(opening.result), {
+      once: true,
+    });
+    opening.addEventListener("error", () => reject(opening.error), {
+      once: true,
+    });
+  });
+  try {
+    assert.equal(database.version, 1);
+    assert.deepEqual([...database.objectStoreNames], ["documents"]);
+    const transaction = database.transaction("documents", "readonly");
+    const store = transaction.objectStore("documents");
+    const planner = store.get("planner");
+    const metadataRecord = store.get(key);
+    await new Promise((resolve, reject) => {
+      transaction.addEventListener("complete", resolve, { once: true });
+      transaction.addEventListener("error", () => reject(transaction.error), {
+        once: true,
+      });
+    });
+    assert.deepEqual(planner.result, record);
+    assert.deepEqual(metadataRecord.result, {
+      syncVersion: 1,
+      mergedCursor: 0,
+      observedHighWater: 4,
+    });
+  } finally {
+    database.close();
+  }
+  metadata.close();
+  await flush();
+});
+
+test("sync metadata caches one opening and closes it explicitly", async () => {
+  const counting = countingIndexedDB(new IDBFactory());
+  let opens = 0;
+  const indexedDB = {
+    open(name, version) {
+      opens += 1;
+      return counting.open(name, version);
+    },
+  };
+  const metadata = createSyncMetadataStore({ indexedDB });
+  const key = "sync:cached-opening";
+  const empty = {
+    syncVersion: 1,
+    mergedCursor: 0,
+    observedHighWater: 0,
+  };
+  assert.deepEqual(await metadata.read(key), empty);
+  assert.deepEqual(await metadata.read(key), empty);
+  assert.equal(opens, 1);
+  metadata.close();
+  await flush();
+  assert.equal(counting.closes.length, 1);
+  assert.deepEqual(await metadata.read(key), empty);
+  assert.equal(opens, 2);
+  metadata.close();
+  await flush();
+  assert.equal(counting.closes.length, 2);
+});
+
+test("sync metadata reports missing, error, and synchronous open failures", async () => {
+  assert.throws(
+    () => createSyncMetadataStore(),
+    (error) => error.message === "同期メタデータを利用できません",
+  );
+  let opens = 0;
+  const metadata = createSyncMetadataStore({
+    indexedDB: {
+      open() {
+        opens += 1;
+        throw new Error("同期メタデータにアクセスできません");
+      },
+    },
+  });
+  await assert.rejects(
+    metadata.read("sync:open-failure"),
+    (error) => error.message === "同期メタデータにアクセスできません",
+  );
+  await assert.rejects(
+    metadata.read("sync:open-failure"),
+    (error) => error.message === "同期メタデータにアクセスできません",
+  );
+  assert.equal(opens, 1);
+  metadata.close();
+  await flush();
+
+  const failedRequest = new EventTarget();
+  failedRequest.error = new Error("データベースを開けません");
+  const failed = createSyncMetadataStore({
+    indexedDB: { open: () => failedRequest },
+  });
+  const failedReading = failed.read("sync:open-error");
+  failedRequest.dispatchEvent(new Event("error"));
+  await assert.rejects(failedReading, /データベースを開けません/);
+  failed.close();
+  await flush();
+
+  const fallbackRequest = new EventTarget();
+  fallbackRequest.error = null;
+  const fallback = createSyncMetadataStore({
+    indexedDB: { open: () => fallbackRequest },
+  });
+  const fallbackReading = fallback.read("sync:open-error");
+  fallbackRequest.dispatchEvent(new Event("error"));
+  await assert.rejects(fallbackReading, /同期メタデータにアクセスできません/);
+  fallback.close();
+  await flush();
+});
+
+test("sync metadata closes a connection that succeeds after close", async () => {
+  const request = new EventTarget();
+  request.result = undefined;
+  request.error = null;
+  let closeCalls = 0;
+  const database = {
+    close() {
+      closeCalls += 1;
+    },
+    transaction() {
+      const transaction = new EventTarget();
+      transaction.objectStore = () => ({
+        get() {
+          const get = new EventTarget();
+          get.result = undefined;
+          queueMicrotask(() => get.dispatchEvent(new Event("success")));
+          return get;
+        },
+      });
+      return transaction;
+    },
+  };
+  const metadata = createSyncMetadataStore({
+    indexedDB: { open: () => request },
+  });
+  const reading = metadata.read("sync:late-open");
+  metadata.close();
+  request.result = database;
+  request.dispatchEvent(new Event("success"));
+  assert.deepEqual(await reading, {
+    syncVersion: 1,
+    mergedCursor: 0,
+    observedHighWater: 0,
+  });
+  await flush();
+  assert.equal(closeCalls, 1);
 });
 
 test("the adapter stores a version 2 envelope and rejects a stale writer", async () => {
