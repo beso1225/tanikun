@@ -96,18 +96,17 @@ export function installPlannerRecordReader() {
                 () => resolve(request.result),
                 { once: true },
               );
-              if (requestErrorFallback !== undefined) {
-                request.addEventListener(
-                  "error",
-                  () =>
-                    reject(
-                      requestErrorFallback === null
-                        ? request.error
-                        : (request.error ?? new Error(requestErrorFallback)),
-                    ),
-                  { once: true },
-                );
-              }
+              request.addEventListener(
+                "error",
+                () =>
+                  reject(
+                    requestErrorFallback === null ||
+                      requestErrorFallback === undefined
+                      ? request.error
+                      : (request.error ?? new Error(requestErrorFallback)),
+                  ),
+                { once: true },
+              );
             }),
         ),
       );
