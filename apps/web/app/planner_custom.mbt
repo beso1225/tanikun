@@ -175,19 +175,9 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
     Some(form) => form
     None => return state
   }
-  let credits_half_units = match option_int(form.credits, 1, 20) {
-    Some(value) => value
+  let credits = match parse_credits(form.credits) {
+    Some(credits) => credits
     None =>
-      return custom_course_error(
-        state,
-        form,
-        Credits,
-        "単位数が正しくありません",
-      )
-  }
-  let credits = match @tanikun-domain.Credits::new(credits_half_units) {
-    Ok(credits) => credits
-    Err(_) =>
       return custom_course_error(
         state,
         form,
@@ -368,19 +358,9 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
           "曜日を選択してください",
         )
     }
-    let period = match option_int(form.period, 1, 10) {
+    let period = match parse_period(form.period) {
       Some(value) => value
       None =>
-        return custom_course_error(
-          state,
-          form,
-          Period,
-          "時限を選択してください",
-        )
-    }
-    let period = match @tanikun-domain.Period::new(period) {
-      Ok(value) => value
-      Err(_) =>
         return custom_course_error(
           state,
           form,
