@@ -2,7 +2,10 @@ import { applyD1Migrations, env, reset } from "cloudflare:test";
 import { beforeEach, expect, it } from "vitest";
 
 import fixture from "../../../docs/contracts/sync-v1.json";
-import { SyncError } from "../../../packages/sync-contract/contract.mjs";
+import {
+  SYNC_LIMITS,
+  SyncError,
+} from "../../../packages/sync-contract/contract.mjs";
 import { createChangeRepository } from "../repositories/changes.mjs";
 
 const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -282,6 +285,32 @@ it("rejects gaps for pull, new append, and duplicate-only append without a write
   ).toBeNull();
 });
 
+it("defaults pull to the shared maximum page size", async () => {
+  const repository = await seeded();
+  const count = SYNC_LIMITS.maxPageChanges + 1;
+  const changes = Array.from({ length: count }, (_, index) =>
+    change(index + 1),
+  );
+  for (
+    let index = 0;
+    index < changes.length;
+    index += SYNC_LIMITS.maxBatchChanges
+  ) {
+    await repository.append(
+      "dev-alice",
+      fixture.document_id,
+      changes.slice(index, index + SYNC_LIMITS.maxBatchChanges),
+    );
+  }
+  const page = await repository.pull("dev-alice", fixture.document_id);
+  expect(page.changes).toHaveLength(SYNC_LIMITS.maxPageChanges);
+  expect(page.next_cursor).toBe(SYNC_LIMITS.maxPageChanges);
+  expect(page).toMatchObject({
+    cursor: count,
+    has_more: true,
+  });
+});
+
 it("pages in sequence order, handles empty pages and cursor rollback, and remains stable after another append", async () => {
   const repository = await seeded();
   await repository.append("dev-alice", fixture.document_id, [
@@ -360,7 +389,7 @@ it("returns the largest byte-capped prefix and resumes without skipping rows", a
     );
   }
   const page = await repository.pull("dev-alice", fixture.document_id, {
-    limit: 100,
+    limit: SYNC_LIMITS.maxPageChanges,
   });
   expect(bytes(page)).toBeLessThanOrEqual(8 * 1024 * 1024);
   expect(page).toMatchObject({ has_more: true, cursor: 25 });
@@ -458,7 +487,10 @@ it.each([
   { name: "infinite after", options: { after: Infinity } },
   { name: "unsafe after", options: { after: Number.MAX_SAFE_INTEGER + 1 } },
   { name: "zero limit", options: { limit: 0 } },
-  { name: "over-maximum limit", options: { limit: 101 } },
+  {
+    name: "over-maximum limit",
+    options: { limit: SYNC_LIMITS.maxPageChanges + 1 },
+  },
   { name: "fractional limit", options: { limit: 1.5 } },
   { name: "infinite limit", options: { limit: Infinity } },
 ])("rejects $name on an owned document", async ({ options }) => {
