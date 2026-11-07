@@ -16,8 +16,6 @@ const retryable = (result) =>
   (result.kind === "server_error" && result.retryable === true);
 
 {
-  const maxBatch = 20;
-  const maxPageSize = 100;
   const maxRetries = 5;
 
   class SyncCoordinatorError extends Error {
@@ -81,6 +79,18 @@ const retryable = (result) =>
   } = {}) => {
     if (!storage || !transport || !apiOrigin || !syncStore || !metadataStore)
       throw new Error("同期の依存関係が不足しています");
+    // The shared sync contract owns the wire limits. This classic script
+    // receives the same frozen limits through the transport created by the
+    // ESM shell, so it does not repeat the protocol defaults.
+    const { maxBatchChanges: maxBatch, maxPageChanges: maxPageSize } =
+      transport.limits ?? {};
+    if (
+      !Number.isSafeInteger(maxBatch) ||
+      maxBatch < 1 ||
+      !Number.isSafeInteger(maxPageSize) ||
+      maxPageSize < 1
+    )
+      throw new Error("同期のプロトコル制限が不足しています");
     let documentId = initialDocumentId;
     let currentStatus = "starting";
     let running;

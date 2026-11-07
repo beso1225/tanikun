@@ -4,6 +4,8 @@ import test from "node:test";
 import * as Automerge from "@automerge/automerge";
 import { IDBFactory } from "fake-indexeddb";
 
+import { SYNC_LIMITS } from "../../packages/sync-contract/contract.mjs";
+
 globalThis.Automerge = Automerge;
 await import("../../apps/web/public/planner-document.js");
 await import("../../apps/web/public/persistence-transactions.js");
@@ -131,7 +133,7 @@ async function seedLegacyPlanner(factory, text) {
   database.close();
 }
 
-function createFakeTransport() {
+function createFakeTransport(limits = SYNC_LIMITS) {
   const pushes = [];
   const pullCalls = [];
   const sequences = new Map();
@@ -140,6 +142,7 @@ function createFakeTransport() {
   return {
     pushes,
     pullCalls,
+    limits,
     setPull(handler) {
       pullHandler = handler;
     },
@@ -189,7 +192,7 @@ function createFakeTransport() {
   };
 }
 
-async function setup() {
+async function setup(limits = SYNC_LIMITS) {
   const factory = new IDBFactory();
   const base = Automerge.clone(codec.update(null, JSON.stringify(source)), {
     actor: "aa".repeat(32),
@@ -210,7 +213,7 @@ async function setup() {
   await storage.load();
   const syncStore = createSyncStore({ indexedDB: factory });
   const metadataStore = createSyncMetadataStore({ indexedDB: factory });
-  const transport = createFakeTransport();
+  const transport = createFakeTransport(limits);
   const statuses = [];
   const coordinator = createSyncCoordinator({
     storage,
@@ -927,6 +930,10 @@ test("continues across multiple pull pages and refreshes the planner CAS", async
     context.transport.pullCalls.map((call) => call.after),
     [0, 2],
   );
+  assert.deepEqual(
+    context.transport.pullCalls.map((call) => call.limit),
+    [SYNC_LIMITS.maxPageChanges, SYNC_LIMITS.maxPageChanges],
+  );
   assert.equal(JSON.parse(await context.storage.load()).program_id, "remote-2");
   const metadata = await context.metadataStore.read(metadataKey());
   assert.equal(metadata.mergedCursor, 4);
@@ -959,21 +966,51 @@ test("reports a legacy planner as not migrated without touching it", async () =>
   assert.equal(stored, legacy);
 });
 
+test("uses the protocol limits carried by the transport", async () => {
+  const limits = Object.freeze({
+    ...SYNC_LIMITS,
+    maxBatchChanges: 3,
+    maxPageChanges: 2,
+  });
+  const context = await setup(limits);
+  for (let index = 0; index < 5; index += 1) {
+    await context.storage.save(
+      JSON.stringify({ ...source, program_id: `custom-limit-${index}` }),
+    );
+  }
+  await waitFor(
+    async () => (await context.syncStore.listOutbox(syncScope)).length >= 5,
+  );
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "synced");
+  assert.deepEqual(
+    context.transport.pullCalls.map((call) => call.limit),
+    [2],
+  );
+  assert.deepEqual(
+    context.transport.pushes.map((batch) => batch.length),
+    [3, 3, 1],
+  );
+});
+
 test("pushes a large local history in bounded batches", async () => {
   const context = await setup();
-  for (let index = 0; index < 45; index += 1) {
+  const batchLimit = SYNC_LIMITS.maxBatchChanges;
+  const localSaves = batchLimit * 2 + 5;
+  for (let index = 0; index < localSaves; index += 1) {
     await context.storage.save(
       JSON.stringify({ ...source, program_id: `large-${index}` }),
     );
   }
   await waitFor(
-    async () => (await context.syncStore.listOutbox(syncScope)).length >= 45,
+    async () =>
+      (await context.syncStore.listOutbox(syncScope)).length >= localSaves,
   );
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "synced");
   assert.deepEqual(
     context.transport.pushes.map((batch) => batch.length),
-    [20, 20, 7],
+    [batchLimit, batchLimit, context.baseChanges.length + 5],
   );
   assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
 });

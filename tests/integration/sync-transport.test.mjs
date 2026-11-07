@@ -239,6 +239,11 @@ test("pull parses the empty page at the cursor", async () => {
   assert.deepEqual(result.changes, []);
 });
 
+test("exposes the shared protocol limits to the coordinator", () => {
+  const transport = transportFor(async () => assert.fail("unexpected fetch"));
+  assert.equal(transport.limits, SYNC_LIMITS);
+});
+
 test("push enforces shared batch, payload, and body limits before fetch", async () => {
   const { calls, fetch } = scriptedFetch(() => assert.fail("unexpected fetch"));
   const transport = transportFor(fetch);
