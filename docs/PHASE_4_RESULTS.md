@@ -36,9 +36,9 @@ journey, and the mapped journeys.
 The baseline left [#146](https://github.com/beso1225/tanikun/issues/146) as the
 one open issue in [milestone #5](https://github.com/beso1225/tanikun/milestone/5).
 Issues #138 through #145 were closed. This page does not assert that the
-milestone is closed. The closeout gate is to merge the documentation change,
-confirm a successful `main` CI run on the merge commit, and then close #146 and
-the milestone. The implementation baseline alone does not close the milestone.
+milestone is closed. Merging the documentation change closes #146. The remaining closeout gate is
+to confirm a successful `main` CI run on that merge commit and then close the
+milestone with zero open issues. The implementation baseline alone does not close the milestone.
 
 ## API and envelope contract
 
@@ -176,25 +176,26 @@ are absent from the retained Worker log and sanitized traces.
 
 [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)
 adds the browser fault cases. The lost-response case captures the actual Worker
-response with `route.fetch()`, loses only the first delivery, and later fulfills
-the retry with that response unchanged. The retry still posts identical
+response with `route.fetch()` and loses only the first delivery. It forwards
+the retry to the Worker, captures that retry's actual response, and fulfills the
+browser request with it unchanged. The retry still posts identical
 envelopes and compares the D1 rows; the duplicate-row assertions are unchanged.
 [#170](https://github.com/beso1225/tanikun/pull/170) fixed the earlier Chromium
 response-capture flake on that path.
 
 ## Fault matrix
 
-| Fault                       | What the test exercises                                                                                              | Evidence                                                                                                                                                                 |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Duplicate upload            | Same canonical envelope reaches the real Worker and D1 twice; one row and one sequence remain.                       | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs)                                                                                              |
-| Conflicting duplicate       | Same change ID with different bytes returns `409` and rolls back new entries and the counter.                        | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs)                                                                                              |
-| Lost push response          | The server commits, the browser loses the response, and the retry sends the same envelopes.                          | [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs), [`browser-sync-status.test.mjs`](../tests/integration/browser-sync-status.test.mjs) |
-| Interrupted page commit     | An IndexedDB put aborts after the pull; the merged cursor stays, high-water advances, and reload reapplies the page. | [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)                                                                                      |
-| D1 gap and counter rollback | A real gap and a NULL counter fail closed with `log_gap` and recover after repair.                                   | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs), [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)         |
-| Missing dependency          | A mutated pull page is rejected before advance and then recovers.                                                    | [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)                                                                                      |
-| Server failure and offline  | A real renamed-table `503` and an offline gate retry without duplicate rows.                                         | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs), [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)         |
-| Foreign access              | A second identity cannot read, write, or distinguish a foreign document from a missing one.                          | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs)                                                                                              |
-| Plaintext leakage           | The planner canary and bearer token are absent from Worker logs and sanitized traces.                                | [`sync-convergence.test.mjs`](../tests/integration/sync-convergence.test.mjs)                                                                                            |
+| Fault                       | What the test exercises                                                                                                           | Evidence                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Duplicate upload            | Same canonical envelope reaches the real Worker and D1 twice; one row and one sequence remain.                                    | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs)                                                                                              |
+| Conflicting duplicate       | Same change ID with different bytes returns `409` and rolls back new entries and the counter.                                     | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs)                                                                                              |
+| Lost push response          | The server commits, the browser loses the response, and the retry sends the same envelopes.                                       | [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs), [`browser-sync-status.test.mjs`](../tests/integration/browser-sync-status.test.mjs) |
+| Interrupted page commit     | An IndexedDB put aborts after the pull; the merged cursor stays, high-water advances, and reload reapplies the page.              | [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)                                                                                      |
+| D1 gap and counter rollback | A deleted row yields `log_gap`; resetting `last_seq` to 0 yields API `log_gap` and client `rollback`, then recovers after repair. | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs), [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)         |
+| Missing dependency          | A mutated pull page is rejected before advance and then recovers.                                                                 | [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)                                                                                      |
+| Server failure and offline  | A real renamed-table `503` and an offline gate retry without duplicate rows.                                                      | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs), [`sync-browser-faults.test.mjs`](../tests/integration/sync-browser-faults.test.mjs)         |
+| Foreign access              | A second identity cannot read, write, or distinguish a foreign document from a missing one.                                       | [`sync-api-faults.test.mjs`](../tests/integration/sync-api-faults.test.mjs)                                                                                              |
+| Plaintext leakage           | The planner canary and bearer token are absent from Worker logs and sanitized traces.                                             | [`sync-convergence.test.mjs`](../tests/integration/sync-convergence.test.mjs)                                                                                            |
 
 ## Browser and accessibility evidence
 
