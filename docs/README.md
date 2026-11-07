@@ -11,6 +11,7 @@ Start with the current phase documents.
 - [Phase 3 results and evidence](PHASE_3_RESULTS.md)
 - [Phase 3 local persistence contract](adr/0011-local-planner-persistence.md)
 - [Phase 3 Automerge persistence and local convergence](adr/0012-automerge-planner-document.md)
+- [Phase 4 results and evidence](PHASE_4_RESULTS.md)
 - [Phase 4 HTTP sync protocol](adr/0013-http-sync-protocol.md)
 - [Phase 4 temporary local-development authentication](adr/0014-local-development-auth.md)
 - [Phase 4 D1 storage and local verification](SYNC_STORAGE.md)

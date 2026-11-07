@@ -88,6 +88,8 @@ for planner model and browser changes. Keep verification procedures in skills.
 
 Issue acceptance and spoken screen-reader behavior require review and observed
 evidence. Chromium tests cannot establish those judgment calls by themselves.
+Actual screen-reader evidence for the requirement summary remains open in
+[#103](https://github.com/beso1225/tanikun/issues/103).
 
 ## Documentation
 
@@ -99,6 +101,11 @@ evidence. Chromium tests cannot establish those judgment calls by themselves.
   evidence.
 - [docs/PHASE_3_RESULTS.md](docs/PHASE_3_RESULTS.md) records the Phase 3
   persistence and local convergence evidence.
+- [docs/PHASE_4_RESULTS.md](docs/PHASE_4_RESULTS.md) records the Phase 4
+  Workers, D1, and HTTP sync evidence. Its contracts are
+  [ADR-0013](docs/adr/0013-http-sync-protocol.md),
+  [ADR-0014](docs/adr/0014-local-development-auth.md), and
+  [docs/SYNC_STORAGE.md](docs/SYNC_STORAGE.md).
 - [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) is the planner UI baseline.
 - [docs/MUTATION.md](docs/MUTATION.md) records mutation evidence.
 - [GLOSSARY.md](GLOSSARY.md) defines domain terms.
