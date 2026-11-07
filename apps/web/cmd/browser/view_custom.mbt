@@ -1,17 +1,4 @@
 ///|
-fn custom_field_class(
-  form : @app.CustomCourseDraft,
-  field : @app.CustomCourseField,
-  base : String,
-) -> String {
-  if form.error_field == Some(field) {
-    "\{base} border-danger-text"
-  } else {
-    base
-  }
-}
-
-///|
 fn has_planner_term(
   terms : Array[@app.PlannerTerm],
   term : @app.PlannerTerm,
@@ -53,20 +40,6 @@ fn term_toggle_button(
 }
 
 ///|
-fn custom_field_attrs(
-  form : @app.CustomCourseDraft,
-  field : @app.CustomCourseField,
-) -> @html.Attrs {
-  if form.error_field == Some(field) {
-    @html.Attrs::build()
-    .aria_invalid("true")
-    .aria_describedby("custom-form-error")
-  } else {
-    @html.Attrs::build()
-  }
-}
-
-///|
 fn custom_form_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -101,17 +74,7 @@ fn custom_form_panel(
           ),
         )
       }
-      let credit_options : Array[Html] = []
-      for half_units in 1..<=20 {
-        let value = "\{half_units}"
-        credit_options.push(
-          option(
-            value~,
-            selected=form.credits == value,
-            "\{half_units_label(half_units)}単位",
-          ),
-        )
-      }
+      let credit_options = credit_option_items(form.credits)
       let category_options : Array[Html] = [
         option(value="", selected=form.category.is_empty(), "未分類"),
       ]
@@ -136,21 +99,10 @@ fn custom_form_panel(
           term_options.push(option(value~, selected=form.term == value, label))
         }
       }
-      let day_options : Array[Html] = []
-      let days = ["月", "火", "水", "木", "金", "土", "日"]
-      for index in 0..<=6 {
-        let value = "\{index}"
-        day_options.push(
-          option(value~, selected=form.day == value, days[index]),
-        )
-      }
-      let period_options : Array[Html] = []
-      for period in 1..<=10 {
-        let value = "\{period}"
-        period_options.push(
-          option(value~, selected=form.period == value, "\{period}限"),
-        )
-      }
+      let day_options = weekday_option_items(index => form.day == "\{index}")
+      let period_options = period_option_items(period => {
+        form.period == "\{period}"
+      })
       let schedule_regular = form.schedule == @app.CustomCourseSchedule::Regular
       let schedule_year_long = form.schedule ==
         @app.CustomCourseSchedule::YearLong
@@ -160,7 +112,10 @@ fn custom_form_panel(
         div([
           p(class="mb-1 text-xs font-medium text-muted", "学期"),
           div(
-            attrs=custom_field_attrs(form, @app.CustomCourseField::Term),
+            attrs=form_field_attrs(
+              form.error_field == Some(@app.CustomCourseField::Term),
+              "custom-form-error",
+            ),
             class="flex flex-wrap gap-1",
             [
               term_toggle_button(
@@ -203,12 +158,14 @@ fn custom_form_panel(
           ),
           select(
             id="custom-term",
-            class=custom_field_class(
-              form,
-              @app.CustomCourseField::Term,
+            class=form_field_class(
+              form.error_field == Some(@app.CustomCourseField::Term),
               "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
             ),
-            attrs=custom_field_attrs(form, @app.CustomCourseField::Term),
+            attrs=form_field_attrs(
+              form.error_field == Some(@app.CustomCourseField::Term),
+              "custom-form-error",
+            ),
             on_change=fn(value) {
               emit(
                 @app.PlannerMsg::UpdateCustomCourseField(
@@ -233,12 +190,14 @@ fn custom_form_panel(
             ),
             input(
               id="custom-name",
-              class=custom_field_class(
-                form,
-                @app.CustomCourseField::Name,
+              class=form_field_class(
+                form.error_field == Some(@app.CustomCourseField::Name),
                 "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm outline-none focus:border-primary",
               ),
-              attrs=custom_field_attrs(form, @app.CustomCourseField::Name),
+              attrs=form_field_attrs(
+                form.error_field == Some(@app.CustomCourseField::Name),
+                "custom-form-error",
+              ),
               value=form.name,
               placeholder="例: 線形代数",
               on_input=fn(value) {
@@ -260,12 +219,14 @@ fn custom_form_panel(
               ),
               select(
                 id="custom-credits",
-                class=custom_field_class(
-                  form,
-                  @app.CustomCourseField::Credits,
+                class=form_field_class(
+                  form.error_field == Some(@app.CustomCourseField::Credits),
                   "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                 ),
-                attrs=custom_field_attrs(form, @app.CustomCourseField::Credits),
+                attrs=form_field_attrs(
+                  form.error_field == Some(@app.CustomCourseField::Credits),
+                  "custom-form-error",
+                ),
                 on_change=fn(value) {
                   emit(
                     @app.PlannerMsg::UpdateCustomCourseField(
@@ -285,12 +246,14 @@ fn custom_form_panel(
               ),
               select(
                 id="custom-year",
-                class=custom_field_class(
-                  form,
-                  @app.CustomCourseField::Year,
+                class=form_field_class(
+                  form.error_field == Some(@app.CustomCourseField::Year),
                   "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                 ),
-                attrs=custom_field_attrs(form, @app.CustomCourseField::Year),
+                attrs=form_field_attrs(
+                  form.error_field == Some(@app.CustomCourseField::Year),
+                  "custom-form-error",
+                ),
                 on_change=fn(value) {
                   emit(
                     @app.PlannerMsg::UpdateCustomCourseField(
@@ -311,12 +274,14 @@ fn custom_form_panel(
             ),
             select(
               id="custom-category",
-              class=custom_field_class(
-                form,
-                @app.CustomCourseField::Category,
+              class=form_field_class(
+                form.error_field == Some(@app.CustomCourseField::Category),
                 "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
               ),
-              attrs=custom_field_attrs(form, @app.CustomCourseField::Category),
+              attrs=form_field_attrs(
+                form.error_field == Some(@app.CustomCourseField::Category),
+                "custom-form-error",
+              ),
               on_change=fn(value) {
                 emit(
                   @app.PlannerMsg::UpdateCustomCourseField(
@@ -336,12 +301,14 @@ fn custom_form_panel(
             ),
             select(
               id="custom-schedule",
-              class=custom_field_class(
-                form,
-                @app.CustomCourseField::Schedule,
+              class=form_field_class(
+                form.error_field == Some(@app.CustomCourseField::Schedule),
                 "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
               ),
-              attrs=custom_field_attrs(form, @app.CustomCourseField::Schedule),
+              attrs=form_field_attrs(
+                form.error_field == Some(@app.CustomCourseField::Schedule),
+                "custom-form-error",
+              ),
               on_change=fn(value) {
                 emit(
                   @app.PlannerMsg::UpdateCustomCourseField(
@@ -374,12 +341,14 @@ fn custom_form_panel(
                 ),
                 select(
                   id="custom-day",
-                  class=custom_field_class(
-                    form,
-                    @app.CustomCourseField::Day,
+                  class=form_field_class(
+                    form.error_field == Some(@app.CustomCourseField::Day),
                     "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                   ),
-                  attrs=custom_field_attrs(form, @app.CustomCourseField::Day),
+                  attrs=form_field_attrs(
+                    form.error_field == Some(@app.CustomCourseField::Day),
+                    "custom-form-error",
+                  ),
                   on_change=fn(value) {
                     emit(
                       @app.PlannerMsg::UpdateCustomCourseField(
@@ -399,12 +368,14 @@ fn custom_form_panel(
                 ),
                 select(
                   id="custom-period",
-                  class=custom_field_class(
-                    form,
-                    @app.CustomCourseField::Period,
+                  class=form_field_class(
+                    form.error_field == Some(@app.CustomCourseField::Period),
                     "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                   ),
-                  attrs=custom_field_attrs(form, @app.CustomCourseField::Period),
+                  attrs=form_field_attrs(
+                    form.error_field == Some(@app.CustomCourseField::Period),
+                    "custom-form-error",
+                  ),
                   on_change=fn(value) {
                     emit(
                       @app.PlannerMsg::UpdateCustomCourseField(
@@ -419,21 +390,11 @@ fn custom_form_panel(
             ])
           },
           if !form.error_message.is_empty() {
-            p(
-              id="custom-form-error",
-              class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
-              attrs=@html.Attrs::build().role("alert"),
-              form.error_message,
-            )
+            form_error_alert("custom-form-error", form.error_message)
           } else {
             match state.error {
               Some(error) =>
-                p(
-                  id="custom-form-error",
-                  class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
-                  attrs=@html.Attrs::build().role("alert"),
-                  error.message,
-                )
+                form_error_alert("custom-form-error", error.message)
               None => div(([] : Array[Html]))
             }
           },
@@ -457,15 +418,15 @@ fn custom_form_panel(
             } else {
               div(([] : Array[Html]))
             },
-            button(
-              id="custom-submit",
-              class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90",
-              on_click=emit(@app.PlannerMsg::SubmitCustomCourse),
+            form_submit_button(
+              "custom-submit",
               if editing {
                 "保存"
               } else {
                 "作成"
               },
+              @app.PlannerMsg::SubmitCustomCourse,
+              emit,
             ),
           ],
         ),

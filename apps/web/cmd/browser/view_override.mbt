@@ -1,31 +1,4 @@
 ///|
-fn override_field_class(
-  form : @app.OverrideDraft,
-  field : @app.OverrideField,
-  base : String,
-) -> String {
-  if form.error_field == Some(field) {
-    "\{base} border-danger-text"
-  } else {
-    base
-  }
-}
-
-///|
-fn override_field_attrs(
-  form : @app.OverrideDraft,
-  field : @app.OverrideField,
-) -> @html.Attrs {
-  if form.error_field == Some(field) {
-    @html.Attrs::build()
-    .aria_invalid("true")
-    .aria_describedby("override-form-error")
-  } else {
-    @html.Attrs::build()
-  }
-}
-
-///|
 fn override_form_panel(
   state : @app.PlannerState,
   emit : Emit[@app.PlannerMsg],
@@ -33,42 +6,14 @@ fn override_form_panel(
   match state.override_form {
     None => div(([] : Array[Html]))
     Some(form) => {
-      let credit_options : Array[Html] = [
-        option(value="", selected=form.credits.is_empty(), "元の単位数"),
-      ]
-      for half_units in 1..<=20 {
-        let value = "\{half_units}"
-        credit_options.push(
-          option(
-            value~,
-            selected=form.credits == value,
-            "\{half_units_label(half_units)}単位",
-          ),
-        )
-      }
-      let day_options : Array[Html] = []
-      let day_values = [
-        @tanikun-domain.DayOfWeek::Monday,
-        @tanikun-domain.DayOfWeek::Tuesday,
-        @tanikun-domain.DayOfWeek::Wednesday,
-        @tanikun-domain.DayOfWeek::Thursday,
-        @tanikun-domain.DayOfWeek::Friday,
-        @tanikun-domain.DayOfWeek::Saturday,
-        @tanikun-domain.DayOfWeek::Sunday,
-      ]
-      for day in day_values {
-        let value = "\{day_index(day)}"
-        day_options.push(
-          option(value~, selected=form.day == day, day_label(day)),
-        )
-      }
-      let period_options : Array[Html] = []
-      for period in 1..<=10 {
-        let value = "\{period}"
-        period_options.push(
-          option(value~, selected=form.period.value() == period, "\{period}限"),
-        )
-      }
+      let credit_options = credit_option_items(
+        form.credits,
+        unset="元の単位数",
+      )
+      let day_options = weekday_option_items(day => day_index(form.day) == day)
+      let period_options = period_option_items(period => {
+        form.period.value() == period
+      })
       let slots_class = if form.slots_enabled {
         "min-h-11 rounded-md bg-primary px-3 text-sm font-medium text-white"
       } else {
@@ -84,12 +29,14 @@ fn override_form_panel(
             ),
             input(
               id="override-name",
-              class=override_field_class(
-                form,
-                @app.OverrideField::Name,
+              class=form_field_class(
+                form.error_field == Some(@app.OverrideField::Name),
                 "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm outline-none focus:border-primary",
               ),
-              attrs=override_field_attrs(form, @app.OverrideField::Name),
+              attrs=form_field_attrs(
+                form.error_field == Some(@app.OverrideField::Name),
+                "override-form-error",
+              ),
               value=form.name,
               placeholder="空欄なら元の名前",
               on_input=fn(value) {
@@ -110,12 +57,14 @@ fn override_form_panel(
             ),
             select(
               id="override-credits",
-              class=override_field_class(
-                form,
-                @app.OverrideField::Credits,
+              class=form_field_class(
+                form.error_field == Some(@app.OverrideField::Credits),
                 "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
               ),
-              attrs=override_field_attrs(form, @app.OverrideField::Credits),
+              attrs=form_field_attrs(
+                form.error_field == Some(@app.OverrideField::Credits),
+                "override-form-error",
+              ),
               on_change=fn(value) {
                 emit(
                   @app.PlannerMsg::UpdateOverrideField(
@@ -150,18 +99,20 @@ fn override_form_panel(
               if form.slots_enabled {
                 div(
                   class="mt-2 grid grid-cols-2 gap-2",
-                  attrs=override_field_attrs(form, @app.OverrideField::Slots),
+                  attrs=form_field_attrs(
+                    form.error_field == Some(@app.OverrideField::Slots),
+                    "override-form-error",
+                  ),
                   [
                     label(for_="override-day", class="sr-only", "曜日"),
                     select(
                       id="override-day",
-                      attrs=override_field_attrs(
-                        form,
-                        @app.OverrideField::Slots,
+                      attrs=form_field_attrs(
+                        form.error_field == Some(@app.OverrideField::Slots),
+                        "override-form-error",
                       ),
-                      class=override_field_class(
-                        form,
-                        @app.OverrideField::Slots,
+                      class=form_field_class(
+                        form.error_field == Some(@app.OverrideField::Slots),
                         "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                       ),
                       on_change=fn(value) {
@@ -172,13 +123,12 @@ fn override_form_panel(
                     label(for_="override-period", class="sr-only", "時限"),
                     select(
                       id="override-period",
-                      attrs=override_field_attrs(
-                        form,
-                        @app.OverrideField::Slots,
+                      attrs=form_field_attrs(
+                        form.error_field == Some(@app.OverrideField::Slots),
+                        "override-form-error",
                       ),
-                      class=override_field_class(
-                        form,
-                        @app.OverrideField::Slots,
+                      class=form_field_class(
+                        form.error_field == Some(@app.OverrideField::Slots),
                         "w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm",
                       ),
                       on_change=fn(value) {
@@ -208,12 +158,7 @@ fn override_form_panel(
             div(([] : Array[Html]))
           },
           if !form.error_message.is_empty() {
-            p(
-              id="override-form-error",
-              class="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger-text",
-              attrs=@html.Attrs::build().role("alert"),
-              form.error_message,
-            )
+            form_error_alert("override-form-error", form.error_message)
           } else {
             div(([] : Array[Html]))
           },
@@ -227,11 +172,11 @@ fn override_form_panel(
               on_click=emit(@app.PlannerMsg::RemoveAllOverrides),
               "すべての上書きを解除",
             ),
-            button(
-              id="override-submit",
-              class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90",
-              on_click=emit(@app.PlannerMsg::SubmitOverride),
+            form_submit_button(
+              "override-submit",
               "保存",
+              @app.PlannerMsg::SubmitOverride,
+              emit,
             ),
           ],
         ),
