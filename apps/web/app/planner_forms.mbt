@@ -73,6 +73,34 @@ pub struct OverrideDraft {
 }
 
 ///|
+/// Parses a custom or override credit draft within the form's half-unit range
+/// and builds the domain value. Domain validation stays in `Credits::new`.
+fn parse_credits(value : String) -> @tanikun-domain.Credits? {
+  match option_int(value, 1, 20) {
+    Some(half_units) =>
+      match @tanikun-domain.Credits::new(half_units) {
+        Ok(credits) => Some(credits)
+        Err(_) => None
+      }
+    None => None
+  }
+}
+
+///|
+/// Parses a custom or override period draft within the form's range and builds
+/// the domain value. Domain validation stays in `Period::new`.
+fn parse_period(value : String) -> @tanikun-domain.Period? {
+  match option_int(value, 1, 10) {
+    Some(number) =>
+      match @tanikun-domain.Period::new(number) {
+        Ok(period) => Some(period)
+        Err(_) => None
+      }
+    None => None
+  }
+}
+
+///|
 /// The timetable grade and academic year selected in the shell. The mapping is
 /// anchored at the profile's advancement year, which is the year the student
 /// enters the third year: grade 3 is the advancement year, grade 2 the year

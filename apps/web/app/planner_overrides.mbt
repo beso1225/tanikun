@@ -52,20 +52,8 @@ fn open_override_editor(
     Some(value) => value
     None => @tanikun-domain.DayOfWeek::Monday
   }
-  let default_period = match option_int(default_period, 1, 10) {
-    Some(value) =>
-      match @tanikun-domain.Period::new(value) {
-        Ok(period) => period
-        Err(_) =>
-          return with_error(
-            state,
-            UiError::new(
-              UiErrorTarget::Offering(offering_id=offering.id),
-              UiErrorKind::DomainValidation,
-              "時限が正しくありません",
-            ),
-          )
-      }
+  let default_period = match parse_period(default_period) {
+    Some(value) => value
     None =>
       return with_error(
         state,
@@ -163,13 +151,9 @@ fn update_override_day(state : PlannerState, value : String) -> PlannerState {
 
 ///|
 fn update_override_period(state : PlannerState, value : String) -> PlannerState {
-  let period = match option_int(value, 1, 10) {
+  let period = match parse_period(value) {
     Some(value) => value
     None => return state
-  }
-  let period = match @tanikun-domain.Period::new(period) {
-    Ok(value) => value
-    Err(_) => return state
   }
   match state.override_form {
     None => state
@@ -332,19 +316,9 @@ fn submit_override(state : PlannerState) -> PlannerState {
     }
   }
   if !form.credits.is_empty() {
-    let half_units = match option_int(form.credits, 1, 20) {
+    let credits = match parse_credits(form.credits) {
       Some(value) => value
       None =>
-        return override_form_error(
-          state,
-          form,
-          Credits,
-          "単位数が正しくありません",
-        )
-    }
-    let credits = match @tanikun-domain.Credits::new(half_units) {
-      Ok(value) => value
-      Err(_) =>
         return override_form_error(
           state,
           form,
