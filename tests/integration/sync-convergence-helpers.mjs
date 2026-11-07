@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { ensurePlannerRecordReader } from "./planner-record-reader.mjs";
 import { waitForSync } from "./sync-harness.mjs";
 
 export const wait = (milliseconds) =>
@@ -51,74 +52,14 @@ export function canonicalSource(source) {
   return JSON.stringify(normalize(source));
 }
 
-async function inPagePlannerState({ apiOrigin, documentId }) {
-  // oxlint-disable-next-line unicorn/consistent-function-scoping
-  const openDatabase = () =>
-    new Promise((resolve, reject) => {
-      const request = indexedDB.open("tanikun-planner", 1);
-      request.addEventListener("upgradeneeded", () => {
-        if (!request.result.objectStoreNames.contains("documents"))
-          request.result.createObjectStore("documents");
-      });
-      request.addEventListener("success", () => resolve(request.result), {
-        once: true,
-      });
-      request.addEventListener(
-        "error",
-        () => reject(request.error ?? new Error("planner open failed")),
-        { once: true },
-      );
-    });
-  const database = await openDatabase();
-  try {
-    const transaction = database.transaction("documents", "readonly");
-    const store = transaction.objectStore("documents");
-    const read = (key) =>
-      new Promise((resolve, reject) => {
-        const request = store.get(key);
-        request.addEventListener("success", () => resolve(request.result), {
-          once: true,
-        });
-        request.addEventListener(
-          "error",
-          () => reject(request.error ?? new Error("planner read failed")),
-          { once: true },
-        );
-      });
-    const metadataKey =
-      typeof apiOrigin === "string" && typeof documentId === "string"
-        ? "sync:" + JSON.stringify([new URL(apiOrigin).origin, documentId])
-        : null;
-    const [record, metadata] = await Promise.all([
-      read("planner"),
-      metadataKey === null ? Promise.resolve(null) : read(metadataKey),
-    ]);
-    await new Promise((resolve, reject) => {
-      transaction.addEventListener("complete", () => resolve(), { once: true });
-      transaction.addEventListener(
-        "abort",
-        () => reject(transaction.error ?? new Error("planner read aborted")),
-        { once: true },
-      );
-    });
-    if (!record) return { source: null, heads: [], metadata: metadata ?? null };
-    if (record.storageVersion !== 2)
-      throw new Error(`unsupported planner record: ${record.storageVersion}`);
-    const document = globalThis.Automerge.load(record.bytes);
-    return {
-      source: JSON.parse(globalThis.tanikunDocument.text(document)),
-      heads: globalThis.Automerge.getHeads(document).toSorted(),
-      metadata: metadata ?? null,
-      bytes: record.bytes,
-    };
-  } finally {
-    database.close();
-  }
-}
-
 /** Read the committed planner source, Automerge heads, and sync metadata. */
 export async function readPlannerState(page, { apiOrigin, documentId } = {}) {
-  return page.evaluate(inPagePlannerState, { apiOrigin, documentId });
+  await ensurePlannerRecordReader(page);
+  return page.evaluate(
+    (options) =>
+      globalThis.tanikunPlannerRecordReader.readPlannerState(options),
+    { apiOrigin, documentId },
+  );
 }
 
 /** Read local-only sync state without reading or changing the planner. */
@@ -146,45 +87,10 @@ export async function waitForPlannerSource(
   timeout = 15_000,
 ) {
   try {
+    await ensurePlannerRecordReader(page);
     await page.waitForFunction(
-      async (sourceExpression) => {
-        // oxlint-disable-next-line unicorn/consistent-function-scoping
-        const openDatabase = () =>
-          new Promise((resolve, reject) => {
-            const request = indexedDB.open("tanikun-planner", 1);
-            request.addEventListener("upgradeneeded", () => {
-              request.result.createObjectStore("documents");
-            });
-            request.addEventListener("success", () => resolve(request.result), {
-              once: true,
-            });
-            request.addEventListener("error", () => reject(request.error), {
-              once: true,
-            });
-          });
-        const database = await openDatabase();
-        try {
-          const transaction = database.transaction("documents", "readonly");
-          const request = transaction.objectStore("documents").get("planner");
-          const record = await new Promise((resolve, reject) => {
-            request.addEventListener("success", () => resolve(request.result), {
-              once: true,
-            });
-            request.addEventListener("error", () => reject(request.error), {
-              once: true,
-            });
-          });
-          if (!record) return false;
-          const source = JSON.parse(
-            globalThis.tanikunDocument.text(
-              globalThis.Automerge.load(record.bytes),
-            ),
-          );
-          return Function("source", `return (${sourceExpression});`)(source);
-        } finally {
-          database.close();
-        }
-      },
+      (sourceExpression) =>
+        globalThis.tanikunPlannerRecordReader.sourceMatches(sourceExpression),
       expression,
       { timeout },
     );
