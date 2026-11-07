@@ -165,18 +165,26 @@ test(
         assert.equal(gate.offline, false);
 
         await bobPage.unroute(changesGlob);
-        const retryResponse = bobPage.waitForResponse(
-          (response) =>
-            response.request().method() === "POST" &&
-            new URL(response.url()).pathname === path,
-        );
+        let retryResponse = null;
+        await bobPage.route(changesGlob, async (route) => {
+          if (route.request().method() !== "POST") {
+            await route.continue();
+            return;
+          }
+          // Read the actual Worker response through APIResponse, whose body
+          // is retained independently of Chromium's network response cache.
+          const response = await route.fetch();
+          retryResponse = {
+            status: response.status(),
+            body: await response.json(),
+          };
+          await route.fulfill({ response });
+        });
         await bobPage.locator("#sync-retry").click();
-        // Capture the retry body before waiting for subsequent UI activity;
-        // Chromium may otherwise discard the response body from its cache.
-        const response = await retryResponse;
-        assert.equal(response.status(), 200);
-        assert.deepEqual(await response.json(), accepted);
         await waitForSync(bobPage, "同期済み", 30_000);
+        assert.ok(retryResponse, "the retry reached the real Worker");
+        assert.equal(retryResponse.status, 200);
+        assert.deepEqual(retryResponse.body, accepted);
         assert.equal(
           posts.length,
           2,
