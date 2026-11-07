@@ -16,8 +16,6 @@ const retryable = (result) =>
   (result.kind === "server_error" && result.retryable === true);
 
 {
-  const maxBatch = 20;
-  const maxPageSize = 100;
   const maxRetries = 5;
 
   class SyncCoordinatorError extends Error {
@@ -28,6 +26,36 @@ const retryable = (result) =>
       if (result !== undefined) this.result = result;
     }
   }
+
+  // The shared sync contract owns the wire limits. This classic script cannot
+  // import ESM synchronously, so the already-async sync lifecycle loads the
+  // contract once. The factory stays synchronous, and callers that omit
+  // optional limits do not get a duplicated numeric fallback.
+  let protocolLimitsPromise;
+  const loadProtocolLimits = () => {
+    protocolLimitsPromise ??= (async () => {
+      let contract;
+      try {
+        contract = await import("./sync-contract.mjs");
+      } catch {
+        throw new SyncCoordinatorError("sync_failed");
+      }
+      const { SYNC_LIMITS } = contract;
+      const { maxBatchChanges, maxPageChanges } = SYNC_LIMITS ?? {};
+      if (
+        !Number.isSafeInteger(maxBatchChanges) ||
+        maxBatchChanges < 1 ||
+        !Number.isSafeInteger(maxPageChanges) ||
+        maxPageChanges < 1
+      )
+        throw new SyncCoordinatorError("sync_failed");
+      return { maxBatchChanges, maxPageChanges };
+    })().catch((error) => {
+      protocolLimitsPromise = undefined;
+      throw error;
+    });
+    return protocolLimitsPromise;
+  };
 
   const decodeHash = (change) => {
     const automerge = globalThis.Automerge;
@@ -225,7 +253,7 @@ const retryable = (result) =>
       );
     };
 
-    const pushOutbox = async () => {
+    const pushOutbox = async (maxBatch) => {
       while (true) {
         const entries = await syncStore.listOutbox(syncScope());
         if (entries.length === 0) return;
@@ -233,7 +261,7 @@ const retryable = (result) =>
       }
     };
 
-    const pullPages = async () => {
+    const pullPages = async (maxPageSize) => {
       await storage.load();
       let snapshot = storage.snapshot();
       if (snapshot?.storageVersion === 1)
@@ -371,14 +399,14 @@ const retryable = (result) =>
       throw new SyncCoordinatorError("too_many_pages");
     };
 
-    const runSync = async () => {
+    const runSync = async ({ maxBatchChanges, maxPageChanges }) => {
       await ensureDocument();
       // Pull first: a fresh client must obtain the server history before it
       // uploads local history. The first page root check rejects independent
       // Automerge roots instead of silently merging two histories.
-      await pullPages();
+      await pullPages(maxPageChanges);
       await scanLocalChanges();
-      await pushOutbox();
+      await pushOutbox(maxBatchChanges);
       const metadata = await metadataStore.read(metadataKey());
       emit("synced", {
         cursor: metadata.mergedCursor,
@@ -402,8 +430,9 @@ const retryable = (result) =>
       running = (async () => {
         emit("syncing");
         try {
+          const limits = await loadProtocolLimits();
           await ensureDocument();
-          return await withLock(runSync);
+          return await withLock(() => runSync(limits));
         } catch (error) {
           const code = error?.code ?? "sync_failed";
           const state =

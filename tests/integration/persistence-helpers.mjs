@@ -2,10 +2,17 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 
 import { startStaticServer, waitForPersistence } from "./planner-harness.mjs";
+import { addPlannerRecordReader } from "./planner-record-reader.mjs";
 
 const evidenceDirectory = ".cache/verify";
 
 function installProbe() {
+  const reader = globalThis.tanikunPlannerRecordReader;
+  if (!reader) {
+    throw new Error(
+      "install the shared planner record reader before the persistence probe",
+    );
+  }
   // oxlint-disable-next-line unicorn/consistent-function-scoping
   const openDatabase = () =>
     new Promise((finish, reject) => {
@@ -15,28 +22,6 @@ function installProbe() {
       opening.onerror = () => reject(opening.error);
       opening.onsuccess = () => finish(opening.result);
     });
-  const readRecord = () =>
-    openDatabase().then(
-      (database) =>
-        new Promise((finish, reject) => {
-          const transaction = database.transaction("documents", "readonly");
-          const get = transaction.objectStore("documents").get("planner");
-          const close = () => database.close();
-          transaction.oncomplete = () => {
-            close();
-            const stored = get.result;
-            finish(
-              stored?.storageVersion === 2
-                ? { storageVersion: 2, bytes: Array.from(stored.bytes) }
-                : stored,
-            );
-          };
-          transaction.onerror = transaction.onabort = () => {
-            close();
-            reject(transaction.error);
-          };
-        }),
-    );
   const writeRecord = (value) =>
     openDatabase().then(
       (database) =>
@@ -67,27 +52,15 @@ function installProbe() {
           };
         }),
     );
-  const readSource = () =>
-    readRecord().then((stored) => {
-      if (stored === undefined) return null;
-      if (typeof stored === "string") {
-        try {
-          return JSON.parse(stored);
-        } catch {
-          return null;
-        }
-      }
-      if (!globalThis.tanikunDocument || !globalThis.Automerge) return null;
-      return JSON.parse(
-        globalThis.tanikunDocument.text(
-          globalThis.Automerge.load(new Uint8Array(stored.bytes)),
-        ),
-      );
-    });
-  globalThis.tanikunPersistenceProbe = { readRecord, writeRecord, readSource };
+  globalThis.tanikunPersistenceProbe = {
+    readRecord: () => reader.readRecord(),
+    writeRecord,
+    readSource: () => reader.readSource(),
+  };
 }
 
 async function addProbe(page) {
+  await addPlannerRecordReader(page);
   await page.addInitScript(installProbe);
 }
 
@@ -218,12 +191,8 @@ export async function waitForCommittedSource(
 ) {
   try {
     await page.waitForFunction(
-      async ({ expression }) => {
-        const source = await globalThis.tanikunPersistenceProbe.readSource();
-        if (!source || typeof source !== "object") return false;
-        // The predicate is written by the test, not by the application.
-        return Function("source", `return (${expression});`)(source);
-      },
+      ({ expression }) =>
+        globalThis.tanikunPlannerRecordReader.probeSourceMatches(expression),
       { expression: predicateSource },
       { timeout },
     );
@@ -253,13 +222,11 @@ export async function waitForCommittedSourceAfter(
 ) {
   try {
     await page.waitForFunction(
-      async ({ expression, before }) => {
-        const stored = await globalThis.tanikunPersistenceProbe.readRecord();
-        if (JSON.stringify(stored) === JSON.stringify(before)) return false;
-        const source = await globalThis.tanikunPersistenceProbe.readSource();
-        if (!source || typeof source !== "object") return false;
-        return Function("source", `return (${expression});`)(source);
-      },
+      ({ expression, before }) =>
+        globalThis.tanikunPlannerRecordReader.probeSourceMatchesAfter(
+          expression,
+          before,
+        ),
       { expression: predicateSource, before: previous },
       { timeout },
     );

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 
+import { SYNC_LIMITS } from "../../../packages/sync-contract/contract.mjs";
 import {
   ALLOWED_ORIGIN,
   assertOrigin,
@@ -151,9 +152,17 @@ it("converts malformed wire input into the existing request errors", async () =>
 });
 
 it("parses and bounds cursor pagination parameters", () => {
-  expect(parsePagination(new URL(`${url}?after=0&limit=100`))).toEqual({
+  expect(parsePagination(new URL(url))).toEqual({
     after: 0,
-    limit: 100,
+    limit: SYNC_LIMITS.maxPageChanges,
+  });
+  expect(
+    parsePagination(
+      new URL(`${url}?after=0&limit=${SYNC_LIMITS.maxPageChanges}`),
+    ),
+  ).toEqual({
+    after: 0,
+    limit: SYNC_LIMITS.maxPageChanges,
   });
   for (const query of [
     "after=01",
@@ -161,7 +170,7 @@ it("parses and bounds cursor pagination parameters", () => {
     "after=1.5",
     "after=9007199254740992",
     "limit=0",
-    "limit=101",
+    `limit=${SYNC_LIMITS.maxPageChanges + 1}`,
     "after=0&after=1",
     "after=0&unknown=1",
   ]) {

@@ -172,7 +172,11 @@ export function createChangeRepository(
       }
     },
 
-    async pull(ownerId, documentId, { after = 0, limit = 100 } = {}) {
+    async pull(
+      ownerId,
+      documentId,
+      { after = 0, limit = SYNC_LIMITS.maxPageChanges } = {},
+    ) {
       await owned(ownerId, documentId);
       if (
         !Number.isSafeInteger(after) ||
