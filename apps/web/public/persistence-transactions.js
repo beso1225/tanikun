@@ -1,10 +1,36 @@
-// Own the IndexedDB connection and transaction lifecycle. Callers inject the
-// database and timer functions so tests can drive completion order without
-// patching browser globals or waiting on the production timeout. CAS checks,
-// document validation, and handle adoption stay in persistence.js.
+// Own the planner IndexedDB schema, opening, connection, and transaction
+// lifecycle. Callers inject the database and timer functions so tests can drive
+// completion order without patching browser globals or waiting on the
+// production timeout. CAS checks, document validation, and handle adoption stay
+// in persistence.js.
 {
+  // Planner storage and sync metadata share this version 1 database. Keep the
+  // name, version, store, and upgrade path in one owner; each caller still owns
+  // its connection lifetime and caller-specific errors.
   const databaseName = "tanikun-planner";
+  const databaseVersion = 1;
   const storeName = "documents";
+  // Return the raw request so callers keep synchronous event registration and
+  // their own timeout, late-open, and connection cleanup.
+  const open = (indexedDB) => {
+    const request = indexedDB.open(databaseName, databaseVersion);
+    request.addEventListener(
+      "upgradeneeded",
+      () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains(storeName))
+          database.createObjectStore(storeName);
+      },
+      { once: true },
+    );
+    return request;
+  };
+  const plannerDatabase = {
+    name: databaseName,
+    version: databaseVersion,
+    storeName,
+    open,
+  };
   const createTransactions =
     ({ indexedDB, timers, timeout = 5000 }) =>
     (mode, operation, hooks = {}) =>
@@ -45,16 +71,11 @@
         }, timeout);
         let opening;
         try {
-          opening = indexedDB.open(databaseName, 1);
+          opening = plannerDatabase.open(indexedDB);
         } catch (error) {
           finish(error);
           return;
         }
-        opening.addEventListener(
-          "upgradeneeded",
-          () => opening.result.createObjectStore(storeName),
-          { once: true },
-        );
         opening.addEventListener(
           "error",
           () =>
@@ -124,5 +145,8 @@
           { once: true },
         );
       });
-  globalThis.tanikunPersistenceTransactions = { createTransactions };
+  globalThis.tanikunPersistenceTransactions = {
+    createTransactions,
+    plannerDatabase,
+  };
 }
