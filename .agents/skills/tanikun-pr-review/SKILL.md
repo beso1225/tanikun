@@ -6,7 +6,8 @@ description: "Review, fix, and land a Tanikun pull request. Use when a PR is ope
 # Tanikun PR review
 
 Use this skill for an open pull request. Use `tanikun-planner-change` for planner
-fixes, `tanikun-moonbit-change` for pure-package fixes, and
+fixes, `tanikun-moonbit-change` for pure-package fixes,
+`tanikun-sync-change` for sync, Worker, D1, or local auth fixes, and
 `tanikun-docs-update` for documentation fixes.
 
 ## Gather state
@@ -48,9 +49,15 @@ no actionable blockers. Merge still requires the user's approval.
 
 1. Add a focused test when the comment describes a behavior change.
 2. Make the smallest fix.
-3. Run the focused test, then `just test` and `just lint`.
-4. For a docs-only PR, run `just lint` and the relevant link checks.
-5. Push the fix before replying to the thread.
+3. Run the focused test for the changed layer.
+4. Run `just lint`. Run `just test` only when the change reaches MoonBit, the
+   JavaScript export, or shared code that it covers.
+5. For sync, Worker, D1, local auth, or coordinator changes, load
+   `tanikun-sync-change` and run its focused ladder. Run `just test-sync` when
+   the change crosses the real Worker, D1, or browser boundary. Do not run the
+   real harness for a docs-only change.
+6. For a docs-only PR, run `just lint` and the relevant link checks.
+7. Push the fix before replying to the thread.
 
 Do not request a bot review unless the user asks. Do not force push over another
 person's work.
