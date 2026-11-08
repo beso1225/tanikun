@@ -68,11 +68,14 @@ Load `tanikun-mutation-refresh` before updating the baseline.
   review comments, checks, thread resolution, merge, main CI.
 - [tanikun-nix-ci](.agents/skills/tanikun-nix-ci/SKILL.md):
   Nix and GitHub Actions failure triage.
+- [tanikun-sync-change](.agents/skills/tanikun-sync-change/SKILL.md):
+  Phase 4 HTTP sync contract, Worker, D1, local auth, browser client, and real
+  convergence harness.
 - [tanikun-toolchain-update](.agents/skills/tanikun-toolchain-update/SKILL.md):
   MoonBit, Node.js, pnpm, Warren, mooncakes, and turtles pins.
 - [verify](.agents/skills/verify/SKILL.md):
-  drive the built planner page in Chromium; doctor, journeys, and evidence
-  under `.cache/verify/`.
+  drive the built planner page and its local persistence in Chromium; doctor,
+  journeys, and evidence under `.cache/verify/`.
 
 ## Planner maintenance
 
