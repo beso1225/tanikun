@@ -118,8 +118,9 @@ If a run is interrupted, close only the harness from that run.
 
 ## Fault cases
 
-`runJourneyGroup` gives each browser context its own trace, screenshot, and
-failure log. A journey declares each expected fault with:
+`runJourneyGroup` keeps evidence per page. On failure it writes a failure
+log, attempts a screenshot when a page exists, and sanitizes a trace if
+recording started. A journey declares each expected fault with:
 
 - `kind`: `pageerror` or `console`.
 - Exact text or a regular expression.
@@ -153,8 +154,13 @@ Each run writes to `.cache/verify/sync/<run>/`:
 - `migration.log`
 - `wrangler.log` (redacted)
 - `cleanup.log`
-- on failure, `<journey>-failure.log` and `<journey>-failure.png`
-- sanitized `<journey>-trace.zip` or `<journey>-failure-trace.zip`
+- on journey failure, `<journey>-failure.log`
+- `<journey>-failure.png` when a page exists and screenshot capture succeeds
+- sanitized `<journey>-trace.zip` or `<journey>-failure-trace.zip` when tracing
+  started and sanitization succeeds
+
+Context-creation failure leaves only the failure log. A failed trace rebuild is
+reported in the failure log; it never causes the raw trace to be retained.
 
 The raw Playwright trace stays in the temporary directory and is deleted after
 sanitization. The retained trace keeps the action timeline and sanitized network

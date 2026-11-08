@@ -45,7 +45,8 @@ persistence, not sync.
   the owner predicates in `apps/api/repositories/changes.mjs`.
 - `SYNC_LIMITS` is the only owner of 20 append changes, 100 pull changes,
   256 KiB payloads, 4 MiB requests, and 8 MiB responses. Import it. Do not add
-  numeric copies in the Worker, browser, or tests.
+  numeric copies in production Worker or browser code. Tests may pin literal
+  contract values and boundary sizes to detect accidental protocol changes.
 - Pull reads the cursor, integrity state, and rows in one view. `cursor` is the
   log high-water, not an acknowledgement that a client merged a page.
 - The client persists `observedHighWater` before page processing. It then
@@ -134,11 +135,14 @@ use `try/finally`. `close()` closes contexts and the browser, terminates the
 owned Wrangler process group, closes the web server, writes `cleanup.log`, and
 removes the temporary directory. Evidence survives.
 
-Each run writes under `.cache/verify/sync/<run>/`: `harness.log`,
-`migration.log`, redacted `wrangler.log`, `cleanup.log`, and on failure a
-screenshot, failure log, and sanitized trace. The raw trace stays in the
-temporary directory and is deleted. Do not attach a raw trace, a full Wrangler
-debug log, a token, a document ID, or a payload to a public report.
+Evidence under `.cache/verify/sync/<run>/` includes `harness.log`,
+`migration.log`, redacted `wrangler.log`, and `cleanup.log` as startup and
+cleanup progress. Journey failures write a failure log. A screenshot requires
+a page; a sanitized trace requires tracing to have started and sanitization
+to succeed. Context-creation failures therefore leave only the failure log.
+The raw trace stays in the temporary directory and is deleted. Do not attach
+a raw trace, a full Wrangler debug log, a token, a document ID, or a payload to
+a public report.
 
 ## Read next
 
