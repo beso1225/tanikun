@@ -206,6 +206,32 @@ try {
         .locator("#timetable")
         .getByText("Verification course edited", { exact: true })
         .waitFor();
+      await page.locator("#term-A1").click();
+      await page.getByRole("heading", { name: "A1", exact: true }).waitFor();
+      await page.locator("#open-intensive-picker").click();
+      await page.locator("#open-custom-course").click();
+      await page.locator("#custom-course").waitFor();
+      await page.locator("#custom-name").fill("Winter verification");
+      await page.locator("#custom-term").selectOption("W");
+      await page.locator("#custom-submit").click();
+      await page.locator("#picker").waitFor();
+      await page.locator('[id^="add-offering-user-offering-"]').click();
+      await page.locator("#close-picker").click();
+      await page.locator("#picker").waitFor({ state: "detached" });
+      assert.equal(await page.locator("header h2").first().innerText(), "A1");
+      await page.locator("#off-grid").getByText("W（冬期）").waitFor();
+      await page
+        .locator("#off-grid")
+        .getByText("Winter verification", { exact: true })
+        .waitFor();
+      await waitForPersistence(page);
+      await page.reload();
+      await waitForPersistence(page);
+      assert.equal(await page.locator("header h2").first().innerText(), "A1");
+      await page
+        .locator("#off-grid")
+        .getByText("Winter verification", { exact: true })
+        .waitFor();
     } else if (mode === "overrides") {
       await openCourse("Physics I");
       await page.locator("#status-passed").click();
