@@ -9,6 +9,8 @@
   come from the clicked slot only, otherwise they default to Tuesday period 4
 - regular multi-term selections must share one semester; YearLong and Intensive
   are separate schedules
+- create a W intensive from A1 or A2; the current autumn tab stays selected and
+  the added course appears in that tab's W subsection
 - place the custom offering
 - edit a custom course from its picker row; the form uses the stored offering's
   year, term, schedule, and slots
@@ -37,11 +39,14 @@ exposes `編集`; the edit form owns deletion.
 - reopen the picker, capture the `[id^="edit-custom-"]` id, open the editor,
   assert the stored name/year, rename, submit, and assert the edit id is
   unchanged and the timetable shows the new name
+- switch to A1, create a W intensive from `#open-intensive-picker`, add it,
+  close the picker, and assert A1 stays selected with the course in the
+  `W（冬期）` subsection; reload and assert the persisted plan still shows both
 
 Extended coverage, not executed by this mode:
 
 - `tests/integration/browser-phase2.test.mjs` covers custom creation inside the
-  full planner journey
+  full planner journey and the winter custom add/reload path
 - `tests/integration/browser-display.test.mjs` covers a hidden custom course and
   range recovery
 - `tests/integration/browser-persistence.test.mjs` covers deleting a custom
@@ -59,7 +64,7 @@ Extended coverage, not executed by this mode:
 - Deleting an enrolled custom course is blocked; remove the enrollment first.
 - A selected category is merged into the active requirement set for category
   credits and display; `未分類` is the default.
-- Known product gap: creating and adding a W intensive selects W internally,
-  leaving no active sidebar tab and hiding the intensive entries. Select A1
-  or A2 to reveal the course. The empty view is a failure, not a successful
-  creation proof.
+- W has no sidebar tab. Creating or saving a W intensive keeps the current A1
+  or A2 tab and falls back to A1 from S1, S2, or a stored W selection. The
+  offering keeps `Semester::W` and no slots, so the course is visible in the W
+  subsection immediately after adding.
