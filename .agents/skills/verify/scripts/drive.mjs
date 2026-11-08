@@ -17,6 +17,7 @@ const modes = [
   "custom-courses",
   "overrides",
   "summary-profile-year",
+  "local-persistence",
 ];
 assert.ok(
   feature === "all" || modes.includes(feature),
@@ -98,7 +99,22 @@ try {
       await page.getByRole("heading", { name: "S2", exact: true }).waitFor();
       await page.locator("#term-A1").click();
       await page.locator("#off-grid").getByText("W（冬期）").waitFor();
+      await page
+        .locator("#off-grid")
+        .getByText("Winter Workshop", { exact: true })
+        .waitFor();
+      await page.locator("#term-A2").click();
+      await page.getByRole("heading", { name: "A2", exact: true }).waitFor();
+      await page.locator("#off-grid").getByText("W（冬期）").waitFor();
+      await page
+        .locator("#off-grid")
+        .getByText("Winter Workshop", { exact: true })
+        .waitFor();
       await page.locator("#term-S1").click();
+      assert.match(
+        await page.locator('[id^="open-detail-phy101-s1"]').first().innerText(),
+        /予定/,
+      );
       await page.setViewportSize({ width: 390, height: 844 });
       assert.ok(
         await page.evaluate(
@@ -121,12 +137,27 @@ try {
       await page.locator("#grade-good").click();
       await page.locator("#grade-good[aria-pressed='true']").waitFor();
       await closeDetail();
+      assert.match(
+        await page.locator('[id^="open-detail-phy101-s1"]').first().innerText(),
+        /合格/,
+      );
       await assertSummaryTotals(page, "2単位", "2単位", "6単位");
       await openCourse("Physics Lab");
       await page.locator("#remove-detail").click();
       await assertSummaryTotals(page, "2単位", "2単位", "5単位");
       await page.locator("#undo-removal-button").click();
       await assertSummaryTotals(page, "2単位", "2単位", "6単位");
+      assert.equal(
+        await page.locator('[id^="open-detail-phy201-year"]').count(),
+        1,
+      );
+      assert.match(
+        await page
+          .locator('[id^="open-detail-phy201-year"]')
+          .first()
+          .innerText(),
+        /予定/,
+      );
       assert.match(
         await page.evaluate(() => document.activeElement?.id),
         /^open-detail-phy201-year-/,
@@ -134,6 +165,11 @@ try {
     } else if (mode === "custom-courses") {
       await page.locator("#open-catalogue-picker").click();
       await page.locator("#open-custom-course").click();
+      assert.equal(await page.locator("#custom-year").inputValue(), "2026");
+      assert.equal(
+        await page.locator("#custom-term-s1").getAttribute("aria-pressed"),
+        "true",
+      );
       await page.locator("#custom-submit").click();
       await page.locator("#custom-form-error[role='alert']").waitFor();
       assert.equal(
@@ -148,7 +184,41 @@ try {
         .locator("#timetable")
         .getByText("Verification course", { exact: true })
         .waitFor();
+      await page.locator("#open-catalogue-picker").click();
+      const editId = await page
+        .locator('[id^="edit-custom-"]')
+        .getAttribute("id");
+      await page.locator('[id^="edit-custom-"]').click();
+      assert.equal(
+        await page.locator("#custom-name").inputValue(),
+        "Verification course",
+      );
+      assert.equal(await page.locator("#custom-year").inputValue(), "2026");
+      await page.locator("#custom-name").fill("Verification course edited");
+      await page.locator("#custom-submit").click();
+      await page.locator("#picker").waitFor();
+      assert.equal(
+        await page.locator('[id^="edit-custom-"]').getAttribute("id"),
+        editId,
+      );
+      await page.locator("#close-picker").click();
+      await page
+        .locator("#timetable")
+        .getByText("Verification course edited", { exact: true })
+        .waitFor();
     } else if (mode === "overrides") {
+      await openCourse("Physics I");
+      await page.locator("#status-passed").click();
+      await page.locator("#grade-good").click();
+      await page.locator("#grade-good[aria-pressed='true']").waitFor();
+      await closeDetail();
+      assert.equal(await page.locator("#override-passed-note").count(), 0);
+      await openCourse("Physics I");
+      await page.locator("#open-override-editor").click();
+      await page.locator("#override-passed-note").waitFor();
+      await page.locator("#close-override-editor").click();
+      await page.locator("#override-editor").waitFor({ state: "detached" });
+      await closeDetail();
       await openCourse("Physics Lab");
       await page.locator("#open-override-editor").click();
       await page.locator("#override-name").fill("Verification override");
@@ -162,7 +232,31 @@ try {
         .locator("#timetable")
         .getByText("Verification override", { exact: true })
         .waitFor();
-    } else {
+    } else if (mode === "summary-profile-year") {
+      assert.match(
+        await page.locator("#summary-scope").innerText(),
+        /すべての学年・学期/,
+      );
+      assert.equal(
+        await page
+          .locator("#summary-requirements [data-requirement-bar]")
+          .count(),
+        3,
+      );
+      const requirementText = await page
+        .locator("#summary-requirements")
+        .innerText();
+      assert.match(requirementText, /合格済/);
+      assert.match(requirementText, /履修中/);
+      assert.match(requirementText, /履修予定/);
+      assert.equal(
+        await page.locator("#requirement-summary").getAttribute("role"),
+        "status",
+      );
+      assert.equal(
+        await page.locator("#requirement-summary").innerText(),
+        "要件（履修予定込）: 計画上充足",
+      );
       await page.locator("#open-settings").click();
       await page.locator("#program-select").selectOption("applied-chemistry");
       await page.waitForFunction(() =>
@@ -181,6 +275,55 @@ try {
           ?.textContent.includes("2027年度"),
       );
       await assertSummaryTotals(page, "0単位", "0単位", "6単位");
+    } else if (mode === "local-persistence") {
+      assert.equal(
+        await page.locator("#persistence-status").getAttribute("role"),
+        "status",
+      );
+      assert.equal(
+        await page.locator("#persistence-status").innerText(),
+        "保存済み",
+      );
+      await page.evaluate(() => {
+        globalThis.verifyPersistenceLabels = [];
+        const target = document.querySelector("#persistence-status");
+        new MutationObserver(() => {
+          const label = target?.textContent ?? "";
+          if (globalThis.verifyPersistenceLabels.at(-1) !== label)
+            globalThis.verifyPersistenceLabels.push(label);
+        }).observe(target, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+      });
+      await page.locator("#open-catalogue-picker").click();
+      await page.locator("#add-offering-phy302-s").click();
+      await page.locator("#close-picker").click();
+      await page
+        .locator("#off-grid")
+        .getByText("Seminar S2", { exact: true })
+        .waitFor();
+      await page.waitForFunction(
+        () =>
+          (globalThis.verifyPersistenceLabels.includes("未保存") ||
+            globalThis.verifyPersistenceLabels.includes("保存中")) &&
+          globalThis.verifyPersistenceLabels.at(-1) === "保存済み",
+      );
+      await assertSummaryTotals(page, "0単位", "0単位", "7単位");
+      await page.reload();
+      await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+      await waitForPersistence(page);
+      assert.equal(
+        await page.locator("#persistence-status").innerText(),
+        "保存済み",
+      );
+      await page
+        .locator("#off-grid")
+        .getByText("Seminar S2", { exact: true })
+        .waitFor();
+      await assertSummaryTotals(page, "0単位", "0単位", "7単位");
+      assert.equal(await page.locator("#planner-error").count(), 0);
     }
     assert.deepEqual(await auditAccessibility(page), []);
     await page.screenshot({
