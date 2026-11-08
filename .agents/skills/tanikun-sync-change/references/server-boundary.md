@@ -67,7 +67,8 @@ from the named range CHECK; anything else is `temporarily_unavailable`.
 
 ## Owner scope
 
-`owned()` in `changes.mjs` selects `documents.id` and `owner_id`. Every document
+`owned()` in `changes.mjs` selects `id` and `last_seq`, filtered by document ID
+and `owner_id`. Every document
 method calls it or repeats the owner and document predicate. `bootstrap` is the
 provisioning exception: it inserts the user and document with conflict handling
 and reads the winner in the same batch.

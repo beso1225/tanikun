@@ -36,6 +36,12 @@ Ready means these files exist:
 - `apps/web/dist/planner-document.js`
 - `apps/web/dist/persistence-transactions.js`
 - `apps/web/dist/persistence.js`
+- `apps/web/dist/sync-store.js`
+- `apps/web/dist/sync-metadata.js`
+- `apps/web/dist/sync-coordinator.js`
+- `apps/web/dist/sync-shell.js`
+- `apps/web/dist/sync-transport.js`
+- `apps/web/dist/sync-contract.mjs`
 - `apps/web/dist/styles.css`
 
 The driver starts its own loopback HTTP server for that directory, opens the
@@ -51,8 +57,9 @@ node .agents/skills/verify/scripts/doctor.mjs
 ```
 
 It checks the dist files above, requires `PLAYWRIGHT_CORE`, launches Chromium,
-serves the page, and waits for the app heading. It prints one JSON object and
-exits nonzero on failure.
+serves the page, and waits for the app heading, saved persistence status, and
+unconfigured sync status. Browser page or console errors fail the check. It
+prints one JSON object and exits nonzero on failure.
 
 ## Drive
 

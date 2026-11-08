@@ -160,7 +160,9 @@ The raw Playwright trace stays in the temporary directory and is deleted after
 sanitization. The retained trace keeps the action timeline and sanitized network
 method, status, and timing metadata. It omits headers, cookies, bodies, document
 identifiers, init-script arguments, console text, DOM snapshots, screencast
-frames, and source stacks.
+frames, and the `trace.stacks` source-stack entry. Redacted, bounded error
+messages and error stack strings can remain in action events; the archive is
+not stack-free.
 
 Do not attach a raw trace, a full Wrangler debug log, a token, a document ID, or
 a payload to a public report. Use the redacted evidence under

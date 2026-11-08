@@ -3,7 +3,8 @@
 Each file describes one user-facing planner surface, how to reach it, how to
 drive it in Chromium, and what end state proves it works. `drive.mjs all` runs
 one live path for each file; a passing mode does not prove every sub-feature.
-The extended coverage column names the tests that cover the rest.
+The extended coverage column points to additional tests, not exhaustive
+coverage of every listed sub-feature. Some details are source-confirmed only.
 
 | Feature                      | File                                               | `drive.mjs` mode       | Extended coverage                                                                                                                |
 | ---------------------------- | -------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
