@@ -170,6 +170,16 @@ fn planner_term_for_semester(
 }
 
 ///|
+/// W has no sidebar tab. Winter intensives stay on the current A1 or A2 tab,
+/// and fall back to A1 when another selection is active.
+fn winter_intensive_tab(selected_term : PlannerTerm) -> PlannerTerm {
+  match selected_term {
+    A1 | A2 => selected_term
+    _ => A1
+  }
+}
+
+///|
 fn submit_custom_course(state : PlannerState) -> PlannerState {
   let form = match state.custom_form {
     Some(form) => form
@@ -410,7 +420,11 @@ fn submit_custom_course(state : PlannerState) -> PlannerState {
         state.selected_term
       }
     @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
-      planner_term_for_semester(semester)
+      if semester == @tanikun-domain.Semester::W {
+        winter_intensive_tab(state.selected_term)
+      } else {
+        planner_term_for_semester(semester)
+      }
   }
   let catalogue : Array[@tanikun-domain.Course] = []
   let offerings : Array[@tanikun-domain.CourseOffering] = []

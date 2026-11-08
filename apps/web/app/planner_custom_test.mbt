@@ -105,6 +105,170 @@ test "an intensive custom offering has no slots" {
 }
 
 ///|
+fn open_winter_custom_course_form(
+  state : @app.PlannerState,
+  name : String,
+) -> @app.PlannerState {
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, name)
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Schedule,
+    "intensive",
+  )
+  update_custom(state, @app.CustomCourseField::Term, "W")
+}
+
+///|
+fn add_latest_custom_offering(state : @app.PlannerState) -> @app.PlannerState {
+  let offering_id = state.offerings[state.offerings.length() - 1].id
+  @app.update_planner(state, @app.PlannerMsg::AddOffering(offering_id~))
+}
+
+///|
+test "a winter intensive created from A1 stays visible on the A1 tab" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A1),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = open_winter_custom_course_form(state, "Winter custom")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_true(state.selected_term == @app.PlannerTerm::A1)
+  assert_eq(state.picker_entries().length(), 1)
+  match state.offerings[1].schedule() {
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      assert_true(semester == @tanikun-domain.Semester::W)
+    _ => fail("expected a winter intensive offering")
+  }
+  assert_true(state.offerings[1].slots().is_empty())
+  assert_eq(state.offerings[1].academic_year.year(), 2026)
+  let state = add_latest_custom_offering(state)
+  assert_eq(state.enrollments.length(), 1)
+  match state.enrollments[0].status {
+    @tanikun-domain.EnrollmentStatus::Planned => ()
+    _ => fail("expected a planned winter enrollment")
+  }
+  let state = @app.update_planner(state, @app.PlannerMsg::ClosePicker)
+  let entries = state.off_grid_entries(@app.PlannerTerm::A1)
+  assert_eq(entries.length(), 1)
+  assert_true(entries[0].winter)
+  assert_eq(entries[0].course_name, "Winter custom")
+}
+
+///|
+test "a winter intensive created from A2 keeps the A2 tab" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A2),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = open_winter_custom_course_form(state, "Winter custom")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_true(state.selected_term == @app.PlannerTerm::A2)
+  let state = add_latest_custom_offering(state)
+  let state = @app.update_planner(state, @app.PlannerMsg::ClosePicker)
+  let entries = state.off_grid_entries(@app.PlannerTerm::A2)
+  assert_eq(entries.length(), 1)
+  assert_true(entries[0].winter)
+}
+
+///|
+test "a winter intensive from a non-autumn selection uses A1" {
+  for start in [@app.PlannerTerm::S1, @app.PlannerTerm::S2, @app.PlannerTerm::W] {
+    let state = @app.update_planner(
+      planner_state(),
+      @app.PlannerMsg::SelectTerm(term=start),
+    )
+    let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+    let state = open_winter_custom_course_form(state, "Winter fallback")
+    let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+    assert_true(state.selected_term == @app.PlannerTerm::A1)
+  }
+}
+
+///|
+test "year-long and non-winter intensives keep their tab rules" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A2),
+  )
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, "Full year")
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Schedule,
+    "year-long",
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_true(state.selected_term == @app.PlannerTerm::A2)
+
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A2),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, "Spring")
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Schedule,
+    "intensive",
+  )
+  let state = update_custom(state, @app.CustomCourseField::Term, "S")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_true(state.selected_term == @app.PlannerTerm::S1)
+
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::S2),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = open_custom_form(state)
+  let state = update_custom(state, @app.CustomCourseField::Name, "Autumn")
+  let state = update_custom(
+    state,
+    @app.CustomCourseField::Schedule,
+    "intensive",
+  )
+  let state = update_custom(state, @app.CustomCourseField::Term, "A")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_true(state.selected_term == @app.PlannerTerm::A1)
+}
+
+///|
+test "editing a winter intensive keeps the current autumn tab" {
+  let state = @app.update_planner(
+    planner_state(),
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A2),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenIntensivePicker)
+  let state = open_winter_custom_course_form(state, "Winter before")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  let offering_id = state.offerings[1].id
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::SelectTerm(term=@app.PlannerTerm::A2),
+  )
+  let state = @app.update_planner(state, @app.PlannerMsg::OpenCataloguePicker)
+  let state = @app.update_planner(
+    state,
+    @app.PlannerMsg::OpenEditCustomCourse(offering_id~),
+  )
+  let state = update_custom(state, @app.CustomCourseField::Name, "Winter after")
+  let state = @app.update_planner(state, @app.PlannerMsg::SubmitCustomCourse)
+  assert_true(state.selected_term == @app.PlannerTerm::A2)
+  assert_true(state.offerings[1].id == offering_id)
+  assert_eq(state.catalogue[1].name, "Winter after")
+  match state.offerings[1].schedule() {
+    @tanikun-domain.OfferingSchedule::Intensive(semester~) =>
+      assert_true(semester == @tanikun-domain.Semester::W)
+    _ => fail("expected a winter intensive offering")
+  }
+  assert_true(state.offerings[1].slots().is_empty())
+}
+
+///|
 fn create_named_custom_course(
   state : @app.PlannerState,
   name : String,

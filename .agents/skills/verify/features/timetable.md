@@ -45,11 +45,14 @@ Extended coverage, not executed by this mode:
 
 ## Gotchas
 
-- W is not a sidebar tab; winter intensives belong under A1 and A2. A known
-  product gap occurs when creating and adding a custom W intensive: the app
-  selects W internally and shows no intensive entries. Selecting A1 or A2
-  reveals the course. Do not treat that empty view as intended behavior.
-  A crafted persisted `selected_term: W` is outside this mapped journey.
+- W is not a sidebar tab; winter intensives belong under A1 and A2. Creating or
+  saving a custom W intensive keeps the current A1 or A2 tab, so the course
+  appears in the W subsection without a manual tab repair. From S1, S2, or a
+  stored W selection, the save selects A1. The offering keeps `Semester::W` and
+  no slots.
+- A stored `selected_term: W` from an older document is not rewritten on load.
+  W remains a model-level selection with no tab; the mapped journey covers the
+  visible A1 and A2 behavior.
 - The hidden-block notice counts scheduled blocks, not distinct enrollments. One
   enrollment can contribute more than one hidden block.
 - The visible year is derived from the grade mapping; changes clear the selected

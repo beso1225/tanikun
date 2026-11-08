@@ -159,3 +159,57 @@ test(
     });
   },
 );
+
+test(
+  "Winter custom intensive stays on A1 after adding and reload",
+  { timeout: 60_000 },
+  async (t) => {
+    const { server, origin } = await startStaticServer(dist);
+    t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+
+    await runJourney(browser, "winter-custom-course", async (page, errors) => {
+      await page.goto(origin, { waitUntil: "load" });
+      await waitForPersistence(page);
+      await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+
+      await page.locator("#term-A1").click();
+      await page.getByRole("heading", { name: "A1", exact: true }).waitFor();
+      await page.locator("#open-intensive-picker").click();
+      await page.locator("#picker").waitFor();
+      await page.locator("#open-custom-course").click();
+      await page.locator("#custom-course").waitFor();
+      assert.equal(
+        await page.locator("#custom-schedule").inputValue(),
+        "intensive",
+      );
+      await page.locator("#custom-name").fill("Winter Verification");
+      await page.locator("#custom-term").selectOption("W");
+      await page.locator("#custom-submit").click();
+      await page.locator("#picker").waitFor();
+      await page.locator('[id^="add-offering-user-offering-"]').click();
+      await page.locator("#close-picker").click();
+      await page.locator("#picker").waitFor({ state: "detached" });
+
+      assert.equal(await page.locator("header h2").first().innerText(), "A1");
+      await page.locator("#off-grid").getByText("W（冬期）").waitFor();
+      await page
+        .locator("#off-grid")
+        .getByText("Winter Verification", { exact: true })
+        .waitFor();
+      await assertSummaryTotals(page, "0単位", "0単位", "8単位");
+
+      await waitForPersistence(page);
+      await page.reload();
+      await waitForPersistence(page);
+      assert.equal(await page.locator("header h2").first().innerText(), "A1");
+      await page
+        .locator("#off-grid")
+        .getByText("Winter Verification", { exact: true })
+        .waitFor();
+      await assertSummaryTotals(page, "0単位", "0単位", "8単位");
+      assert.deepEqual(errors, []);
+    });
+  },
+);
