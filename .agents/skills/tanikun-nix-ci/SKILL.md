@@ -21,15 +21,17 @@ that only report the failed dependency.
 
 ## Classify
 
-| Symptom                                             | Check                                                                                          |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Test assertion or compiler error                    | Run the focused MoonBit package locally. Use `tanikun-moonbit-change`.                         |
-| `path ... is not valid` or a missing Nix store path | Rerun the failed job before changing pins.                                                     |
-| `404` for an upstream source archive                | Check the pinned version and URL. Do not raise the version without `tanikun-toolchain-update`. |
-| Hash mismatch                                       | Regenerate the fixed-output hash from the current source.                                      |
-| `pnpm` or Node version mismatch                     | Compare `.node-version`, `packageManager`, the CI corepack step, and `nix/packages.nix`.       |
-| Generated files or dirty tree                       | Check `git status` for `_build/`, `pkg.generated.mbti`, `.cache/`, or `.turtles/`.             |
-| Sandbox or network                                  | Check whether the CI runner has network access and whether the build is marked offline.        |
+| Symptom                                             | Check                                                                                                                                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MoonBit compiler or package assertion               | Run the focused MoonBit package locally. Use `tanikun-moonbit-change`.                                                                                                  |
+| Sync, Worker, D1, auth, or coordinator failure      | Use `tanikun-sync-change`. Run the focused layer, then `just test-d1` or `just test-sync` when the real boundary is involved.                                           |
+| Recurring Chromium CDP response-body error          | Stop rerunning. Inspect the route capture in `sync-browser-faults.test.mjs`; the lost-response path must fulfill the captured `APIResponse`. Use `tanikun-sync-change`. |
+| `path ... is not valid` or a missing Nix store path | Rerun the failed job before changing pins.                                                                                                                              |
+| `404` for an upstream source archive                | Check the pinned version and URL. Do not raise the version without `tanikun-toolchain-update`.                                                                          |
+| Hash mismatch                                       | Regenerate the fixed-output hash from the current source.                                                                                                               |
+| `pnpm` or Node version mismatch                     | Compare `.node-version`, `packageManager`, the CI corepack step, and `nix/packages.nix`.                                                                                |
+| Generated files or dirty tree                       | Check `git status` for `_build/`, `pkg.generated.mbti`, `.cache/`, or `.turtles/`.                                                                                      |
+| Sandbox or network                                  | Check whether the CI runner has network access and whether the build is marked offline.                                                                                 |
 
 Do not bypass a required check, disable the sandbox, or drop a test to make CI
 green.
@@ -39,6 +41,25 @@ green.
 ```sh
 nix build path:.#pure --no-link
 nix flake check path:. -L
+```
+
+For a sync, Worker, or D1 failure, use the focused command from
+`tanikun-sync-change`:
+
+```sh
+nix develop -c just test-d1
+nix develop -c just test-sync
+```
+
+When the failure involves packaged artifacts, run the real harness against the
+Nix outputs:
+
+```sh
+nix build path:.#web --out-link result-web
+nix build path:.#api --out-link result-api
+nix develop -c env \
+  TANIKUN_WEB_DIST="$PWD/result-web" \
+  TANIKUN_API_DIST="$PWD/result-api" just test-sync
 ```
 
 A local Nix failure can come from a cache or source that the pinned store does
@@ -54,8 +75,13 @@ gh run rerun <run-id> --failed
 ```
 
 For a real failure, fix the cause and run the smallest command that covers it.
-Then run `just test` and `just lint`. If the fix changes a pin, Node version,
+Run `just test` only when the change reaches MoonBit, the export, or shared
+code. Run `just lint` before pushing. If the fix changes a pin, Node version,
 MoonBit version, or mooncakes source, load `tanikun-toolchain-update`.
+
+Do not rerun indefinitely when the same sync fault test fails at the same
+Chromium CDP body error. That is a capture problem, not a Worker assertion.
+Inspect the harness or ask for a harness fix.
 
 ## Handoff
 

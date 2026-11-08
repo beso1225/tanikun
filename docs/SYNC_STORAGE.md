@@ -236,7 +236,9 @@ trace stays in the temporary directory and is deleted. The retained archive is
 rebuilt from an allowlist: it keeps the action timeline and sanitized network
 method/status/timing metadata, but no request or response headers, cookies,
 bodies, document identifiers, init-script arguments, console text, DOM
-snapshots, screencast frames, or source stacks. This tradeoff intentionally
+snapshots, screencast frames, or the `trace.stacks` source-stack entry. Action
+events can retain redacted, bounded error messages and error stack strings;
+the archive is not stack-free. This tradeoff intentionally
 drops Playwright's DOM time travel and visual network detail; the failure log
 and screenshot remain the human-readable evidence. The rebuild is bounded by
 entry size and event count. If trace sanitization fails or exceeds a bound, the

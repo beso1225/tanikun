@@ -3,7 +3,10 @@ import { access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { startStaticServer } from "../../../../tests/integration/planner-harness.mjs";
+import {
+  startStaticServer,
+  waitForPersistence,
+} from "../../../../tests/integration/planner-harness.mjs";
 
 const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 for (const file of [
@@ -13,6 +16,12 @@ for (const file of [
   "planner-document.js",
   "persistence-transactions.js",
   "persistence.js",
+  "sync-store.js",
+  "sync-metadata.js",
+  "sync-coordinator.js",
+  "sync-shell.js",
+  "sync-transport.js",
+  "sync-contract.mjs",
   "styles.css",
 ]) {
   await access(join(dist, file));
@@ -27,10 +36,21 @@ try {
   ({ server } = await startStaticServer(dist));
   browser = await chromium.launch();
   const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}`, {
     waitUntil: "load",
   });
   await page.getByRole("heading", { name: "応物単位くん" }).waitFor();
+  await waitForPersistence(page);
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#sync-status-text")?.textContent === "同期未設定",
+  );
+  assert.deepEqual(errors, [], "static page must load without browser errors");
   console.log(
     JSON.stringify({
       ok: true,
