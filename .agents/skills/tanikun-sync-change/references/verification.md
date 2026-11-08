@@ -17,7 +17,8 @@ endpoint, or a standalone doctor command.
 | Nix checks                                    | `nix flake check path:. -L`                                                                                                                | Nix checks and packaged artifacts. It does not run the real sync harness              |
 
 Run commands inside `nix develop`. Install dependencies once with
-`pnpm install --frozen-lockfile`. The sync harness needs `PLAYWRIGHT_CORE` from
+`pnpm install --frozen-lockfile`. Before a source web build, run
+`just setup-web` to install the repository-pinned Warren if it is absent. The sync harness needs `PLAYWRIGHT_CORE` from
 `nix develop`.
 
 ## Source and packaged modes

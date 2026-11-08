@@ -20,6 +20,8 @@ Build the static page from the repository root:
 
 ```sh
 nix develop
+pnpm install --frozen-lockfile
+just setup-web          # install the repository-pinned Warren when absent
 just build-web
 ```
 
@@ -90,10 +92,13 @@ when needed. Do not mutate the user's existing planner to obtain evidence.
 
 Proof artifacts go under `.cache/verify/`, which is git-ignored:
 
-- successful journey: `.cache/verify/<feature>.png` and
-  `.cache/verify/<feature>-trace.zip` with actions and resulting states
-- failed journey: `.cache/verify/<feature>-failure.png` and
-  `.cache/verify/<feature>-failure-trace.zip`
+- successful journey: `.cache/verify/<feature>.png` for each executed feature
+  and `.cache/verify/<mode>-trace.zip` with actions and resulting states
+- failed journey: `.cache/verify/<mode>-failure.png` and
+  `.cache/verify/<mode>-failure-trace.zip`
+
+`<mode>` is the requested feature stem or `all`. An `all` run keeps six
+screenshots and one combined `all-trace.zip`.
 
 The Playwright browser regression test uses the same failure artifact paths for
 the Phase 2 journey. Evidence is never deleted by cleanup.

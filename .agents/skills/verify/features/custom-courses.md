@@ -6,7 +6,7 @@
 - `#open-intensive-picker` creates an intensive custom course and returns to
   that picker
 - new form prefills the current timetable year and selected term; day and period
-  come from the clicked slot only, otherwise they default to Monday period 4
+  come from the clicked slot only, otherwise they default to Tuesday period 4
 - regular multi-term selections must share one semester; YearLong and Intensive
   are separate schedules
 - place the custom offering
@@ -59,6 +59,7 @@ Extended coverage, not executed by this mode:
 - Deleting an enrolled custom course is blocked; remove the enrollment first.
 - A selected category is merged into the active requirement set for category
   credits and display; `未分類` is the default.
-- Creating a W intensive sets `selected_term` to W in the source. W has no
-  sidebar tab, so the new item may not be visible until A1 or A2. Reproduce this
-  before calling it a product gap; do not normalize invisibility as success.
+- Known product gap: creating and adding a W intensive selects W internally,
+  leaving no active sidebar tab and hiding the intensive entries. Select A1
+  or A2 to reveal the course. The empty view is a failure, not a successful
+  creation proof.

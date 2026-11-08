@@ -22,7 +22,7 @@ Chromium; it does not start a Worker, D1, or the fixed sync origin. The
 unconfigured page shows `同期未設定`, which is not HTTP sync evidence.
 Configured sync status, outbox, network, convergence, and fault verification
 route to the sibling `tanikun-sync-change` skill at
-`../tanikun-sync-change/SKILL.md` and `just test-sync`.
+`../../tanikun-sync-change/SKILL.md` and `just test-sync`.
 
 All journeys start from the deterministic `sample_state()` data. Selectors are
 the production ids and roles in `apps/web/cmd/browser/view_*.mbt`; do not replace

@@ -39,7 +39,7 @@ the outbox entry and writes seen in one transaction.
 
 ## Metadata and commit
 
-`sync-metadata.js` stores `sync:<origin>:<document>` beside the planner in
+`sync-metadata.js` stores `"sync:" + JSON.stringify([origin, documentId])` beside the planner in
 `tanikun-planner`/`documents`. The record is
 `{syncVersion: 1, mergedCursor, observedHighWater}`. `observe` rejects a cursor
 below either stored counter and keeps the maximum high-water. `applyPage`

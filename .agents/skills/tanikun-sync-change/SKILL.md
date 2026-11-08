@@ -89,7 +89,8 @@ boundary. A docs-only change needs `just lint`, not `just test-sync`.
 ## Verification ladder
 
 Run commands inside `nix develop`. Install dependencies once with
-`pnpm install --frozen-lockfile`.
+`pnpm install --frozen-lockfile`. Before a source web build, run
+`just setup-web` to install the repository-pinned Warren if it is absent.
 
 | Change                                        | Command                                                                                                                                    | What it proves                                                                        |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |

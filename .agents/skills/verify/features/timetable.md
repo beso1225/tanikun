@@ -45,15 +45,16 @@ Extended coverage, not executed by this mode:
 
 ## Gotchas
 
-- W is not a sidebar tab. The normal UI cannot select W; winter intensives are
-  listed under A1 and A2. Do not assert a W grid state from the user path. A
-  crafted persisted `selected_term: W` is outside this journey.
+- W is not a sidebar tab; winter intensives belong under A1 and A2. A known
+  product gap occurs when creating and adding a custom W intensive: the app
+  selects W internally and shows no intensive entries. Selecting A1 or A2
+  reveals the course. Do not treat that empty view as intended behavior.
+  A crafted persisted `selected_term: W` is outside this mapped journey.
 - The hidden-block notice counts scheduled blocks, not distinct enrollments. One
   enrollment can contribute more than one hidden block.
 - The visible year is derived from the grade mapping; changes clear the selected
   offering and picker.
 - The initial sample has enrolled 2026 entries but no 2027 enrollments.
-- The mobile nav source declares five grid columns for four tabs. The journey
-  checks document overflow, not column balance; visual inspection decides
-  whether this is a product issue.
+- The mobile nav currently uses five grid columns for four tabs, leaving an
+  empty column. The journey checks document overflow, not column balance.
 - `#timetable-scope` shows year and term below 1024px.
