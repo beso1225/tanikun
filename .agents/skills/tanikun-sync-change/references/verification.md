@@ -85,6 +85,8 @@ try {
   await harness.start();
   const health = await harness.health();
   console.log(health.status, health.text);
+  const documents = await harness.d1Query("SELECT id, owner_id FROM documents");
+  console.log(JSON.stringify(documents));
 } finally {
   await harness.close();
 }
@@ -94,7 +96,8 @@ try {
 This is a recipe over the existing API, not a new driver. In source mode, run
 `just build` first so the Worker bridge can import the built MoonBit module, or
 set `TANIKUN_API_DIST` to a packaged API root. It still applies migrations and
-starts Wrangler. It does not write a planner or bootstrap a document.
+starts Wrangler. The `d1Query` line is a read-only ownership check; the recipe
+does not write a planner or bootstrap a document.
 
 ## Own and close resources
 
