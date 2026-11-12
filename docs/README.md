@@ -25,8 +25,8 @@ Start with the current phase documents.
 
 ## Proposed
 
-These documents are drafts. They are not accepted contracts and do not authorize
-implementation.
+These documents are drafts. The #176 verifier evidence is merged, but the
+contract and ADR still await review and do not authorize implementation.
 
 - [Phase 5 authentication contract](PHASE_5.md)
 - [Phase 5 passkey sessions and account boundary](adr/0015-passkey-session-account-boundary.md)

@@ -5,11 +5,15 @@
 proposed
 
 This is the draft decision for [issue #177](https://github.com/beso1225/tanikun/issues/177).
-It becomes current only after [issue #176](https://github.com/beso1225/tanikun/issues/176)
-records verifier evidence in the pinned Workers runtime and the maintainers
-complete final review. Until then [ADR-0014](0014-local-development-auth.md)
-remains the current credential boundary. This proposal adds no production
-route, migration, dependency, or deployment. The endpoint, state, error, and
+The [issue #176](https://github.com/beso1225/tanikun/issues/176) verifier spike
+merged in `6bc6535` and selected `@simplewebauthn/server@14.1.0`. The required
+main CI gate
+[43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
+succeeded at that merge SHA. ADR-0015 becomes current after final review.
+[ADR-0014](0014-local-development-auth.md) remains the current local-bearer
+contract; ADR-0015 replaces only its deferred
+real-identity boundary, not the separate dev-bearer mode. This proposal adds no
+production route, migration, or deployment. The endpoint, state, error, and
 test matrices are in [docs/PHASE_5.md](../PHASE_5.md).
 
 ## Context
@@ -22,7 +26,7 @@ record is shared, while outbox and metadata are scoped by API origin and
 document. A real identity cannot replace the resolver safely until the contract
 defines origin topology, account handles, one-time challenges, sessions, CSRF,
 provisioning, local account switching, abuse limits, and authenticator
-serialization.
+serialization. This decision defines those boundaries.
 
 ## Decision
 
@@ -44,10 +48,18 @@ authentication flow.
   related-origin request, or iframe ceremony is accepted.
 - The Worker verifies the configured origin and RP ID, not a forwarded host or
   internal request URL.
-- The Phase 4 dev-bearer mode keeps its exact origins
-  `http://127.0.0.1:4300` and `http://127.0.0.1:8787`, CORS, `credentials:
-  "omit"`, and bearer header. Session mode is same-origin, sends no CORS
-  credentials, and rejects an `Authorization` header.
+- `AUTH_MODE` is exactly `dev_bearer` or `session`; the modes are mutually
+  exclusive and an absent or ambiguous value fails closed. The Phase 4
+  dev-bearer mode keeps its exact origins `http://127.0.0.1:4300` and
+  `http://127.0.0.1:8787`, CORS, `credentials: "omit"`, and bearer header.
+  Session mode is same-origin, sends no CORS credentials, and rejects an
+  `Authorization` header.
+- `localhost` is the Mac or CI loopback origin. An iPhone browser's
+  `localhost` is the iPhone. The supported iPhone role is a hybrid or roaming
+  authenticator for the Mac-origin ceremony, not a direct iPhone-browser page.
+  A direct iPhone-browser cell needs a separately approved origin, RP ID, and
+  certificate path; no tunnel or silent RP ID change is allowed. #186 records
+  an unavailable cell as untested or blocked.
 
 ### Accounts and credentials
 
@@ -63,20 +75,42 @@ authentication flow.
   and owner. They never store a private key, attestation chain, provider
   identity, or PRF result.
 - Registration and sign-in use discoverable credentials. User presence and user
-  verification are required. Attestation is requested as `none` and is not used
-  for authorization.
-- Phase 5 offers ES256 only. This is provisional until #176 proves the verifier
-  and runtime.
-- A backup-eligible credential may report a zero, repeated, or lower counter.
-  Accept it and store the maximum. A non-backup-eligible credential rejects a
-  new positive counter less than or equal to a stored positive counter. A zero
-  counter is accepted. Counters are not replay protection.
+  verification are required.
+- The selected verifier is `@simplewebauthn/server@14.1.0`. ES256 registration
+  and assertion verification were proved in source workerd `1.20261019.1` and
+  packaged workerd `1.20261012.1`, without `nodejs_compat`. The Nix API bundle
+  is 683,804 bytes. Packed self-attestation in the spike is synthetic and is not
+  a real-provider interoperability proof.
+- Registration requests `attestation: "none"`, and the server accepts only
+  `fmt: "none"` with an empty attestation statement. It parses the attestation
+  object with the library's `decodeAttestationObject` before verification and
+  rejects every other format with a generic `401`. It does not initialize
+  metadata services and performs no MDS, CRL, OCSP, or HTTP verification. It
+  adds no hand-written CBOR or WebAuthn cryptography.
+- Backup eligibility is immutable and signed. Store it from registration. On
+  every assertion, compare `credentialDeviceType`; a change fails
+  authentication. Reject backup state 1 with backup eligibility 0.
+- For a non-backup-eligible credential, pass the stored counter to the library
+  and keep its strict check. A stored positive counter followed by a new zero
+  counter is rejected, as is any new positive counter less than or equal to a
+  stored positive counter.
+- For a backup-eligible credential, pass `counter: 0` to the library to suppress
+  its single-device check, then accept the assertion and store
+  `max(stored, newCounter)`. This is an explicit normalized input for signed
+  multi-device credentials, not a claim that the library accepts resets.
+- Counters are clone-detection aids, not replay protection. Challenge
+  consumption is replay protection.
 
 ### Challenges and sessions
 
 - Every ceremony uses a one-time challenge with a 300-second lifetime, a
   purpose, and a digest of the `__Host-tanikun_binding` cookie. The raw
   challenge is never stored.
+- Verification passes the library's `expectedChallenge` callback, which decodes
+  and hashes the submitted challenge and compares the digest in constant time.
+  It passes exact single origin and RP ID strings, requires user presence and
+  user verification, and checks `crossOrigin` false and `topOrigin` absent
+  before the registration verifier, which does not check those fields itself.
 - One conditional database update consumes the challenge. Concurrent requests
   cannot both succeed. A failed verification burns the challenge.
 - Session tokens are 32 random bytes. Only their SHA-256 digests are stored.
@@ -123,7 +157,8 @@ authentication flow.
   session state. It never stores a session token or CSRF token.
 - A save checks the generation in the same IndexedDB transaction as the plan
   write. Sync checks it before bootstrap, before pull, and before applying a
-  page.
+  page. It also confirms the session account handle with the server before
+  bootstrap and at the start of each sync.
 - Sign-in, sign-out, and account switch increment the generation and announce
   it across tabs. The IndexedDB check remains authoritative.
 - A pre-login plan is never uploaded automatically. The user explicitly copies
@@ -195,18 +230,20 @@ authentication flow.
   credentials.
 - Cross-origin cookie sessions: complicates `__Host-`, SameSite, CSRF, and
   WebAuthn origin checks. Same-origin is the Phase 5 choice.
-- Attestation allowlists: add privacy loss and provider lock-in without a Phase
-  5 authorization need.
-- Strict positive-counter enforcement: breaks synced passkeys and common
-  platform authenticators that return zero.
+- Broader attestation-format allowlists: add privacy loss and provider lock-in
+  without a Phase 5 authorization need. Phase 5 accepts only `none`.
+- Strict counter enforcement for every credential: rejects legitimate
+  multi-device resets. The contract normalizes only credentials whose signed
+  backup-eligibility flag is 1.
 - Step-up session rotation: adds response-loss and in-flight failures without
   fixing session fixation at sign-in.
 - Generic credential serialization: can forward PRF output.
 
 ## References
 
-The contract lists the primary sources and access dates. The main sources are
-the [W3C WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/),
+The contract lists the primary sources and access dates. See also the merged
+[#176 verifier spike](../PHASE_5_WEBAUTHN_SPIKE.md). The main sources are the
+[W3C WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/),
 the [SimpleWebAuthn server documentation](https://simplewebauthn.dev/docs/packages/server),
 [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie),
 and [Cloudflare's D1 batch contract](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).

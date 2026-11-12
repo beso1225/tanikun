@@ -22,8 +22,9 @@ ADR-0013 and ADR-0014 are implemented. The
 [Phase 4 results](../PHASE_4_RESULTS.md) record the implementation evidence and
 local-development limits.
 
-ADR-0015 is proposed. It becomes current only after the
-[#176](https://github.com/beso1225/tanikun/issues/176) verifier evidence and
-final review. ADR-0014 remains current for the separate local-bearer mode.
+ADR-0015 is proposed. The
+[#176](https://github.com/beso1225/tanikun/issues/176) verifier evidence is
+merged; ADR-0015 becomes current after final review. ADR-0014 remains current
+for the separate local-bearer mode.
 
 See the [documentation index](../README.md) for current contracts.

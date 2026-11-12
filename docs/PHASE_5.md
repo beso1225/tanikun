@@ -4,13 +4,40 @@
 
 proposed
 
-This contract is the implementation target for
-[issue #177](https://github.com/beso1225/tanikun/issues/177). It is not accepted
-and no implementation is authorized by this page. Acceptance requires evidence
-from [issue #176](https://github.com/beso1225/tanikun/issues/176) in the pinned
-Workers runtime and final review. [ADR-0014](adr/0014-local-development-auth.md)
-remains the current credential boundary until then. The proposed decision is
+This contract is the reviewable implementation target for
+[issue #177](https://github.com/beso1225/tanikun/issues/177). It is not accepted,
+and no implementation is authorized by this page until review accepts it. The
+[#176 verifier spike](PHASE_5_WEBAUTHN_SPIKE.md) merged in `6bc6535`, and its
+required main CI gate
+[43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
+succeeded at that merge SHA. The proposed decision is
 [ADR-0015](adr/0015-passkey-session-account-boundary.md).
+[ADR-0014](adr/0014-local-development-auth.md) remains the current local-bearer
+contract. ADR-0015 replaces only ADR-0014's deferred real-identity boundary,
+not the separate dev-bearer mode.
+
+## Verifier baseline
+
+The selected verifier is `@simplewebauthn/server@14.1.0` (MIT). The
+[#176 spike](PHASE_5_WEBAUTHN_SPIKE.md) proved ES256 registration and assertion
+verification with real library calls in both runtime paths:
+
+- Source Workers test runtime: workerd `1.20261019.1`.
+- Packaged API runtime: workerd `1.20261012.1`.
+- No Wrangler `nodejs_compat` flag is required.
+- The self-contained Nix API bundle is 683,804 bytes.
+- Final PR-head CI
+  [43259454568](https://github.com/beso1225/tanikun/actions/runs/43259454568)
+  at `9bc3ffd` passed 46 packaged sync tests, including the cleanup regression
+  and verifier, 158 Workers/D1 tests, and 5 release checks.
+- Merge main CI
+  [43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
+  passed at `6bc6535`.
+
+The fixtures are synthetic. The packed self-attestation signature proof is not
+evidence of interoperability with a real authenticator, provider, or browser
+ceremony. It also does not make a non-`none` attestation format acceptable in
+product.
 
 Phase 5 will implement passkey authentication locally with fictional accounts. It
 does not enable public plaintext planner sync. [ADR-0013](adr/0013-http-sync-protocol.md)
@@ -86,6 +113,15 @@ only to loopback, must not be exposed through a tunnel, and must use fictional
 planner data. The real-auth app origin differs from the Phase 4 dev origin, so
 its IndexedDB is a separate browser storage partition.
 
+`localhost` in this contract is the Mac or CI loopback origin. An iPhone browser
+resolves `localhost` to the iPhone, not to the Mac. The supported iPhone role in
+this contract is a hybrid or roaming authenticator for a ceremony whose page is
+running on the Mac origin. A direct iPhone-browser cell requires a different
+origin, RP ID, and trusted certificate path. Phase 5 does not authorize that
+path, a tunnel, or a silent RP ID change. #186 records a direct iPhone-browser
+cell as untested or blocked unless an approved setup actually exists; it must
+not be inferred from a hybrid ceremony.
+
 ## Authentication modes and configuration
 
 `AUTH_MODE` is exactly `dev_bearer`, exactly `session`, or absent. The modes are
@@ -145,7 +181,7 @@ changes, sequences, and owner uniqueness are preserved.
 | Public key       | COSE public key bytes from verified registration; never a private key                    |
 | Owner            | One account; foreign and missing credential IDs both return `404 not_found`              |
 | Counter          | Nonnegative safe integer; policy below                                                   |
-| Backup eligible  | Boolean flag from the verified authenticator data                                        |
+| Backup eligible  | Boolean flag from the verified authenticator data; immutable after registration          |
 | Backup state     | Boolean flag from the verified authenticator data; rejected when true while not eligible |
 | Created and used | Server epoch milliseconds                                                                |
 | Limit            | At most 20 credentials per account                                                       |
@@ -156,39 +192,155 @@ separate from its account.
 
 ### Ceremony policy
 
-| Setting                   | Value                                  | Reason                                                          |
-| ------------------------- | -------------------------------------- | --------------------------------------------------------------- |
-| Discoverable credential   | `residentKey: "required"`              | Sign-in needs no username or account list                       |
-| User presence             | Required                               | WebAuthn ceremony requirement                                   |
-| User verification         | `userVerification: "required"`         | Passkey-only accounts require a user gesture and local check    |
-| Attestation               | `attestation: "none"`                  | No provider policy, privacy loss, or attestation storage        |
-| Supported algorithm       | ES256, COSE `-7`, provisional          | Smallest defensible allowlist until #176 proves runtime support |
-| Registration exclude list | Current credential IDs for the account | Prevent duplicate registration on the same authenticator        |
-| Sign-in allow list        | Empty                                  | Discoverable credentials only                                   |
-| Authenticator attachment  | Omitted                                | Allow platform, synced, security-key, and hybrid providers      |
+| Setting                    | Value                                  | Reason                                                       |
+| -------------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| Discoverable credential    | `residentKey: "required"`              | Sign-in needs no username or account list                    |
+| User presence              | Required                               | WebAuthn ceremony requirement                                |
+| User verification          | `userVerification: "required"`         | Passkey-only accounts require a user gesture and local check |
+| Attestation request        | `attestation: "none"`                  | No provider policy, privacy loss, or attestation storage     |
+| Allowed attestation format | `fmt: "none"` only                     | Server rejects every other format before verification        |
+| Supported algorithm        | ES256, COSE `-7`                       | Proved in workerd by #176; only accepted algorithm           |
+| Registration exclude list  | Current credential IDs for the account | Prevent duplicate registration on the same authenticator     |
+| Sign-in allow list         | Empty                                  | Discoverable credentials only                                |
+| Authenticator attachment   | Omitted                                | Allow platform, synced, security-key, and hybrid providers   |
 
-ES256-only is a policy choice, not a proven runtime fact. #176 must verify that
-the selected verifier and the pinned Workers runtime can process ES256 and that
-the selected library can run within the Worker limits. Adding any other COSE
-algorithm requires an updated contract and new evidence. No algorithm fallback,
-version pin, or dependency is selected by this page.
+ES256-only is the accepted Phase 5 algorithm policy. #176 proved ES256
+registration and assertion verification in source workerd `1.20261019.1` and
+packaged workerd `1.20261012.1` without `nodejs_compat`. The library also
+supports EdDSA and RS256 by default, but this contract passes
+`supportedAlgorithmIDs: [-7]` at registration and stores only ES256 credentials.
+Adding another algorithm requires an updated contract and runtime evidence.
 
 ### Counter and backup policy
 
-- A verification result with backup state 1 and backup eligibility 0 is invalid
-  authenticator data and fails authentication.
-- A backup-eligible credential may report zero, repeat, or lower counters
-  because it can be copied or synchronized. Accept the assertion, store the
-  maximum observed counter, and do not reject on a counter comparison.
-- A non-backup-eligible credential with a stored positive counter and a new
-  positive counter less than or equal to the stored value fails authentication.
-  A zero counter is accepted, and the stored maximum is preserved.
+WebAuthn Level 3
+[§6.1.1](https://www.w3.org/TR/webauthn-3/#sctn-sign-counter) treats a signature
+counter as a clone-detection aid, not a universal requirement. Some
+authenticators always report zero, and a multi-device credential may not have a
+monotonically increasing counter.
+[§6.1.3](https://www.w3.org/TR/webauthn-3/#sctn-credential-backup) defines backup
+eligibility and backup state. The selected library applies this check to the
+`counter` passed by the server:
+
+```js
+(counter > 0 || credential.counter > 0) && counter <= credential.counter;
+```
+
+If the check fails, the library throws. The contract uses that behavior
+explicitly:
+
+- Backup eligibility is immutable. Store it from registration. On every
+  assertion, compare the library's `credentialDeviceType` with the stored value.
+  `multiDevice` maps to eligibility 1 and `singleDevice` maps to 0. A change
+  fails authentication.
+- Reject backup state 1 with backup eligibility 0. The library's
+  `parseBackupFlags` throws for a single-device credential that claims backup;
+  map that failure to generic `401`. Backup state may change for an eligible
+  credential and is updated without revoking sessions.
+- For a non-backup-eligible credential, pass the stored counter to the library
+  and keep its strict check. A stored positive counter followed by a new zero
+  counter is rejected, as is any new positive counter less than or equal to a
+  stored positive counter. This is the safe policy for a single-device
+  credential even though zero counters are valid when the stored value is zero.
+- For a backup-eligible credential, pass `counter: 0` to the library to suppress
+  its single-device clone check, then apply the multi-device policy: accept the
+  assertion, store `max(stored, newCounter)`, and do not reject a zero, equal, or
+  lower counter. This is an explicit normalized input, not a claim that the
+  library accepts resets, and it is limited to a credential whose signed backup
+  eligibility flag is 1.
 - The counter update is a conditional compare-and-set or a `MAX` update under
   this policy. A concurrent stale update must not lower the stored value, and a
   failed non-backup-eligible guard must abort the authentication transaction.
 - Counter values are not replay protection. Challenge consumption is.
-- Backup state changes do not revoke sessions. They are recorded on the
-  credential and are not used to identify a provider.
+- Backup state changes are recorded on the credential and are not used to
+  identify a provider.
+
+### Verifier result mapping
+
+The server uses the `@simplewebauthn/server@14.1.0` result fields directly. It
+does not rename or infer a second policy layer.
+
+| Verifier field                                         | Use                                                                               |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `registrationInfo.fmt`                                 | Must be `none`; checked before the verifier runs                                  |
+| `registrationInfo.credential.id`                       | Credential ID; must be globally unique and equal to the verified response ID      |
+| `registrationInfo.credential.publicKey`                | COSE public key bytes; stored, never a private key                                |
+| `registrationInfo.credential.counter`                  | Initial counter                                                                   |
+| `registrationInfo.credential.transports`               | Discarded; not trusted for authorization                                          |
+| `registrationInfo.credentialDeviceType`                | `multiDevice` means backup eligible; `singleDevice` means not eligible; immutable |
+| `registrationInfo.credentialBackedUp`                  | Backup state; stored and may change                                               |
+| `registrationInfo.userVerified`                        | Must be true                                                                      |
+| `registrationInfo.aaguid`                              | Discarded; never used as provider identity                                        |
+| `registrationInfo.attestationObject`                   | Discarded; never stored                                                           |
+| `registrationInfo.passkeyProviderMetadata`             | Must be absent because metadata services stay disabled; discarded                 |
+| `registrationInfo.authenticatorExtensionResults`       | Discarded; never stored, logged, or forwarded                                     |
+| `registrationInfo.origin`, `registrationInfo.rpID`     | Rechecked against the exact configured origin and RP ID                           |
+| `authenticationInfo.credentialID`                      | Must identify the credential selected from the submitted ID                       |
+| `authenticationInfo.newCounter`                        | Applied through the counter policy above                                          |
+| `authenticationInfo.userVerified`                      | Must be true                                                                      |
+| `authenticationInfo.credentialDeviceType`              | Compared with stored backup eligibility; a change fails authentication            |
+| `authenticationInfo.credentialBackedUp`                | Compared for backup-state consistency and stored                                  |
+| `authenticationInfo.origin`, `authenticationInfo.rpID` | Rechecked against the exact configured origin and RP ID                           |
+| `authenticationInfo.authenticatorExtensionResults`     | Discarded; never stored, logged, or forwarded                                     |
+
+The server passes a single exact expected origin string and a single exact RP ID
+string. It passes `requireUserPresence: true`, `requireUserVerification: true`,
+`supportedAlgorithmIDs: [-7]`, and the exact ceremony type. It does not pass an
+origin array, an RP ID array, `advancedFIDOConfig`, or `expectedTopOrigin`.
+
+### Attestation enforcement
+
+`attestation: "none"` in the browser options is a request, not a server-side
+guarantee. A malicious client can return a different attestation format. Before
+calling `verifyRegistrationResponse`, the server must:
+
+1. Base64url-decode `attestationObject` with the library's `isoBase64URL`.
+2. Decode it with `decodeAttestationObject` from
+   `@simplewebauthn/server/helpers`. This is the library parser; do not add
+   hand-written CBOR or WebAuthn cryptography.
+3. Require `fmt === "none"` and an empty `attStmt` map.
+4. Reject any other format, a parse failure, or a nonempty statement with the
+   generic `401 authentication_failed` before invoking any attestation branch.
+
+Only `none` is accepted in Phase 5. The `packed` self-attestation fixture from
+the #176 spike is a synthetic signature-verification path, not a real provider
+interoperability proof, and is not a product attestation format. A provider that
+returns another format despite the request is unsupported until a later contract
+adds a bounded format allowlist and its own runtime evidence.
+
+The auth verifier must not initialize `MetadataService` or
+`ConvenienceMetadataService`, must not fetch MDS, CRL, OCSP, or any HTTP
+resource, and must not configure remote certificate roots. With `fmt: none` and
+the metadata services left disabled, verification uses only local parsing,
+Web Crypto, and the submitted credential data. A test must assert that a
+registration attempt cannot issue a network request through the verifier.
+
+### Verifier tests
+
+The ceremony implementation adds these focused tests with its code:
+
+1. The verification path accepts the correct 32-byte challenge and rejects
+   wrong or malformed challenge digests, expired, consumed, wrong-purpose, and
+   wrong-binding rows. The callback itself rejects wrong and malformed digests.
+   No raw challenge is written to D1.
+2. A `none` registration succeeds with an empty `attStmt`. A packed fixture, a
+   nonempty `attStmt`, a parse failure, and an unknown format all fail generic
+   `401` before `verifyRegistrationResponse` runs.
+3. A fetch spy or equivalent Worker assertion proves that registration and
+   assertion verification make no MDS, CRL, OCSP, or other HTTP request.
+4. Wrong exact origin, wrong exact RP ID, `crossOrigin: true`, a present
+   `topOrigin`, user presence false, and user verification false all fail.
+5. The BE and BS matrix covers immutable eligibility, a single-device
+   `backedUp` claim, an eligible state change, non-backup stored-positive to
+   new-zero rejection, eligible counter reset acceptance, and concurrent counter
+   updates.
+6. The result mapping uses the exact `registrationInfo` and
+   `authenticationInfo` names above, rejects an algorithm other than ES256, and
+   discards AAGUID, attestation object, transports, extension results, and
+   provider metadata.
+
+The tests use synthetic fixtures built with the library helpers and never a real
+user credential.
 
 ## Ceremonies and one-time challenges
 
@@ -217,16 +369,32 @@ is not stored.
 | Consumption     | One conditional `UPDATE ... WHERE consumed_at IS NULL AND expires_at > now` |
 | Failure         | Generic `401`; the challenge is burned even when verification fails         |
 
-The server parses `clientDataJSON`. Its type is exactly `webauthn.create` for
-registration or `webauthn.get` for an assertion. Its challenge digest matches
-the row, its origin is exactly `AUTH_ORIGIN`, `crossOrigin` is false, and
-`topOrigin` is absent. The server checks the RP ID hash, verifies the signature
-with the stored public key, and checks the user presence and user verification
-flags. For registration it verifies the attestation object and derives the
-public key. Any attestation statement is parsed only as required by the
-verifier and then discarded. For sign-in it requires a non-null user handle and
-checks it against the credential's account. For step-up and credential addition
-it requires the current session and account.
+The server parses `clientDataJSON` with the library's `decodeClientDataJSON`
+helper. Its type is exactly `webauthn.create` for registration or `webauthn.get`
+for an assertion. Its origin is exactly `AUTH_ORIGIN`, `crossOrigin` is false,
+and `topOrigin` is absent. Registration verification does not check
+`crossOrigin` or `topOrigin` in `@simplewebauthn/server@14.1.0`, so the server
+checks those fields before either verification path.
+
+The server stores only a SHA-256 digest of the challenge. It calls
+`verifyRegistrationResponse` or `verifyAuthenticationResponse` with
+`expectedChallenge` as the library callback form,
+`(challenge: string) => boolean | Promise<boolean>`. The callback decodes the
+base64url value, requires 32 bytes, hashes it, and compares the digest with the
+stored row in constant time. It never reconstructs or stores the raw challenge.
+A challenge digest mismatch returns false. The server rejects a missing,
+expired, consumed, wrong-purpose, or wrong-binding row before invoking the
+verifier; every failure maps to generic `401`.
+
+Both calls pass the exact single `expectedOrigin` and `expectedRPID` strings,
+`requireUserPresence: true`, `requireUserVerification: true`, the exact ceremony
+type, and `supportedAlgorithmIDs: [-7]` for registration. The library verifies
+the RP ID hash, signature, user-presence and user-verification flags, and the
+credential key algorithm. For registration, the server applies the `fmt: none`
+precheck above, verifies the attestation object, and derives the public key. For
+sign-in it requires a non-null user handle and checks it against the credential's
+account. For step-up and credential addition it requires the current session and
+account.
 
 Concurrent verification has one winner because the conditional update changes
 exactly one row. A second concurrent request gets the same generic failure. An
@@ -236,8 +404,8 @@ creates an account, authenticates a user, or adds a credential.
 ### Ceremony option fields
 
 Every options response is `{"challenge_id":"<base64url 16 bytes>","publicKey":{...}}`.
-The `publicKey` object is projected from the verifier's output and contains only
-the fields below.
+The `publicKey` object is generated by the selected library's options function
+and projected so it contains only the fields below.
 
 | Ceremony       | Required `publicKey` fields                                                                                                                                                                                            |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -245,6 +413,10 @@ the fields below.
 | Sign-in        | `challenge`; `timeout`; exact `rpId`; empty `allowCredentials`; `userVerification: "required"`                                                                                                                         |
 | Add credential | Same as registration, with `excludeCredentials` set to the account's current credential IDs                                                                                                                            |
 | Step-up        | Same as sign-in, with `allowCredentials` set to the account's current credential IDs                                                                                                                                   |
+
+The implementation uses `generateRegistrationOptions` and
+`generateAuthenticationOptions` from the selected library. It does not
+hand-build COSE or CBOR options.
 
 Registration values:
 
@@ -259,7 +431,7 @@ Registration values:
 - `extensions` is absent. Phase 5 does not request PRF, `credProps`, or any other
   extension.
 
-The server does not pass through arbitrary verifier option fields. Additional
+The server does not pass through arbitrary library option fields. Additional
 fields require a contract update.
 
 ## Endpoints
@@ -842,6 +1014,11 @@ Allowlist rules:
   `400 malformed_request`, not a silently ignored field.
 - `authenticatorAttachment`, `transports`, `getPublicKey`,
   `getPublicKeyAlgorithm`, and any `prf` field are not allowed.
+- The required verification inputs are `id`, `rawId`, `type`, `clientDataJSON`,
+  and `attestationObject` for registration or `authenticatorData`, `signature`,
+  and `userHandle` for a discoverable assertion. `transports`,
+  `authenticatorAttachment`, and extension results are optional metadata, not
+  verification inputs. Dropping them does not remove a required field.
 - The server never echoes a received credential field in an error, log, metric,
   or trace. It never stores the assertion or attestation object after
   verification.
@@ -891,28 +1068,31 @@ check runs before deployment, in addition to the request-time `404` gate.
 
 ## Threat and test matrix
 
-| Threat                                     | Contract control                                                               | Test owner       |
-| ------------------------------------------ | ------------------------------------------------------------------------------ | ---------------- |
-| Phishing origin or wrong RP ID             | Exact Origin and RP ID, client data check, RP ID hash check                    | #179, #185       |
-| Challenge replay or concurrent verify      | Atomic conditional consumption, one-time purpose and binding                   | #178, #179, #185 |
-| Cross-browser challenge theft              | HttpOnly `__Host-` binding cookie digest in the challenge row                  | #179, #180, #185 |
-| Account enumeration                        | Discoverable-only sign-in, generic verify failures, no username lookup         | #179, #185       |
-| Session theft or token in JavaScript       | Opaque digest-only server row, HttpOnly cookie, no token in JSON or storage    | #180, #185       |
-| Session fixation                           | Server-generated token at sign-in, old presented session revoked               | #180, #185       |
-| Login CSRF                                 | Browser-bound challenge, exact Origin, JSON, no existing-session registration  | #180, #185       |
-| Logout or bootstrap CSRF                   | CSRF token, exact Origin, POST-only provisioning                               | #180, #182, #185 |
-| Foreign document or credential             | Owner-scoped queries, indistinguishable `404`                                  | #178, #182, #185 |
-| Dev fallback after failed real session     | Mutually exclusive modes, no anonymous or header owner, fail closed            | #180, #182, #185 |
-| Account switch leaks planner or outbox     | Account-scoped keys, generation fencing, pull-before-push                      | #183, #185       |
-| Stale tab saves after switch               | Generation check in the save transaction, auth broadcast, CAS                  | #183, #185       |
-| Pre-login plan lost or uploaded silently   | Unbound key retained, explicit copy, explicit first upload, root mismatch stop | #183, #185       |
-| Last credential removed                    | `409 last_credential`, all-session revocation on any removal                   | #184, #185       |
-| All passkeys lost                          | No recovery bypass; limitation stated; no account linking                      | #184, #187       |
-| PRF output reaches the network or evidence | Exact client projection, strict server allowlist, canary absence tests         | #179, #185, #186 |
-| Abuse or unbounded challenge rows          | D1 fixed windows, per-binding cap, expiry, `429` and `Retry-After`             | #181, #185       |
-| Storage outage or misconfiguration         | `503` or `404` fail closed; no security bypass                                 | #180, #181, #185 |
-| Response loss                              | Idempotent bootstrap, one-time challenge, documented re-ceremony behavior      | #179, #180, #185 |
-| Backup-eligible zero or reset counter      | Backup-aware counter policy, no strict positivity requirement                  | #179, #185       |
+| Threat                                            | Contract control                                                               | Test owner       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------- |
+| Phishing origin or wrong RP ID                    | Exact Origin and RP ID, client data check, RP ID hash check                    | #179, #185       |
+| Challenge replay or concurrent verify             | Atomic conditional consumption, one-time purpose and binding                   | #178, #179, #185 |
+| Cross-browser challenge theft                     | HttpOnly `__Host-` binding cookie digest in the challenge row                  | #179, #180, #185 |
+| Account enumeration                               | Discoverable-only sign-in, generic verify failures, no username lookup         | #179, #185       |
+| Session theft or token in JavaScript              | Opaque digest-only server row, HttpOnly cookie, no token in JSON or storage    | #180, #185       |
+| Session fixation                                  | Server-generated token at sign-in, old presented session revoked               | #180, #185       |
+| Login CSRF                                        | Browser-bound challenge, exact Origin, JSON, no existing-session registration  | #180, #185       |
+| Logout or bootstrap CSRF                          | CSRF token, exact Origin, POST-only provisioning                               | #180, #182, #185 |
+| Foreign document or credential                    | Owner-scoped queries, indistinguishable `404`                                  | #178, #182, #185 |
+| Dev fallback after failed real session            | Mutually exclusive modes, no anonymous or header owner, fail closed            | #180, #182, #185 |
+| Account switch leaks planner or outbox            | Account-scoped keys, generation fencing, pull-before-push                      | #183, #185       |
+| Stale tab saves after switch                      | Generation check in the save transaction, auth broadcast, CAS                  | #183, #185       |
+| Pre-login plan lost or uploaded silently          | Unbound key retained, explicit copy, explicit first upload, root mismatch stop | #183, #185       |
+| Last credential removed                           | `409 last_credential`, all-session revocation on any removal                   | #184, #185       |
+| All passkeys lost                                 | No recovery bypass; limitation stated; no account linking                      | #184, #187       |
+| PRF output reaches the network or evidence        | Exact client projection, strict server allowlist, canary absence tests         | #179, #185, #186 |
+| Malicious non-`none` attestation                  | Library parser; `fmt: none` only; reject before verification                   | #179, #185       |
+| Attestation triggers MDS, CRL, or HTTP            | Metadata services disabled; no remote roots or network-capable branch          | #179, #185       |
+| Packed self-attestation treated as provider proof | Synthetic spike only; product accepts `fmt: none`; no provider claim           | #176, #187       |
+| Abuse or unbounded challenge rows                 | D1 fixed windows, per-binding cap, expiry, `429` and `Retry-After`             | #181, #185       |
+| Storage outage or misconfiguration                | `503` or `404` fail closed; no security bypass                                 | #180, #181, #185 |
+| Response loss                                     | Idempotent bootstrap, one-time challenge, documented re-ceremony behavior      | #179, #180, #185 |
+| Backup-eligible zero or reset counter             | BE immutable; BE=1 normalized accept/max; BE=0 strict library check            | #179, #185       |
 
 ## Implementation issues and acceptance mapping
 
@@ -921,9 +1101,9 @@ these issues from this contract.
 
 | Issue                                                  | Work                                                      | Depends on                          |
 | ------------------------------------------------------ | --------------------------------------------------------- | ----------------------------------- |
-| [#176](https://github.com/beso1225/tanikun/issues/176) | Prove a WebAuthn verifier in the pinned Workers runtime   | none; currently pending             |
-| [#178](https://github.com/beso1225/tanikun/issues/178) | D1 storage for passkeys, challenges, sessions, and limits | #177, #176 evidence                 |
-| [#179](https://github.com/beso1225/tanikun/issues/179) | Registration and authentication ceremonies                | #177, #178, #176 evidence           |
+| [#176](https://github.com/beso1225/tanikun/issues/176) | Prove a WebAuthn verifier in the pinned Workers runtime   | done; merged in `6bc6535`           |
+| [#178](https://github.com/beso1225/tanikun/issues/178) | D1 storage for passkeys, challenges, sessions, and limits | #177                                |
+| [#179](https://github.com/beso1225/tanikun/issues/179) | Registration and authentication ceremonies                | #177, #178                          |
 | [#180](https://github.com/beso1225/tanikun/issues/180) | Opaque cookie sessions, CSRF, and revocation              | #177, #178                          |
 | [#181](https://github.com/beso1225/tanikun/issues/181) | Abuse limits and safe diagnostics                         | #177, #179, #180                    |
 | [#182](https://github.com/beso1225/tanikun/issues/182) | Session identity in sync and preserved dev gate           | #177, #179, #180, #181              |
@@ -943,34 +1123,41 @@ these issues from this contract.
 | Verification allowlist and PRF absence                                               | PRF and allowlist                                              | #179, #185, #186       |
 | Implementation links and current doc indexes                                         | This page; [docs index](README.md); [ADR index](adr/README.md) | #187                   |
 
-## Inputs pending #176
+## Resolved verifier decisions and remaining blockers
 
-These decisions remain provisional until #176 records its runtime evidence:
+Every verifier input from the earlier draft is resolved by #176 and the merged
+source. No library, runtime, algorithm, field-name, challenge-callback, origin,
+RP-ID, user-verification, backup, or counter input remains unresolved.
 
-1. The selected server verifier library and exact version.
-2. Whether ES256 verification works in the pinned Workers runtime; if not, the
-   final algorithm allowlist and fallback.
-3. The verifier's exact output fields for counter, backup eligibility, backup
-   state, user presence, user verification, origin, RP ID, and credential type.
-4. Whether the verifier accepts the exact allowlisted JSON without
-   `clientExtensionResults`, `transports`, or `authenticatorAttachment`, and
-   whether it needs `response.userHandle` for discoverable assertions.
-5. The verifier's dependencies on Node built-ins, CBOR, Web Crypto, bundle size,
-   CPU time, and remaining Workers limits.
-6. The maximum registration and assertion payload sizes the verifier accepts,
-   and whether the 32 KiB auth bound is sufficient.
-7. The exact expected-origin and RP-ID option names, and whether the verifier
-   accepts one value only.
-8. Whether a browser helper library is needed or native option parsing and
-   explicit projection are sufficient. The allowlist does not change either way.
+| Former input                        | Resolution                                                                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Server verifier library and version | `@simplewebauthn/server@14.1.0`                                                                                                                              |
+| ES256 in the pinned runtime         | Proved in workerd `1.20261019.1` and `1.20261012.1`; no `nodejs_compat`                                                                                      |
+| Output field names                  | `registrationInfo`, `authenticationInfo`, `credentialDeviceType`, `credentialBackedUp`, `userVerified`, `newCounter`, and the credential fields listed above |
+| Exact allowlisted JSON              | `id`, `rawId`, `type`, `clientDataJSON`, `attestationObject`, `authenticatorData`, `signature`, and optional `userHandle`; no `clientExtensionResults`       |
+| Challenge storage                   | Library `expectedChallenge` callback over the stored SHA-256 digest; no raw challenge persistence                                                            |
+| Origin and RP ID                    | Single exact strings passed as `expectedOrigin` and `expectedRPID`                                                                                           |
+| UP and UV                           | `requireUserPresence: true`, `requireUserVerification: true`, and `userVerified: true`                                                                       |
+| Backup and counter behavior         | Signed BE and BS fields with the explicit policy above; non-backup stored-positive to new-zero is rejected                                                   |
+| Attestation and network             | Parse with `decodeAttestationObject`; only `fmt: none`; no metadata, CRL, or HTTP verification                                                               |
 
-The local TLS, cookie, WebAuthn, and CI mechanics belong to #185, not #176. The
-physical-provider matrix and its untested cells belong to #186.
+Remaining blockers are implementation and review, not verifier feasibility:
+
+- ADR-0015 and this contract remain proposed until the maintainer review and
+  PR acceptance.
+- #178 through #185 implement storage, ceremonies, sessions, abuse limits, sync,
+  UI isolation, credential management, and real-session CI proof.
+- #186 owns the separate physical PRF matrix. No physical result is claimed. A
+  direct iPhone-browser origin is not authorized by this contract.
+- Phase 6 encryption and key transfer, Phase 7 backup and recovery UX, and Phase
+  8 production deployment remain later gates.
+- Maintainers own the GitHub PR, independent review, and main CI gate.
 
 ## References
 
-Primary sources were checked on 2026-11-12. Version-specific conclusions remain
-provisional.
+Primary sources were checked on 2026-11-12. Verifier behavior is resolved for
+`@simplewebauthn/server@14.1.0` in the two pinned workerd builds; real-provider
+interoperability remains unproven.
 
 - W3C, [Web Authentication: An API for accessing Public Key Credentials Level 3](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/),
   Recommendation, 25 August 2026. See
@@ -982,7 +1169,12 @@ provisional.
   [credential loss and key mobility](https://www.w3.org/TR/webauthn-3/#sctn-credential-loss-key-mobility),
   [PRF extension](https://www.w3.org/TR/webauthn-3/#prf-extension), and
   [virtual authenticators](https://www.w3.org/TR/webauthn-3/#sctn-automation-virtual-authenticators).
-- SimpleWebAuthn, [@simplewebauthn/server 14.1.x](https://simplewebauthn.dev/docs/packages/server),
+- [Phase 5 WebAuthn verifier spike](PHASE_5_WEBAUTHN_SPIKE.md), the merged
+  #176 evidence page.
+- [#176 final PR-head CI run 43259454568](https://github.com/beso1225/tanikun/actions/runs/43259454568)
+  at `9bc3ffd` and the [merge main CI run 43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
+  at `6bc6535`.
+- SimpleWebAuthn, [@simplewebauthn/server 14.1.0](https://simplewebauthn.dev/docs/packages/server),
   accessed 2026-11-12. The documentation is library guidance, not a Tanikun
   runtime proof.
 - SimpleWebAuthn, [@simplewebauthn/browser 14.1.x](https://simplewebauthn.dev/docs/packages/browser),
