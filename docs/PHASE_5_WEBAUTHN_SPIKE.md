@@ -187,6 +187,16 @@ hash was measured by [CI run 43248691241](https://github.com/beso1225/tanikun/ac
 and updated from the fixed-output derivation's reported `got` value. A complete
 Linux build with that hash remains a merge gate; this is not a local Linux run.
 
+[CI run 43249205794](https://github.com/beso1225/tanikun/actions/runs/43249205794)
+then exposed an API packaging error: a custom `configurePhase` skipped
+`pnpmConfigHook`, so esbuild's invocation tried to install dependencies during
+the networkless build. The API now uses `preConfigure` for MoonBit setup and
+preserves the default configure phase and its dependency-install hook. The
+earlier Darwin `--offline` result alone did not establish Linux sandbox
+compatibility; the corrected Linux build remains the gate.
+The corrected Darwin API build logged `Executing pnpmConfigHook` and completed
+with `--offline`. Its new output passed the packaged Workers proof, 1/1.
+
 ## Algorithms and offline assumptions
 
 The library default covers EdDSA, ES256, and RS256. The spike pins ES256 for

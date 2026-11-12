@@ -124,7 +124,9 @@ let
       pnpm
       pkgs.pnpmConfigHook
     ];
-    configurePhase = prepareMoon;
+    # Preserve the default configure phase so postConfigureHooks installs the
+    # fixed pnpm closure before esbuild runs in the networkless sandbox.
+    preConfigure = prepareMoon;
     buildPhase = "moon build --frozen --target js --release --deny-warn";
     doCheck = true;
     checkPhase = ''
