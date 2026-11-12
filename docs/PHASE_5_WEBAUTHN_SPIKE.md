@@ -184,8 +184,10 @@ served as source modules; only the spike verifier is bundled.
 
 The Darwin `pnpmDeps` fixed-output hash was regenerated and verified. The Linux
 hash was measured by [CI run 43248691241](https://github.com/beso1225/tanikun/actions/runs/43248691241)
-and updated from the fixed-output derivation's reported `got` value. A complete
-Linux build with that hash remains a merge gate; this is not a local Linux run.
+and updated from the fixed-output derivation's reported `got` value. The
+corrected Linux build passed in
+[CI run 43250124903](https://github.com/beso1225/tanikun/actions/runs/43250124903)
+at `4f566b6e05c7ed169465c0a3b703cdc50a1671d7`; this is not a local Linux run.
 
 [CI run 43249205794](https://github.com/beso1225/tanikun/actions/runs/43249205794)
 then exposed an API packaging error: a custom `configurePhase` skipped
@@ -193,7 +195,9 @@ then exposed an API packaging error: a custom `configurePhase` skipped
 the networkless build. The API now uses `preConfigure` for MoonBit setup and
 preserves the default configure phase and its dependency-install hook. The
 earlier Darwin `--offline` result alone did not establish Linux sandbox
-compatibility; the corrected Linux build remains the gate.
+compatibility. The corrected Linux CI built the API and release in the Nix
+sandbox, passed the packaged sync suite 45/45 including the WebAuthn proof,
+and passed the source Workers suite 158/158. Its lint and Linux jobs succeeded.
 The corrected Darwin API build logged `Executing pnpmConfigHook` and completed
 with `--offline`. Its new output passed the packaged Workers proof, 1/1.
 
@@ -236,7 +240,8 @@ check, not an independent security audit.
 - No challenge lifecycle, credential storage, session, cookie, CSRF, rate
   limiting, account recovery, PRF, E2EE, or ownership change is implemented.
 - No product Worker route or configuration enables the verifier.
-- The updated Linux `pnpmDeps` hash still needs a successful full Linux CI run.
+- The Linux closure and packaged verification passed in CI; no local Linux
+  execution is claimed.
 - #177 owns the authentication contract, account boundary, session design,
   algorithm policy, attestation policy, and D1 schema. This spike only
   establishes the runtime, packaging, and offline-closure feasibility.
