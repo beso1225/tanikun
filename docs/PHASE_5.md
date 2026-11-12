@@ -395,9 +395,13 @@ Session mode evaluates a request in this order. The first matching failure wins.
     or the success shape.
 11. Storage or unexpected failure: redacted `503`.
 
-Public options and verify endpoints have no session step. They apply the mode,
-Origin, route, method, media, size, rate, challenge, and ceremony checks. Login
-and registration verify use the browser binding instead of a CSRF token.
+Public options and verify endpoints do not require an authenticated session.
+They still reject any `Authorization` header. They resolve a presented session
+only for the registration `409` rule, invalid-cookie clearing, and sign-in
+rotation described above; a missing session is not `401` on these routes. They
+apply the mode, Origin, route, method, media, size, rate, challenge, and ceremony
+checks. Login and registration verify use the browser binding instead of a CSRF
+token.
 
 Dev bearer mode keeps ADR-0014's existing order exactly: environment and URL
 gate, Origin, route, preflight, bearer, method, owned resource, media type, size
@@ -446,7 +450,7 @@ cross the HTTP boundary.
 | Idle lifetime            | 30 minutes              |
 | Last-seen write interval | 60 seconds              |
 | Recent-auth window       | 5 minutes               |
-| CSRF token               | 32 random bytes         |
+| CSRF token               | 32 derived bytes        |
 | Recovery bypass          | none                    |
 
 ### Cookies
@@ -468,6 +472,17 @@ challenge binding.
 
 ### CSRF and login protection
 
+- Derive the session's CSRF token with Web Crypto HMAC-SHA-256. The key is the
+  decoded 32-byte session token and the message is the UTF-8 string
+  `tanikun-csrf-v1`. Encode the 32-byte result as unpadded base64url. Store only
+  its SHA-256 digest in `csrf_digest`. The raw session token arrives through the
+  HttpOnly cookie, so session status can derive the same CSRF token after a
+  reload without storing either raw token in D1. Never use the session token
+  itself as the CSRF token. A new session token produces a new CSRF token;
+  step-up preserves both.
+  Issues #180 and #185 verify reload recovery, the same token across tabs of
+  one session, a changed token after sign-in rotation, and rejection of the old
+  token with the new session.
 - The CSRF token is returned in the session status and authentication response
   body. The client keeps it in memory only. It is never a cookie, a URL value, or
   a local-storage value.
@@ -484,8 +499,11 @@ challenge binding.
   cannot authenticate the victim.
 - Registration in a valid session returns `409 already_authenticated`, so a
   login CSRF cannot silently create a second session for an existing account.
-- `GET` is read-only. The session status, credential list, and pull routes do
-  not mutate state. Provisioning is `POST` in session mode.
+- GET routes do not change account, credential, document, or planner content.
+  Session admission may update last-seen and idle-expiry bookkeeping, and rate
+  limiting may increment a counter. These bounded security updates do not
+  provision resources or perform a user-requested mutation. Provisioning is
+  `POST` in session mode.
 
 ### Session lifecycle
 

@@ -90,6 +90,11 @@ authentication flow.
 - Every cookie-authenticated state-changing request requires an
   `X-CSRF-Token` header. Login and registration use the browser-bound challenge
   and exact Origin instead. SameSite is not the CSRF contract.
+- The CSRF token is HMAC-SHA-256 of `tanikun-csrf-v1`, keyed by the decoded
+  session token. D1 stores only its digest. Session status derives the same
+  token from the HttpOnly cookie after reload; rotation creates a new token.
+  GET routes may update session and rate-limit bookkeeping, but never provision
+  resources or change account, credential, document, or planner content.
 - Current logout revokes the presented session. Logout-all, credential addition,
   and credential removal require recent auth. Logout-all and credential removal
   revoke all sessions for the account.
