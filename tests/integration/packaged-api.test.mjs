@@ -51,6 +51,16 @@ test(
       assert.equal(relative(apiRoot, artifactPath).startsWith(".."), false);
       await access(artifactPath);
     }
+    assert.deepEqual((await readdir(resolve(apiRoot, migrations))).toSorted(), [
+      "0001_sync.sql",
+      "0002_auth_storage.sql",
+    ]);
+    for (const modulePath of [
+      "apps/api/repositories/auth-data.mjs",
+      "apps/api/repositories/auth.mjs",
+    ]) {
+      await access(resolve(apiRoot, modulePath));
+    }
 
     const output = await mkdtemp(join(tmpdir(), "tanikun-packaged-api-"));
     t.after(() => rm(output, { recursive: true, force: true }));
