@@ -290,8 +290,10 @@ All state-changing requests use `POST` except the explicit dev-bearer GET below.
 
 Endpoint notes:
 
-- Registration is only for an unauthenticated browser. A valid session returns
-  `409 already_authenticated`; use credential addition instead.
+- Registration is only for an unauthenticated browser. Both registration
+  endpoints return `409 already_authenticated` when a valid session is present;
+  use credential addition instead. An invalid or expired session cookie on a
+  public options request is ignored and cleared.
 - Sign-in replaces the session presented by the browser, if any. Other sessions
   for the old account remain valid unless the user chooses logout-all.
 - Step-up keeps the session token. It updates recent-auth time and returns the
