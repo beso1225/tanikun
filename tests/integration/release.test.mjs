@@ -42,6 +42,32 @@ test("packaged Worker imports and handles requests without build-tree files", as
   assert.equal(post.headers.get("Allow"), "GET");
 });
 
+test("packaged Worker bridge does not import the WebAuthn spike", async () => {
+  const bridge = await readFile(
+    join(release, "api/apps/api/bridges/worker.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(bridge, /webauthn/i);
+});
+
+test("packaged API includes the self-contained WebAuthn spike verifier", async () => {
+  const bundle = await readFile(
+    join(release, "api/apps/api/webauthn/verify.js"),
+    "utf8",
+  );
+  assert.ok(bundle.length > 0);
+  assert.doesNotMatch(
+    bundle,
+    /^\s*import\s+[^("]/mu,
+    "verifier bundle must not have external static imports",
+  );
+  assert.doesNotMatch(
+    bundle,
+    /^\s*export\s+.*\bfrom\s+["']/mu,
+    "verifier bundle must not re-export from an external module",
+  );
+});
+
 test("packaged API includes every Worker module, migration, and runtime config", async () => {
   const api = join(release, "api");
   const required = [

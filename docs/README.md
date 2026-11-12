@@ -16,6 +16,7 @@ Start with the current phase documents.
 - [Phase 4 temporary local-development authentication](adr/0014-local-development-auth.md)
 - [Phase 4 D1 storage and local verification](SYNC_STORAGE.md)
 - [Phase 4 sync golden fixture](contracts/sync-v1.json)
+- [Phase 5 WebAuthn verifier spike](PHASE_5_WEBAUTHN_SPIKE.md)
 - [Accessibility baseline](ACCESSIBILITY.md)
 - [Mutation testing](MUTATION.md)
 - [Mutation baseline](mutation-baseline.json)

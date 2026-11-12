@@ -108,7 +108,7 @@ test-sync:
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
