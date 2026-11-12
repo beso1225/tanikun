@@ -2,17 +2,19 @@
 
 ## Status
 
-proposed
+accepted
 
-This is the draft decision for [issue #177](https://github.com/beso1225/tanikun/issues/177).
+This decision for [issue #177](https://github.com/beso1225/tanikun/issues/177)
+takes effect when its contract PR is merged. Implementation remains the work
+of the dependent issues.
 The [issue #176](https://github.com/beso1225/tanikun/issues/176) verifier spike
 merged in `6bc6535` and selected `@simplewebauthn/server@14.1.0`. The required
 main CI gate
 [43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
-succeeded at that merge SHA. ADR-0015 becomes current after final review.
+succeeded at that merge SHA.
 [ADR-0014](0014-local-development-auth.md) remains the current local-bearer
 contract; ADR-0015 replaces only its deferred
-real-identity boundary, not the separate dev-bearer mode. This proposal adds no
+real-identity boundary, not the separate dev-bearer mode. This decision adds no
 production route, migration, or deployment. The endpoint, state, error, and
 test matrices are in [docs/PHASE_5.md](../PHASE_5.md).
 
@@ -113,6 +115,10 @@ authentication flow.
   before the registration verifier, which does not check those fields itself.
 - One conditional database update consumes the challenge. Concurrent requests
   cannot both succeed. A failed verification burns the challenge.
+- Options responses issue a random browser-binding cookie when none is valid,
+  before storing its digest with the challenge. Verify requires that same
+  binding and never mints or rebinds it. Competing first-visit cookies invalidate
+  the losing challenge, which must restart.
 - Session tokens are 32 random bytes. Only their SHA-256 digests are stored.
 - The session cookie is `__Host-tanikun_session`, with `Secure`, `HttpOnly`,
   `SameSite=Lax`, `Path=/`, no Domain, and no Max-Age.
@@ -171,6 +177,10 @@ authentication flow.
 
 - An account must keep at least one credential. Removing the last one returns
   `409 last_credential`.
+- Credential mutations enforce counts in conditional D1 statements on the
+  primary, in the same batch as session and ownership checks. Concurrent
+  removals cannot reduce the count below one; additions cannot exceed 20.
+  Session revocation runs only after a successful removal in that same batch.
 - Losing every passkey means losing account access. Phase 5 has no password,
   email, recovery-code, support, or admin bypass.
 - A new account is not linked to an old document. Authentication recovery and

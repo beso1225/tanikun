@@ -2,15 +2,16 @@
 
 ## Status
 
-proposed
+accepted
 
-This contract is the reviewable implementation target for
-[issue #177](https://github.com/beso1225/tanikun/issues/177). It is not accepted,
-and no implementation is authorized by this page until review accepts it. The
+This contract is the implementation target for
+[issue #177](https://github.com/beso1225/tanikun/issues/177), effective when its
+contract PR is merged. It defines the work for #178 through #185; it does not
+claim that authentication or sessions are already implemented. The
 [#176 verifier spike](PHASE_5_WEBAUTHN_SPIKE.md) merged in `6bc6535`, and its
 required main CI gate
 [43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
-succeeded at that merge SHA. The proposed decision is
+succeeded at that merge SHA. The decision is
 [ADR-0015](adr/0015-passkey-session-account-boundary.md).
 [ADR-0014](adr/0014-local-development-auth.md) remains the current local-bearer
 contract. ADR-0015 replaces only ADR-0014's deferred real-identity boundary,
@@ -284,9 +285,11 @@ does not rename or infer a second policy layer.
 | `authenticationInfo.authenticatorExtensionResults`     | Discarded; never stored, logged, or forwarded                                     |
 
 The server passes a single exact expected origin string and a single exact RP ID
-string. It passes `requireUserPresence: true`, `requireUserVerification: true`,
-`supportedAlgorithmIDs: [-7]`, and the exact ceremony type. It does not pass an
-origin array, an RP ID array, `advancedFIDOConfig`, or `expectedTopOrigin`.
+string. Both verifiers receive `requireUserVerification: true` and the exact
+ceremony type. Registration also receives `requireUserPresence: true` and
+`supportedAlgorithmIDs: [-7]`. Assertion verification always enforces user
+presence in 14.1.0 and has no `requireUserPresence` option. The server does not
+pass an origin array, an RP ID array, `advancedFIDOConfig`, or `expectedTopOrigin`.
 
 ### Attestation enforcement
 
@@ -344,7 +347,14 @@ user credential.
 
 ## Ceremonies and one-time challenges
 
-Every options endpoint performs these steps in one D1 batch:
+Before issuing options, read exactly one `__Host-tanikun_binding` cookie. Reuse
+it if it decodes to exactly 32 bytes. If absent or singly present but malformed,
+mint 32 random bytes and set the binding cookie on the successful options
+response with the attributes below. Duplicate binding cookies are a malformed
+request. Never hash an absent value or a shared placeholder. The cookie is
+issued before verification, not first issued by registration verify.
+
+Every options endpoint then performs these steps in one D1 batch:
 
 1. Delete expired challenge rows opportunistically in a bounded batch.
 2. Count unconsumed, unexpired challenges for the browser binding. If three
@@ -357,6 +367,16 @@ Every options endpoint performs these steps in one D1 batch:
 The client receives a `challenge_id` and the public key options. It sends the
 same `challenge_id` with the allowlisted credential response. The raw challenge
 is not stored.
+
+Verify requires a valid, single binding cookie whose digest matches the stored
+row. It never creates a replacement binding or rebinds an existing challenge.
+Sign-in and registration verify do not rotate the binding cookie; session
+rotation is separate. The app serializes options requests across tabs with its
+auth Web Lock. If two first-visit requests nevertheless mint different cookies,
+the last cookie stored by the browser wins; the other challenge fails generic
+`401` and must restart with new options. It cannot adopt the winning binding.
+Issues #179 and #180 test first-visit issuance, reuse across tabs, missing or
+wrong cookies on verify, and this first-visit race.
 
 | Property        | Value                                                                       |
 | --------------- | --------------------------------------------------------------------------- |
@@ -387,8 +407,9 @@ expired, consumed, wrong-purpose, or wrong-binding row before invoking the
 verifier; every failure maps to generic `401`.
 
 Both calls pass the exact single `expectedOrigin` and `expectedRPID` strings,
-`requireUserPresence: true`, `requireUserVerification: true`, the exact ceremony
-type, and `supportedAlgorithmIDs: [-7]` for registration. The library verifies
+`requireUserVerification: true`, and the exact ceremony type. Registration also
+passes `requireUserPresence: true` and `supportedAlgorithmIDs: [-7]`; assertion
+enforces presence unconditionally without that option. The library verifies
 the RP ID hash, signature, user-presence and user-verification flags, and the
 credential key algorithm. For registration, the server applies the `fmt: none`
 precheck above, verifies the attestation object, and derives the public key. For
@@ -417,6 +438,15 @@ and projected so it contains only the fields below.
 The implementation uses `generateRegistrationOptions` and
 `generateAuthenticationOptions` from the selected library. It does not
 hand-build COSE or CBOR options.
+
+For registration and credential addition, decode the stored 43-character
+base64url account handle to its raw 32 bytes and pass those bytes as the
+library's `userID: Uint8Array`. Do not pass the handle string or its UTF-8
+encoding. The generated `publicKey.user.id` must equal the stored handle.
+The 14.1.0 generator adds `extensions: { credProps: true }` and `hints: []`;
+the server's explicit projection drops both keys before sending options.
+Issue #179 tests raw-byte input, the exact 43-character output handle, and the
+exact wire key set for registration and credential addition.
 
 Registration values:
 
@@ -540,9 +570,14 @@ The added credential response is `{"credential":{...}}` with the same metadata
 shape. No response contains a public key, an AAGUID, an attestation object, a
 user handle beyond the account's own handle, a session digest, or a PRF result.
 
-Every error body is exactly `{"error":{"code":"CODE"}}`. `429` adds the
+Every auth error body is exactly `{"error":{"code":"CODE"}}`. `429` adds the
 `Retry-After` response header. `405` adds `Allow`. No error body echoes a
 credential, challenge, cookie, header, database message, or planner value.
+The sync changes routes retain ADR-0013's error bodies, including the top-level
+`cursor` in `{"error":{"code":"cursor_ahead"},"cursor":N}` and
+`{"error":{"code":"log_gap"},"cursor":N}`. Authentication, Origin, CSRF,
+recent-auth, and rate-limit failures use this page's auth envelope; admitted
+sync operations preserve the existing protocol errors.
 
 ## Rejection order
 
@@ -681,7 +716,7 @@ challenge binding.
 
 | Event                   | Session row result                                       | Cookie result                   |
 | ----------------------- | -------------------------------------------------------- | ------------------------------- |
-| Registration verify     | Insert a new session in the account creation transaction | Set new session and binding     |
+| Registration verify     | Insert a new session in the account creation transaction | Set new session; keep binding   |
 | Sign-in verify          | Revoke the presented session, insert a new session       | Set a new session               |
 | Step-up verify          | Keep the session, update recent-auth time                | No new session cookie           |
 | Current logout          | Set `revoked_at` on the presented session                | Clear                           |
@@ -897,6 +932,32 @@ An account must keep at least one credential. The following are explicit:
 A synced passkey is not a guarantee of recovery: the provider account, the
 device, and the synchronization service can all be lost. The contract does not
 claim otherwise.
+
+### Atomic credential limits
+
+The credential-count guard belongs in the mutation statement on the D1 primary,
+not in a preceding application read. Addition uses a conditional insert whose
+predicate requires the account's count to be below 20. Removal uses a
+conditional delete scoped to the account and credential, whose predicate
+requires the account's count to exceed one. Each serialized D1 mutation sees
+the count at execution time. A count guard that changes no row returns
+`409 credential_limit` or `409 last_credential` respectively.
+
+The same D1 batch rechecks the session, recent auth, and ownership. Removal
+revokes all account sessions in that batch only if its delete changed one row.
+Use an explicit success guard between the delete and revocation, such as
+SQLite `changes() = 1` with no intervening statement that changes that value.
+A failed count guard must neither delete a credential nor revoke sessions.
+Session and ownership failures keep the rejection order above; a session
+revoked by a concurrent successful removal returns `401`, not a count error.
+Global credential-ID uniqueness violations still roll back the batch and map
+to `409 credential_conflict`.
+
+Issues #178 and #184 test concurrent repository mutations: two removals from
+two credentials leave one, and two additions from 19 credentials leave 20.
+The losing count guard returns its `409`. Endpoint tests also cover the
+removal/session race, where revocation can instead make the loser `401`, and
+verify that no losing operation changes credentials or revokes extra sessions.
 
 ## Abuse limits
 
@@ -1137,14 +1198,14 @@ RP-ID, user-verification, backup, or counter input remains unresolved.
 | Exact allowlisted JSON              | `id`, `rawId`, `type`, `clientDataJSON`, `attestationObject`, `authenticatorData`, `signature`, and optional `userHandle`; no `clientExtensionResults`       |
 | Challenge storage                   | Library `expectedChallenge` callback over the stored SHA-256 digest; no raw challenge persistence                                                            |
 | Origin and RP ID                    | Single exact strings passed as `expectedOrigin` and `expectedRPID`                                                                                           |
-| UP and UV                           | `requireUserPresence: true`, `requireUserVerification: true`, and `userVerified: true`                                                                       |
+| UP and UV                           | Registration presence option, unconditional assertion presence check, required UV, and `userVerified: true`                                                  |
 | Backup and counter behavior         | Signed BE and BS fields with the explicit policy above; non-backup stored-positive to new-zero is rejected                                                   |
 | Attestation and network             | Parse with `decodeAttestationObject`; only `fmt: none`; no metadata, CRL, or HTTP verification                                                               |
 
 Remaining blockers are implementation and review, not verifier feasibility:
 
-- ADR-0015 and this contract remain proposed until the maintainer review and
-  PR acceptance.
+- This contract's PR requires independent review and successful CI before
+  merge. Its accepted status takes effect with that merge.
 - #178 through #185 implement storage, ceremonies, sessions, abuse limits, sync,
   UI isolation, credential management, and real-session CI proof.
 - #186 owns the separate physical PRF matrix. No physical result is claimed. A
