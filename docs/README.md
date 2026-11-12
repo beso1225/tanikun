@@ -17,6 +17,8 @@ Start with the current phase documents.
 - [Phase 4 D1 storage and local verification](SYNC_STORAGE.md)
 - [Phase 4 sync golden fixture](contracts/sync-v1.json)
 - [Phase 5 WebAuthn verifier spike](PHASE_5_WEBAUTHN_SPIKE.md)
+- [Phase 5 authentication contract](PHASE_5.md)
+- [Phase 5 passkey sessions and account boundary](adr/0015-passkey-session-account-boundary.md)
 - [Accessibility baseline](ACCESSIBILITY.md)
 - [Mutation testing](MUTATION.md)
 - [Mutation baseline](mutation-baseline.json)

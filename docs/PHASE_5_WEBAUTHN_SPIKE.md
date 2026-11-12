@@ -201,6 +201,13 @@ and passed the source Workers suite 158/158. Its lint and Linux jobs succeeded.
 The corrected Darwin API build logged `Executing pnpmConfigHook` and completed
 with `--offline`. Its new output passed the packaged Workers proof, 1/1.
 
+The final PR head `9bc3ffd` added the packaged verifier cleanup regression.
+[CI run 43259454568](https://github.com/beso1225/tanikun/actions/runs/43259454568)
+passed 46 packaged sync tests, including the cleanup regression and verifier,
+158 Workers/D1 tests, and 5 release checks. The merge `6bc6535` main CI run
+[43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
+succeeded at that merge SHA.
+
 ## Algorithms and offline assumptions
 
 The library default covers EdDSA, ES256, and RS256. The spike pins ES256 for
