@@ -183,9 +183,9 @@ runtime dependency" packaging assumption. The production bridge is still
 served as source modules; only the spike verifier is bundled.
 
 The Darwin `pnpmDeps` fixed-output hash was regenerated and verified. The Linux
-hash uses the existing baseline value and was not recomputed on this Darwin
-workstation. Linux CI must regenerate and verify that hash before merge; do not
-describe the Linux value as locally verified.
+hash was measured by [CI run 43248691241](https://github.com/beso1225/tanikun/actions/runs/43248691241)
+and updated from the fixed-output derivation's reported `got` value. A complete
+Linux build with that hash remains a merge gate; this is not a local Linux run.
 
 ## Algorithms and offline assumptions
 
@@ -226,7 +226,7 @@ check, not an independent security audit.
 - No challenge lifecycle, credential storage, session, cookie, CSRF, rate
   limiting, account recovery, PRF, E2EE, or ownership change is implemented.
 - No product Worker route or configuration enables the verifier.
-- The Linux `pnpmDeps` hash still needs Linux CI verification.
+- The updated Linux `pnpmDeps` hash still needs a successful full Linux CI run.
 - #177 owns the authentication contract, account boundary, session design,
   algorithm policy, attestation policy, and D1 schema. This spike only
   establishes the runtime, packaging, and offline-closure feasibility.

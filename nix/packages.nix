@@ -55,9 +55,7 @@ let
       if pkgs.stdenv.hostPlatform.isDarwin then
         "sha256-MZcco9Wpz9r0fnQMpU0UEkpkJ3WDVY90cBLPVujcIDY="
       else
-        # Regenerate on Linux CI after the #176 lockfile change; this Darwin
-        # workstation cannot compute the x86_64-linux closure hash.
-        "sha256-MShHKMGDGBgq5xmOfLILYEBUNPa6CVnJO94C4qLb66E=";
+        "sha256-3MmZgZO6Q0H15Vpc+FcXbTJSTG4TQZ624pfF7Xi2ERE=";
   };
   prepareMoon = ''
     export HOME="$TMPDIR/home"
