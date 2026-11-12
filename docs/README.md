@@ -22,6 +22,14 @@ Start with the current phase documents.
 - [Glossary](../GLOSSARY.md)
 - [Architecture decision records](adr/README.md)
 
+## Proposed
+
+These documents are drafts. They are not accepted contracts and do not authorize
+implementation.
+
+- [Phase 5 authentication contract](PHASE_5.md)
+- [Phase 5 passkey sessions and account boundary](adr/0015-passkey-session-account-boundary.md)
+
 ## Historical
 
 These documents record earlier phases and design reviews. They are useful for
