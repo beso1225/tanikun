@@ -10,12 +10,18 @@
   "devDependencies": {
     "@automerge/automerge": "3.5.0",
     "@cloudflare/vitest-plugin": "1.4.6",
+    "@peculiar/asn1-ecc": "2.11.1",
+    "@peculiar/asn1-schema": "2.11.1",
     "@tailwindcss/cli": "4.3.3",
+    "esbuild": "0.28.2",
     "fake-indexeddb": "6.2.6",
     "oxfmt": "0.74.0",
     "oxlint": "1.89.0",
     "tailwindcss": "4.3.3",
     "vitest": "5.0.5",
     "wrangler": "4.151.1"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "14.1.0"
   }
 }

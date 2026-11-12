@@ -53,8 +53,10 @@ let
     # Regenerate both hashes after dependency changes.
     hash =
       if pkgs.stdenv.hostPlatform.isDarwin then
-        "sha256-D0ORisgfIjG5o43eI2hsMEriyNsv33dk5SxulPo6xaw="
+        "sha256-MZcco9Wpz9r0fnQMpU0UEkpkJ3WDVY90cBLPVujcIDY="
       else
+        # Regenerate on Linux CI after the #176 lockfile change; this Darwin
+        # workstation cannot compute the x86_64-linux closure hash.
         "sha256-MShHKMGDGBgq5xmOfLILYEBUNPa6CVnJO94C4qLb66E=";
   };
   prepareMoon = ''
@@ -117,10 +119,12 @@ let
   api = pkgs.stdenvNoCC.mkDerivation {
     pname = "tanikun-api";
     version = "0.1.0";
-    inherit src;
+    inherit src pnpmDeps;
     nativeBuildInputs = [
       moonbit
       pkgs.nodejs_24
+      pnpm
+      pkgs.pnpmConfigHook
     ];
     configurePhase = prepareMoon;
     buildPhase = "moon build --frozen --target js --release --deny-warn";
@@ -131,19 +135,27 @@ let
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-api
       node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs
     '';
-    # Keep the bridge's relative imports intact; no npm/runtime dependency is needed.
-    # Include every production module, migration, and a runtime config that does
-    # not depend on the source tree's Moon project. The source config keeps its
-    # build/watch hooks for local development; the packaged copy strips them and
-    # the missing schema path so Wrangler can start inside the Nix output.
+    # Keep the bridge's relative imports intact. The #176 WebAuthn spike
+    # verifier is bundled separately so the release artifact can prove the
+    # library's offline closure without enabling a product route. Include every
+    # production module, migration, and a runtime config that does not depend
+    # on the source tree's Moon project. The source config keeps its build/watch
+    # hooks for local development; the packaged copy strips them and the missing
+    # schema path so Wrangler can start inside the Nix output.
     installPhase = ''
-      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
+      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
       cp apps/api/http/*.mjs "$out/apps/api/http/"
       cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
       cp apps/api/migrations/*.sql "$out/apps/api/migrations/"
       cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
+      pnpm exec esbuild apps/api/webauthn/verify.mjs \
+        --bundle \
+        --format=esm \
+        --platform=browser \
+        --target=es2022 \
+        --outfile="$out/apps/api/webauthn/verify.js"
       node --input-type=module <<'NODE'
       import { readFileSync, writeFileSync } from "node:fs";
       import { parseJsonc } from "./scripts/parse-jsonc.mjs";
