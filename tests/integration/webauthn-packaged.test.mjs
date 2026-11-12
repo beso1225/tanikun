@@ -13,8 +13,10 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { createWebAuthnProof } from "../../apps/api/test/webauthn-fixtures.mjs";
+import { processGroupExists } from "./sync-harness.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const wranglerBin = join(
@@ -24,6 +26,73 @@ const wranglerBin = join(
 const apiRoot = process.env.TANIKUN_API_DIST
   ? resolve(process.env.TANIKUN_API_DIST)
   : null;
+
+async function stopWorkerGroup(worker, graceMs = 5_000) {
+  if (!worker.pid) return;
+  function signalGroup(signal) {
+    try {
+      process.kill(-worker.pid, signal);
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+    }
+  }
+  async function waitForGroup() {
+    const deadline = Date.now() + graceMs;
+    while (processGroupExists(worker.pid) && Date.now() < deadline) {
+      await delay(20);
+    }
+    return !processGroupExists(worker.pid);
+  }
+  if (!processGroupExists(worker.pid)) return;
+  signalGroup("SIGTERM");
+  if (await waitForGroup()) return;
+  signalGroup("SIGKILL");
+  assert.equal(
+    await waitForGroup(),
+    true,
+    "owned Worker process group survived cleanup",
+  );
+}
+
+test(
+  "packaged proof cleanup kills descendants after the Wrangler leader exits",
+  {
+    timeout: 15_000,
+  },
+  async (t) => {
+    const worker = spawn(
+      process.execPath,
+      [
+        "-e",
+        `
+    const { spawn } = require("node:child_process");
+    const child = spawn(process.execPath, ["-e", \`
+      process.on("SIGTERM", () => {});
+      setInterval(() => {}, 1000);
+      process.send("ready");
+    \`], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    child.once("message", () => process.stdout.write("ready", () => process.exit(0)));
+  `,
+      ],
+      { detached: true, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    t.after(() => {
+      if (worker.pid && processGroupExists(worker.pid)) {
+        process.kill(-worker.pid, "SIGKILL");
+      }
+    });
+    let output = "";
+    worker.stdout.on("data", (data) => {
+      output += data;
+    });
+    await once(worker, "exit");
+    assert.equal(worker.exitCode, 0);
+    assert.equal(output, "ready");
+    assert.equal(processGroupExists(worker.pid), true);
+    await stopWorkerGroup(worker, 1_000);
+    assert.equal(processGroupExists(worker.pid), false);
+  },
+);
 
 function workerSource(bundlePath) {
   return `
@@ -234,24 +303,7 @@ test(
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
-    t.after(async () => {
-      if (!worker.pid || worker.exitCode !== null || worker.signalCode !== null)
-        return;
-      const exited = once(worker, "exit");
-      process.kill(-worker.pid, "SIGTERM");
-      const timer = setTimeout(() => {
-        try {
-          process.kill(-worker.pid, "SIGKILL");
-        } catch (error) {
-          if (error.code !== "ESRCH") throw error;
-        }
-      }, 5_000);
-      try {
-        await exited;
-      } finally {
-        clearTimeout(timer);
-      }
-    });
+    t.after(() => stopWorkerGroup(worker));
 
     let log = "";
     const origin = await new Promise((resolvePromise, reject) => {
