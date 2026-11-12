@@ -768,6 +768,19 @@ it("rechecks the session inside the remove-credential batch", async () => {
   ).toEqual({ count: 0 });
 });
 
+it("maps an unexpected D1 read failure to a redacted storage error", async () => {
+  const clock = fakeClock();
+  const alice = await registerAccount({ clock });
+  await env.DB.exec(
+    "ALTER TABLE credentials RENAME TO credentials_unavailable",
+  );
+  const error = await expectAuthError(
+    () => alice.repo.listCredentials(accountId("alice0001")),
+    { code: "temporarily_unavailable" },
+  );
+  expect(error.message).toBe("temporarily_unavailable");
+});
+
 it("applies the single-device strict and backup-eligible max counter policies", async () => {
   const clock = fakeClock();
   const strict = await registerAccount({ clock });

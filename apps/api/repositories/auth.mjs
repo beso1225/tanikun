@@ -36,6 +36,14 @@ function stableDocumentId(value) {
   return value;
 }
 
+async function guarded(operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    throw databaseError(error);
+  }
+}
+
 function credentialRow(row) {
   return {
     credentialId: row.credential_id,
@@ -110,12 +118,14 @@ export function createAuthRepository(
   }
 
   async function sessionState(sessionDigest, userId, current) {
-    const row = await db
-      .prepare(
-        "SELECT s.user_id, s.revoked_at, s.expires_at, s.idle_expires_at, s.recent_auth_at, u.handle, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?1",
-      )
-      .bind(sessionDigest)
-      .first();
+    const row = await guarded(() =>
+      db
+        .prepare(
+          "SELECT s.user_id, s.revoked_at, s.expires_at, s.idle_expires_at, s.recent_auth_at, u.handle, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?1",
+        )
+        .bind(sessionDigest)
+        .first(),
+    );
     if (
       !row ||
       row.user_id !== userId ||
@@ -145,15 +155,19 @@ export function createAuthRepository(
     current,
   ) {
     await diagnoseSession(sessionDigest, userId, current);
-    const existing = await db
-      .prepare("SELECT user_id FROM credentials WHERE credential_id = ?1")
-      .bind(credentialId)
-      .first();
+    const existing = await guarded(() =>
+      db
+        .prepare("SELECT user_id FROM credentials WHERE credential_id = ?1")
+        .bind(credentialId)
+        .first(),
+    );
     if (existing) throw new AuthStorageError("credential_conflict");
-    const count = await db
-      .prepare("SELECT COUNT(*) AS count FROM credentials WHERE user_id = ?1")
-      .bind(userId)
-      .first();
+    const count = await guarded(() =>
+      db
+        .prepare("SELECT COUNT(*) AS count FROM credentials WHERE user_id = ?1")
+        .bind(userId)
+        .first(),
+    );
     if (count.count >= AUTH_STORAGE_LIMITS.credentialLimit)
       throw new AuthStorageError("credential_limit");
     throw new AuthStorageError("temporarily_unavailable");
@@ -166,17 +180,21 @@ export function createAuthRepository(
     current,
   ) {
     await diagnoseSession(sessionDigest, userId, current);
-    const existing = await db
-      .prepare(
-        "SELECT 1 AS found FROM credentials WHERE credential_id = ?1 AND user_id = ?2",
-      )
-      .bind(credentialId, userId)
-      .first();
+    const existing = await guarded(() =>
+      db
+        .prepare(
+          "SELECT 1 AS found FROM credentials WHERE credential_id = ?1 AND user_id = ?2",
+        )
+        .bind(credentialId, userId)
+        .first(),
+    );
     if (!existing) throw new AuthStorageError("not_found");
-    const count = await db
-      .prepare("SELECT COUNT(*) AS count FROM credentials WHERE user_id = ?1")
-      .bind(userId)
-      .first();
+    const count = await guarded(() =>
+      db
+        .prepare("SELECT COUNT(*) AS count FROM credentials WHERE user_id = ?1")
+        .bind(userId)
+        .first(),
+    );
     if (count.count <= 1) throw new AuthStorageError("last_credential");
     throw new AuthStorageError("temporarily_unavailable");
   }
@@ -184,28 +202,32 @@ export function createAuthRepository(
   async function cleanupChallengeRows(limit) {
     const checkedLimit = requireBatchLimit(limit);
     const current = currentTime();
-    const result = await db
-      .prepare(
-        "DELETE FROM challenges WHERE id IN (SELECT id FROM challenges WHERE expires_at <= ?1 ORDER BY expires_at LIMIT ?2)",
-      )
-      .bind(current, checkedLimit)
-      .run();
+    const result = await guarded(() =>
+      db
+        .prepare(
+          "DELETE FROM challenges WHERE id IN (SELECT id FROM challenges WHERE expires_at <= ?1 ORDER BY expires_at LIMIT ?2)",
+        )
+        .bind(current, checkedLimit)
+        .run(),
+    );
     return result.meta.changes;
   }
 
   async function cleanupSessionRows(limit) {
     const checkedLimit = requireBatchLimit(limit);
     const current = currentTime();
-    const result = await db
-      .prepare(
-        "DELETE FROM sessions WHERE digest IN (SELECT digest FROM sessions WHERE expires_at <= ?1 OR idle_expires_at <= ?1 OR (revoked_at IS NOT NULL AND revoked_at <= ?2) ORDER BY expires_at LIMIT ?3)",
-      )
-      .bind(
-        current,
-        current - AUTH_STORAGE_LIMITS.revokedSessionRetentionMs,
-        checkedLimit,
-      )
-      .run();
+    const result = await guarded(() =>
+      db
+        .prepare(
+          "DELETE FROM sessions WHERE digest IN (SELECT digest FROM sessions WHERE expires_at <= ?1 OR idle_expires_at <= ?1 OR (revoked_at IS NOT NULL AND revoked_at <= ?2) ORDER BY expires_at LIMIT ?3)",
+        )
+        .bind(
+          current,
+          current - AUTH_STORAGE_LIMITS.revokedSessionRetentionMs,
+          checkedLimit,
+        )
+        .run(),
+    );
     return result.meta.changes;
   }
 
@@ -265,12 +287,14 @@ export function createAuthRepository(
 
     if (results[1].meta.changes === 0) {
       if (sessionBound) await sessionState(sessionDigest, userId, current);
-      const oldest = await db
-        .prepare(
-          "SELECT MIN(expires_at) AS expires_at FROM challenges WHERE binding_digest = ?1 AND consumed_at IS NULL AND expires_at > ?2",
-        )
-        .bind(bindingDigest, current)
-        .first();
+      const oldest = await guarded(() =>
+        db
+          .prepare(
+            "SELECT MIN(expires_at) AS expires_at FROM challenges WHERE binding_digest = ?1 AND consumed_at IS NULL AND expires_at > ?2",
+          )
+          .bind(bindingDigest, current)
+          .first(),
+      );
       throw new AuthStorageError("rate_limited", {
         retryAfter:
           oldest?.expires_at === null || oldest?.expires_at === undefined
@@ -612,7 +636,12 @@ export function createAuthRepository(
           )
           .bind(checkedDigest, current),
       );
-      const results = await db.batch(statements);
+      let results;
+      try {
+        results = await db.batch(statements);
+      } catch (error) {
+        throw databaseError(error);
+      }
       const row = results.at(-1).results[0];
       return row ? sessionRow(row, current) : null;
     },
@@ -621,18 +650,23 @@ export function createAuthRepository(
       const checkedDigest = requireDigest(sessionDigest);
       const checkedUser = requireUserId(userId);
       const current = currentTime();
-      const results = await db.batch([
-        db
-          .prepare(
-            "UPDATE sessions SET recent_auth_at = ?3 WHERE digest = ?1 AND user_id = ?2 AND revoked_at IS NULL AND expires_at > ?3 AND idle_expires_at > ?3 AND EXISTS (SELECT 1 FROM users u WHERE u.id = sessions.user_id AND u.handle IS NOT NULL AND u.display_name IS NOT NULL)",
-          )
-          .bind(checkedDigest, checkedUser, current),
-        db
-          .prepare(
-            "SELECT s.digest, s.user_id, s.csrf_digest, s.created_at, s.last_seen_at, s.expires_at, s.idle_expires_at, s.recent_auth_at, s.revoked_at, s.revoke_reason, u.handle, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?1 AND s.user_id = ?2 AND s.revoked_at IS NULL AND s.expires_at > ?3 AND s.idle_expires_at > ?3 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL",
-          )
-          .bind(checkedDigest, checkedUser, current),
-      ]);
+      let results;
+      try {
+        results = await db.batch([
+          db
+            .prepare(
+              "UPDATE sessions SET recent_auth_at = ?3 WHERE digest = ?1 AND user_id = ?2 AND revoked_at IS NULL AND expires_at > ?3 AND idle_expires_at > ?3 AND EXISTS (SELECT 1 FROM users u WHERE u.id = sessions.user_id AND u.handle IS NOT NULL AND u.display_name IS NOT NULL)",
+            )
+            .bind(checkedDigest, checkedUser, current),
+          db
+            .prepare(
+              "SELECT s.digest, s.user_id, s.csrf_digest, s.created_at, s.last_seen_at, s.expires_at, s.idle_expires_at, s.recent_auth_at, s.revoked_at, s.revoke_reason, u.handle, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?1 AND s.user_id = ?2 AND s.revoked_at IS NULL AND s.expires_at > ?3 AND s.idle_expires_at > ?3 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL",
+            )
+            .bind(checkedDigest, checkedUser, current),
+        ]);
+      } catch (error) {
+        throw databaseError(error);
+      }
       const row = results[1].results[0];
       if (!row || results[0].meta.changes !== 1)
         throw new AuthStorageError("unauthorized");
@@ -702,12 +736,14 @@ export function createAuthRepository(
       const checkedDigest = requireDigest(sessionDigest);
       const checkedReason = requireRevokeReason(reason);
       const current = currentTime();
-      const result = await db
-        .prepare(
-          "UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE digest = ?1 AND revoked_at IS NULL",
-        )
-        .bind(checkedDigest, current, checkedReason)
-        .run();
+      const result = await guarded(() =>
+        db
+          .prepare(
+            "UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE digest = ?1 AND revoked_at IS NULL",
+          )
+          .bind(checkedDigest, current, checkedReason)
+          .run(),
+      );
       return result.meta.changes === 1;
     },
 
@@ -715,12 +751,14 @@ export function createAuthRepository(
       const checkedUser = requireUserId(userId);
       const checkedReason = requireRevokeReason(reason);
       const current = currentTime();
-      const result = await db
-        .prepare(
-          "UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE user_id = ?1 AND revoked_at IS NULL",
-        )
-        .bind(checkedUser, current, checkedReason)
-        .run();
+      const result = await guarded(() =>
+        db
+          .prepare(
+            "UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE user_id = ?1 AND revoked_at IS NULL",
+          )
+          .bind(checkedUser, current, checkedReason)
+          .run(),
+      );
       return result.meta.changes;
     },
 
@@ -740,23 +778,27 @@ export function createAuthRepository(
 
     async findCredential(credentialId) {
       const checkedId = requireCredentialId(credentialId);
-      const row = await db
-        .prepare(
-          "SELECT c.credential_id, c.user_id, c.public_key, c.counter, c.backup_eligible, c.backup_state, c.created_at, c.last_used_at, u.handle, u.display_name FROM credentials c JOIN users u ON u.id = c.user_id WHERE c.credential_id = ?1 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL",
-        )
-        .bind(checkedId)
-        .first();
+      const row = await guarded(() =>
+        db
+          .prepare(
+            "SELECT c.credential_id, c.user_id, c.public_key, c.counter, c.backup_eligible, c.backup_state, c.created_at, c.last_used_at, u.handle, u.display_name FROM credentials c JOIN users u ON u.id = c.user_id WHERE c.credential_id = ?1 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL",
+          )
+          .bind(checkedId)
+          .first(),
+      );
       return row ? credentialRow(row) : null;
     },
 
     async listCredentials(userId) {
       const checkedUser = requireUserId(userId);
-      const results = await db
-        .prepare(
-          "SELECT credential_id, user_id, counter, backup_eligible, backup_state, created_at, last_used_at FROM credentials WHERE user_id = ?1 ORDER BY created_at, credential_id",
-        )
-        .bind(checkedUser)
-        .all();
+      const results = await guarded(() =>
+        db
+          .prepare(
+            "SELECT credential_id, user_id, counter, backup_eligible, backup_state, created_at, last_used_at FROM credentials WHERE user_id = ?1 ORDER BY created_at, credential_id",
+          )
+          .bind(checkedUser)
+          .all(),
+      );
       return results.results.map((row) => ({
         credentialId: row.credential_id,
         userId: row.user_id,
@@ -770,10 +812,14 @@ export function createAuthRepository(
 
     async countCredentials(userId) {
       const checkedUser = requireUserId(userId);
-      const row = await db
-        .prepare("SELECT COUNT(*) AS count FROM credentials WHERE user_id = ?1")
-        .bind(checkedUser)
-        .first();
+      const row = await guarded(() =>
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM credentials WHERE user_id = ?1",
+          )
+          .bind(checkedUser)
+          .first(),
+      );
       return row.count;
     },
 
