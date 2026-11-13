@@ -319,6 +319,23 @@ the copy prompt.
 A success registration or sign-in writes the active state under the auth Web
 Lock, increments the generation, and announces the change on the
 `tanikun-auth-v1` broadcast channel. Sign-out and account switch do the same.
+Every delayed status, expiry, explicit sign-in, logout, copy, decline, and
+first-upload consent carries the expected generation and handle into the same
+IndexedDB transaction. A mismatch aborts with `stale_account` before changing
+state. A delayed status response cannot adopt or expire a newer account, and a
+copy or consent decision from an old tab cannot create or clear another
+lifecycle's marker.
+
+A registration or sign-in ceremony owns an `AbortController`. Closing the
+account dialog, signing out, an account switch, or another auth broadcast aborts
+the native credential operation and any in-flight request. A credential that
+arrives after cancellation is discarded before the verification request. If the
+server already committed a cookie, the client reports an explicit session
+mismatch and never writes the old scope locally.
+
+Outbox, seen, and clear mutations run under the shared auth lock and recheck the
+expected scope inside that lock. The planner and sync databases are still
+separate; this is serialization, not a cross-database transaction claim.
 Saves compare the generation and handle with `auth:state` in the same IndexedDB
 transaction as the planner write. A mismatch aborts with `stale_account` and
 retains the attempted text in memory for copy or export. Sync checks the
@@ -356,15 +373,23 @@ issue #185.
 The #183 implementation was verified on macOS arm64 at the merge base plus
 these commits:
 
+- `just test`: 144 JavaScript tests passed, plus the MoonBit suites.
 - `just test-d1`: 305 passed.
-- `just test-browser`: 41 passed.
-- `just test-sync` from source: 52 passed and 4 packaged-only tests skipped.
-- `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 56 passed,
-  including all eight session account journeys.
+- `just test-browser`: 47 passed.
+- `just test-sync` from source: 53 passed and 4 packaged-only tests skipped.
+- `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 57 passed,
+  including all nine session account journeys.
 - `nix flake check path:. -L` on the current system: all checks passed,
   including 6 release checks. It omitted the incompatible `x86_64-linux`
   system locally; #185 owns the Linux TLS, cookie-jar, and virtual-auth CI
   matrix.
+
+The account lifecycle regressions cover a late expiry after Alice switches to
+Bob, a late expiry after logout, a delayed active or expired status response,
+copy and first-upload consent from an old generation, a pending native ceremony
+canceled by a switch or dialog close, a switch at the acknowledge and
+mark-remote mutation boundaries, nested settings to account focus ownership,
+and account-dialog Retry-After cooldown.
 
 The session journeys use a disposable loopback certificate and a Chromium
 virtual authenticator. They do not prove a physical provider, screen-reader

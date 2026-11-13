@@ -67,10 +67,25 @@ persistence, not sync.
   seen, and cursors.
 - An unbound `planner` is never uploaded automatically. Copying it to
   `account:<handle>:planner` is explicit, keeps the original, and sets
-  `auth:upload:<handle>` until a separate first-upload consent.
+  `auth:upload:<handle>` until a separate first-upload consent. Copy, decline,
+  and consent carry the expected generation and handle into the same local
+  transaction.
+- Delayed status, expiry, sign-in, and logout transitions compare the expected
+  generation and handle in the same auth-state transaction. A mismatch is
+  `stale_account`, never an overwrite of a newer account.
+- Registration and sign-in use an AbortController. Dialog close, logout, an
+  account switch, or an auth broadcast aborts the native ceremony before the
+  verify request. A late server-committed cookie is an explicit mismatch, not
+  a local adoption.
+- Outbox, seen, and clear mutations use the shared auth lock and recheck the
+  expected scope while holding it. This serializes the separate sync database;
+  it is not a cross-database transaction.
 - A session `401` keeps the generation and becomes `reauth_required`; the
   account plan remains locally editable and sync pauses without an automatic
-  retry.
+  retry. Account-dialog retry and sign-in actions share the session
+  `Retry-After` cooldown.
+- Opening the account dialog from settings closes the settings modal first, so
+  the generic focus trap owns exactly one modal.
 - Web Locks serialize sync per API origin and document. Without Web Locks, one
   leader is required. Compare-and-set rejects cursor rollback, but it does not
   make concurrent leaders safe.
