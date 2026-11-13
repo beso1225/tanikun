@@ -103,14 +103,14 @@ that `CF-Connecting-IP` is supplied by Cloudflare's edge. A same-zone Worker
 subrequest can rewrite `x-real-ip`, so the Worker path does not use it.
 
 If `request.cf` is absent, `CF-Connecting-IP` is absent, or the header is not a
-single plausible IP literal, the request uses one shared `unknown` address
+single address-shaped value, the request uses one shared `unknown` address
 bucket. This keeps the check fail-closed instead of turning a missing value into
 a new bucket. The address value is rejected when it is empty, a comma-separated
-list, a zone ID, longer than 45 characters, or contains characters outside
-IPv4 or IPv6 text. Any leading or trailing whitespace is rejected if the runtime
-preserves it, and IPv6 hexadecimal text is lowercased. The value is not parsed
-to binary or resolved. Cloudflare's edge-provided spelling is the input;
-alternative textual spellings are not treated as equivalent.
+list, longer than 45 characters, or contains characters outside IPv4 or IPv6
+text. Any leading or trailing whitespace is rejected if the runtime preserves
+it, and IPv6 hexadecimal text is lowercased. The Worker does not parse the value
+to binary or resolve it. Other textual forms, such as expanded or compressed
+IPv6 spellings, are not canonicalized to a shared form.
 
 D1 counters are the admission authority. Cloudflare's
 [Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
