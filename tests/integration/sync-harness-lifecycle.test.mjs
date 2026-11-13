@@ -1051,6 +1051,17 @@ test("evidence redaction removes non-UUID document route identifiers", () => {
   }
 });
 
+test("evidence redaction removes credential removal identifiers", () => {
+  for (const text of [
+    "POST /api/v1/auth/credentials/credential-secret-value/remove 204",
+    "http://127.0.0.1:1/api/v1/auth/credentials/credential-secret-value/remove",
+  ]) {
+    const safe = redactEvidenceText(text);
+    assert.equal(safe.includes("credential-secret-value"), false);
+    assert.match(safe, /credentials\/<credential-id>\/remove/);
+  }
+});
+
 test("expected browser faults require exact kind, text, and count", () => {
   const failed = "Failed to load resource: net::ERR_FAILED";
   const unavailable =

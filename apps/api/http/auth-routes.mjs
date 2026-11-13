@@ -22,7 +22,8 @@
 // The API router activates this table through the session boundary only when
 // explicit session configuration passes. The boundary applies D1 limits;
 // sync.mjs shares its admission guards. Default/production config stays
-// closed. Credential list/remove routes remain #184 work.
+// closed. Credential list and removal are owned here; removal path matching is
+// handled by matchAuthRoute, not by a request-supplied route selection.
 const route = (value) => Object.freeze(value);
 
 export const AUTH_ROUTES = Object.freeze({
@@ -134,6 +135,30 @@ export const AUTH_ROUTES = Object.freeze({
     binding: "verify",
     body: "json",
   }),
+  "/api/v1/auth/credentials": route({
+    id: "credential_list",
+    kind: "session",
+    methods: ["GET"],
+    allow: "GET",
+    session: "required",
+    csrf: false,
+    recent: false,
+    touch: true,
+    binding: "none",
+    body: "none",
+  }),
+  "/api/v1/auth/credentials/{credentialId}/remove": route({
+    id: "credential_remove",
+    kind: "session",
+    methods: ["POST"],
+    allow: "POST",
+    session: "required",
+    csrf: true,
+    recent: true,
+    touch: false,
+    binding: "none",
+    body: "empty",
+  }),
   "/api/v1/auth/credentials/options": route({
     id: "credential_add_options",
     kind: "webauthn",
@@ -160,6 +185,15 @@ export const AUTH_ROUTES = Object.freeze({
   }),
 });
 
+const CREDENTIAL_REMOVE = /^\/api\/v1\/auth\/credentials\/([^/]+)\/remove$/u;
+
 export function matchAuthRoute(pathname) {
-  return AUTH_ROUTES[pathname] ?? null;
+  const exact = AUTH_ROUTES[pathname];
+  if (exact) return { route: exact, credentialId: null };
+  const match = CREDENTIAL_REMOVE.exec(pathname);
+  if (!match) return null;
+  return {
+    route: AUTH_ROUTES["/api/v1/auth/credentials/{credentialId}/remove"],
+    credentialId: match[1],
+  };
 }

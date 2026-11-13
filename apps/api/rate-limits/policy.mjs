@@ -36,7 +36,8 @@ export const AUTH_RATE_LIMIT_POLICIES = Object.freeze({
 
 // The route IDs come from apps/api/http/auth-routes.mjs. A missing entry is a
 // programming error, not an implicit exemption. Session sync uses sync_request;
-// credential list/remove remain policy handoffs for #184.
+// credential removal uses the account budget, and list is an unbudgeted
+// authenticated read.
 export const AUTH_ROUTE_RATE_LIMIT_POLICIES = Object.freeze({
   registration_options: Object.freeze([
     AUTH_RATE_LIMIT_POLICIES.challengeAddress,

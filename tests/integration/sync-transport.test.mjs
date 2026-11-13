@@ -1028,3 +1028,38 @@ test("session status keeps fully read invalid JSON terminal", async () => {
     retryable: false,
   });
 });
+
+test("session CSRF snapshots remain bound to their own validated response", async () => {
+  const csrf = [7, 8].map((fill) =>
+    Buffer.alloc(32, fill).toString("base64url"),
+  );
+  let calls = 0;
+  const client = createSessionStatusClient({
+    baseUrl: "https://localhost:4300",
+    fetch: async () =>
+      Response.json({
+        session: {
+          account: {
+            handle: Buffer.alloc(32, calls + 1).toString("base64url"),
+            display_name: "Fictional",
+          },
+          expires_at: 2_000_000_000_000,
+          idle_expires_at: 2_000_000_000_000,
+          recent_auth: true,
+          recent_auth_expires_at: 2_000_000_000_000,
+          csrf_token: csrf[calls++],
+        },
+      }),
+  });
+  const first = await client.read();
+  const second = await client.read();
+  assert.equal(client.csrfToken, csrf[1]);
+  assert.equal(client.csrfTokenFor(first), csrf[0]);
+  assert.equal(client.csrfTokenFor(second), csrf[1]);
+  assert.equal(client.csrfTokenFor({ ...first }), null);
+  for (const csrfValue of csrf)
+    assert.equal(JSON.stringify([first, second]).includes(csrfValue), false);
+  client.clear();
+  assert.equal(client.csrfTokenFor(first), null);
+  assert.equal(client.csrfTokenFor(second), null);
+});

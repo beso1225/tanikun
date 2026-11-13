@@ -15,6 +15,7 @@ import {
   base64Url,
   bytes,
   countRows,
+  credential as storedCredential,
   fakeClock,
   queryFirst,
   resetAuthDatabase,
@@ -249,6 +250,439 @@ async function createSecondSession(account, fill) {
   });
   return { repository, session, material };
 }
+
+async function credentialRequest(
+  account,
+  path,
+  { method = "POST", body, csrf = true, cookie } = {},
+) {
+  const headers = {
+    Cookie:
+      cookie ?? `${SESSION}=${account.session}; ${BINDING}=${account.binding}`,
+  };
+  if (csrf) headers["X-CSRF-Token"] = account.csrf;
+  return handleSessionAuthRequest(
+    request(path, { method, body, headers }),
+    account.env,
+    account.deps,
+  );
+}
+
+async function addSecondCredential(
+  account,
+  {
+    idFill = 0x71,
+    counter = 0,
+    backupEligible = false,
+    backupState = false,
+  } = {},
+) {
+  const optionsResponse = await credentialRequest(
+    account,
+    "/api/v1/auth/credentials/options",
+    { body: {} },
+  );
+  expect(optionsResponse.status).toBe(200);
+  const options = await optionsResponse.json();
+  const credential = await createCredential({ idFill });
+  const registration = await buildRegistrationResponse({
+    challenge: options.publicKey.challenge,
+    rpID: "localhost",
+    origin: ORIGIN,
+    credential,
+    counter,
+    backupEligible,
+    backupState,
+  });
+  const verifyResponse = await credentialRequest(
+    account,
+    "/api/v1/auth/credentials/verify",
+    {
+      body: {
+        challenge_id: options.challenge_id,
+        credential: registration,
+      },
+    },
+  );
+  expect(verifyResponse.status).toBe(200);
+  return {
+    options,
+    credential,
+    optionsResponse,
+    verifyResponse,
+    body: await verifyResponse.json(),
+  };
+}
+
+async function signInCredential(account, credential, { counter = 0 } = {}) {
+  const optionsResponse = await handleSessionAuthRequest(
+    request("/api/v1/auth/sign-in/options", {
+      body: {},
+      headers: { Cookie: `${BINDING}=${account.binding}` },
+    }),
+    account.env,
+    account.deps,
+  );
+  expect(optionsResponse.status).toBe(200);
+  const options = await optionsResponse.json();
+  const assertion = await buildAssertionResponse({
+    challenge: options.publicKey.challenge,
+    rpID: "localhost",
+    origin: ORIGIN,
+    credential,
+    counter,
+    userHandle: account.handle,
+  });
+  const verifyResponse = await handleSessionAuthRequest(
+    request("/api/v1/auth/sign-in/verify", {
+      body: { challenge_id: options.challenge_id, credential: assertion },
+      headers: { Cookie: `${BINDING}=${account.binding}` },
+    }),
+    account.env,
+    account.deps,
+  );
+  return {
+    optionsResponse,
+    options,
+    verifyResponse,
+    body:
+      verifyResponse.status === 200 ? await verifyResponse.json() : undefined,
+  };
+}
+
+describe("credential management boundary", () => {
+  it("lists only the current account's minimal credential metadata", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    const second = await addSecondCredential(account, { idFill: 0x72 });
+
+    const response = await credentialRequest(
+      account,
+      "/api/v1/auth/credentials",
+      { method: "GET" },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(["credentials"]);
+    expect(body.credentials).toHaveLength(2);
+    for (const credential of body.credentials) {
+      expect(Object.keys(credential).toSorted()).toEqual(
+        [
+          "id",
+          "created_at",
+          "last_used_at",
+          "backup_eligible",
+          "backup_state",
+        ].toSorted(),
+      );
+      expect(credential).not.toHaveProperty("public_key");
+      expect(credential).not.toHaveProperty("user_id");
+      expect(credential).not.toHaveProperty("counter");
+    }
+    expect(body.credentials.map((credential) => credential.id)).toEqual(
+      expect.arrayContaining([
+        account.credential.credentialId,
+        second.credential.credentialId,
+      ]),
+    );
+    expect(JSON.stringify(body)).not.toContain(account.handle);
+    expect(JSON.stringify(body)).not.toContain(account.csrf);
+    expect(JSON.stringify(body)).not.toContain(account.session);
+  });
+
+  it("requires a session, exact method, no query, and no body for the list endpoint", async () => {
+    const account = await registerAccount();
+    const noSession = await handleSessionAuthRequest(
+      request("/api/v1/auth/credentials", { method: "GET", origin: null }),
+      account.env,
+      account.deps,
+    );
+    expect(noSession.status).toBe(401);
+
+    const wrongMethod = await credentialRequest(
+      account,
+      "/api/v1/auth/credentials",
+      { method: "POST", body: {} },
+    );
+    expect(wrongMethod.status).toBe(405);
+    expect(wrongMethod.headers.get("Allow")).toBe("GET");
+
+    const query = await credentialRequest(
+      account,
+      "/api/v1/auth/credentials?owner=other",
+      { method: "GET" },
+    );
+    expect(query.status).toBe(400);
+
+    const authorization = await handleSessionAuthRequest(
+      request("/api/v1/auth/credentials", {
+        method: "GET",
+        headers: {
+          Cookie: `${SESSION}=${account.session}`,
+          Authorization: "Bearer client-supplied",
+        },
+      }),
+      account.env,
+      account.deps,
+    );
+    expect(authorization.status).toBe(400);
+    expect((await authorization.json()).error.code).toBe("malformed_request");
+  });
+
+  it("refuses to remove the last credential and leaves the session valid", async () => {
+    const account = await registerAccount();
+    const response = await credentialRequest(
+      account,
+      `/api/v1/auth/credentials/${account.credential.credentialId}/remove`,
+      { body: undefined },
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe("last_credential");
+    expect(setCookies(response)).toEqual([]);
+    expect((await sessionStatus(account)).status).toBe(200);
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM credentials WHERE credential_id = ?1",
+        account.credential.credentialId,
+      ),
+    ).toEqual({ count: 1 });
+  });
+
+  it("requires CSRF and recent auth before removing an owned credential", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    const second = await addSecondCredential(account, { idFill: 0x73 });
+
+    const noCsrf = await credentialRequest(
+      account,
+      `/api/v1/auth/credentials/${second.credential.credentialId}/remove`,
+      { csrf: false },
+    );
+    expect(noCsrf.status).toBe(403);
+    expect((await noCsrf.json()).error.code).toBe("csrf_forbidden");
+    expect((await sessionStatus(account)).status).toBe(200);
+
+    clock.advance(5 * 60 * 1000 + 1);
+    const stale = await credentialRequest(
+      account,
+      `/api/v1/auth/credentials/${second.credential.credentialId}/remove`,
+    );
+    expect(stale.status).toBe(403);
+    expect((await stale.json()).error.code).toBe("recent_auth_required");
+    expect((await sessionStatus(account)).status).toBe(200);
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM credentials WHERE credential_id = ?1",
+        second.credential.credentialId,
+      ),
+    ).toEqual({ count: 1 });
+  });
+
+  it("returns 404 for a foreign credential without deleting or revoking anything", async () => {
+    const clock = fakeClock();
+    const alice = await registerAccount({ clock });
+    await addSecondCredential(alice, { idFill: 0x74 });
+    const bob = await registerAccount({
+      clock,
+      accountName: "acct_http1802",
+      handleFill: 0x41,
+      documentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    });
+
+    const response = await credentialRequest(
+      alice,
+      `/api/v1/auth/credentials/${bob.credential.credentialId}/remove`,
+    );
+    expect(response.status).toBe(404);
+    expect((await response.json()).error.code).toBe("not_found");
+    expect((await sessionStatus(alice)).status).toBe(200);
+    expect((await sessionStatus(bob)).status).toBe(200);
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM credentials WHERE credential_id = ?1",
+        bob.credential.credentialId,
+      ),
+    ).toEqual({ count: 1 });
+  });
+
+  it("rejects a malformed credential id after admission", async () => {
+    const account = await registerAccount();
+    const response = await credentialRequest(
+      account,
+      "/api/v1/auth/credentials/not*canonical/remove",
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe("malformed_request");
+    expect((await sessionStatus(account)).status).toBe(200);
+  });
+
+  it("revokes every session on removal and refuses the removed credential", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    const second = await addSecondCredential(account, { idFill: 0x75 });
+    const otherSession = await createSecondSession(account, 0x95);
+
+    expect((await stepUp(account)).verifyResponse.status).toBe(200);
+    const response = await credentialRequest(
+      account,
+      `/api/v1/auth/credentials/${second.credential.credentialId}/remove`,
+    );
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(setCookies(response)).toEqual([
+      `${SESSION}=; ${SESSION_ATTRIBUTES}; Max-Age=0`,
+    ]);
+
+    expect((await sessionStatus(account)).status).toBe(401);
+    expect(
+      (
+        await handleSessionAuthRequest(
+          request("/api/v1/auth/session", {
+            method: "GET",
+            origin: null,
+            headers: { Cookie: `${SESSION}=${otherSession.material.token}` },
+          }),
+          account.env,
+          account.deps,
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM sessions WHERE user_id = (SELECT id FROM users WHERE handle = ?1) AND revoked_at IS NULL",
+        account.handle,
+      ),
+    ).toEqual({ count: 0 });
+    expect(
+      await queryFirst(
+        "SELECT revoke_reason FROM sessions WHERE digest = ?1",
+        otherSession.session.digest,
+      ),
+    ).toEqual({ revoke_reason: "credential_removed" });
+
+    const removedSignIn = await signInCredential(account, second.credential);
+    expect(removedSignIn.verifyResponse.status).toBe(401);
+    expect((await removedSignIn.verifyResponse.json()).error.code).toBe(
+      "authentication_failed",
+    );
+
+    const survivingSignIn = await signInCredential(account, account.credential);
+    expect(survivingSignIn.verifyResponse.status).toBe(200);
+    expect(survivingSignIn.body.session.account.handle).toBe(account.handle);
+    const newSession = cookieValueFromResponse(
+      survivingSignIn.verifyResponse,
+      SESSION,
+    );
+    expect(newSession).toHaveLength(43);
+    expect(newSession).not.toBe(account.session);
+  });
+
+  it("rechecks the count in the remove statement and allows only one concurrent removal", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    const second = await addSecondCredential(account, { idFill: 0x76 });
+    const otherSession = await createSecondSession(account, 0x96);
+
+    const [first, secondResult] = await Promise.all([
+      credentialRequest(
+        account,
+        `/api/v1/auth/credentials/${account.credential.credentialId}/remove`,
+      ),
+      handleSessionAuthRequest(
+        request(
+          `/api/v1/auth/credentials/${second.credential.credentialId}/remove`,
+          {
+            headers: {
+              Cookie: `${SESSION}=${otherSession.material.token}`,
+              "X-CSRF-Token": otherSession.material.csrfToken,
+            },
+          },
+        ),
+        account.env,
+        account.deps,
+      ),
+    ]);
+    const statuses = [first.status, secondResult.status].toSorted();
+    expect(statuses).toEqual([204, 401]);
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM credentials WHERE user_id = (SELECT id FROM users WHERE handle = ?1)",
+        account.handle,
+      ),
+    ).toEqual({ count: 1 });
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM sessions WHERE user_id = (SELECT id FROM users WHERE handle = ?1) AND revoked_at IS NULL",
+        account.handle,
+      ),
+    ).toEqual({ count: 0 });
+  });
+
+  it("keeps the credential count at 20 and rejects another addition with 409", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    const repository = createAuthRepository(env.DB, { now: clock.now });
+    for (let index = 0; index < 19; index += 1) {
+      await repository.addCredential({
+        sessionDigest: (
+          await queryFirst(
+            "SELECT digest FROM sessions WHERE user_id = (SELECT id FROM users WHERE handle = ?1)",
+            account.handle,
+          )
+        ).digest,
+        userId: (
+          await queryFirst(
+            "SELECT id FROM users WHERE handle = ?1",
+            account.handle,
+          )
+        ).id,
+        credential: storedCredential({ idFill: 100 + index }),
+      });
+    }
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM credentials WHERE user_id = (SELECT id FROM users WHERE handle = ?1)",
+        account.handle,
+      ),
+    ).toEqual({ count: 20 });
+
+    const optionsResponse = await credentialRequest(
+      account,
+      "/api/v1/auth/credentials/options",
+      { body: {} },
+    );
+    expect(optionsResponse.status).toBe(200);
+    const options = await optionsResponse.json();
+    expect(options.publicKey.excludeCredentials).toHaveLength(20);
+    const extra = await createCredential({ idFill: 0x77 });
+    const registration = await buildRegistrationResponse({
+      challenge: options.publicKey.challenge,
+      rpID: "localhost",
+      origin: ORIGIN,
+      credential: extra,
+    });
+    const verifyResponse = await credentialRequest(
+      account,
+      "/api/v1/auth/credentials/verify",
+      {
+        body: {
+          challenge_id: options.challenge_id,
+          credential: registration,
+        },
+      },
+    );
+    expect(verifyResponse.status).toBe(409);
+    expect((await verifyResponse.json()).error.code).toBe("credential_limit");
+    expect(
+      await queryFirst(
+        "SELECT COUNT(*) AS count FROM credentials WHERE user_id = (SELECT id FROM users WHERE handle = ?1)",
+        account.handle,
+      ),
+    ).toEqual({ count: 20 });
+  });
+});
 
 describe("session boundary", () => {
   it("never mints a browser binding during verification when its cookie is absent", async () => {

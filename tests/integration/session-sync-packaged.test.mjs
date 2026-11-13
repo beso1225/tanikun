@@ -142,6 +142,8 @@ async function register(origin, { idFill, displayName }) {
     session,
     csrf: verifyBody.session.csrf_token,
     handle: verifyBody.session.account.handle,
+    binding,
+    credential,
   };
 }
 
@@ -404,6 +406,180 @@ test(
     assert.deepEqual(await bearer.json(), {
       error: { code: "malformed_request" },
     });
+
+    const aliceCredentials = await jsonRequest(
+      origin,
+      "/api/v1/auth/credentials",
+      { headers: { Cookie: `${SESSION}=${alice.session}` } },
+    );
+    assert.equal(aliceCredentials.status, 200);
+    assert.equal(aliceCredentials.headers.get("Cache-Control"), "no-store");
+    const aliceCredentialList = await aliceCredentials.json();
+    assert.equal(aliceCredentialList.credentials.length, 1);
+    assert.deepEqual(
+      Object.keys(aliceCredentialList.credentials[0]).toSorted(),
+      [
+        "id",
+        "created_at",
+        "last_used_at",
+        "backup_eligible",
+        "backup_state",
+      ].toSorted(),
+    );
+    assert.equal(
+      Object.hasOwn(aliceCredentialList.credentials[0], "public_key"),
+      false,
+    );
+
+    const bobCredentials = await jsonRequest(
+      origin,
+      "/api/v1/auth/credentials",
+      { headers: { Cookie: `${SESSION}=${bob.session}` } },
+    );
+    assert.equal(bobCredentials.status, 200);
+    const bobCredentialList = await bobCredentials.json();
+    const foreignRemove = await jsonRequest(
+      origin,
+      `/api/v1/auth/credentials/${bobCredentialList.credentials[0].id}/remove`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION}=${alice.session}`,
+          "X-CSRF-Token": alice.csrf,
+        },
+      },
+    );
+    assert.equal(foreignRemove.status, 404);
+    assert.deepEqual(await foreignRemove.json(), {
+      error: { code: "not_found" },
+    });
+    assert.equal(
+      (
+        await jsonRequest(origin, "/api/v1/auth/session", {
+          headers: { Cookie: `${SESSION}=${bob.session}` },
+        })
+      ).status,
+      200,
+    );
+
+    const bobLastCredential = await jsonRequest(
+      origin,
+      `/api/v1/auth/credentials/${bobCredentialList.credentials[0].id}/remove`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION}=${bob.session}`,
+          "X-CSRF-Token": bob.csrf,
+        },
+      },
+    );
+    assert.equal(bobLastCredential.status, 409);
+    assert.deepEqual(await bobLastCredential.json(), {
+      error: { code: "last_credential" },
+    });
+    assert.equal(
+      (
+        await jsonRequest(origin, "/api/v1/auth/session", {
+          headers: { Cookie: `${SESSION}=${bob.session}` },
+        })
+      ).status,
+      200,
+    );
+
+    const addOptions = await jsonRequest(
+      origin,
+      "/api/v1/auth/credentials/options",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION}=${alice.session}; ${BINDING}=${alice.binding}`,
+          "X-CSRF-Token": alice.csrf,
+        },
+        body: {},
+      },
+    );
+    const addOptionsText = await addOptions.text();
+    assert.equal(addOptions.status, 200, addOptionsText);
+    const addOptionsBody = JSON.parse(addOptionsText);
+    const secondCredential = await createCredential({
+      idFill: 0x71,
+      idLength: 16,
+    });
+    const secondRegistration = await buildRegistrationResponse({
+      challenge: addOptionsBody.publicKey.challenge,
+      rpID: "localhost",
+      origin: AUTH_ORIGIN,
+      credential: secondCredential,
+    });
+    const addVerify = await jsonRequest(
+      origin,
+      "/api/v1/auth/credentials/verify",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION}=${alice.session}; ${BINDING}=${alice.binding}`,
+          "X-CSRF-Token": alice.csrf,
+        },
+        body: {
+          challenge_id: addOptionsBody.challenge_id,
+          credential: secondRegistration,
+        },
+      },
+    );
+    const addVerifyText = await addVerify.text();
+    assert.equal(addVerify.status, 200, addVerifyText);
+    const addVerifyBody = JSON.parse(addVerifyText);
+    assert.equal(Object.hasOwn(addVerifyBody.credential, "public_key"), false);
+
+    const afterAddList = await jsonRequest(origin, "/api/v1/auth/credentials", {
+      headers: { Cookie: `${SESSION}=${alice.session}` },
+    });
+    assert.equal(afterAddList.status, 200);
+    const afterAdd = await afterAddList.json();
+    assert.equal(afterAdd.credentials.length, 2);
+    const removedId = afterAdd.credentials.find(
+      (credential) => credential.id !== addVerifyBody.credential.id,
+    ).id;
+    const removal = await jsonRequest(
+      origin,
+      `/api/v1/auth/credentials/${removedId}/remove`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION}=${alice.session}`,
+          "X-CSRF-Token": alice.csrf,
+        },
+      },
+    );
+    assert.equal(removal.status, 204);
+    assert.match(
+      cookieValues(removal).find((value) => value.startsWith(SESSION)) ?? "",
+      new RegExp(`^${SESSION}=; .*Max-Age=0$`, "u"),
+    );
+    assert.equal(
+      (
+        await jsonRequest(origin, "/api/v1/auth/session", {
+          headers: { Cookie: `${SESSION}=${alice.session}` },
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await jsonRequest(origin, "/api/v1/auth/credentials", {
+          headers: { Cookie: `${SESSION}=${alice.session}` },
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await jsonRequest(origin, "/api/v1/auth/session", {
+          headers: { Cookie: `${SESSION}=${bob.session}` },
+        })
+      ).status,
+      200,
+    );
 
     // The packaged bridge must still handle health without auth config.
     const health = await fetch(`${origin}/api/health`, {

@@ -43,6 +43,10 @@ const state = {
   ceremony: null,
   ceremonyReason: null,
   decisionScope: null,
+  credentials: null,
+  credentialsLoading: false,
+  credentialsError: null,
+  pendingRemoval: null,
   open: false,
 };
 
@@ -54,6 +58,8 @@ let statusClient = null;
 let authClient = null;
 let controller = null;
 let opening = false;
+let credentialsPromise = null;
+let logoutPending = false;
 
 function element(tag, properties = {}, ...children) {
   const node = document.createElement(tag);
@@ -77,7 +83,7 @@ function element(tag, properties = {}, ...children) {
 function actionButton(
   action,
   label,
-  { primary = false, autofocus = false } = {},
+  { primary = false, autofocus = false, danger = false } = {},
 ) {
   const node = element(
     "button",
@@ -85,9 +91,11 @@ function actionButton(
       type: "button",
       "data-action": action,
       ...(autofocus ? { "data-autofocus": "true" } : {}),
-      class: primary
-        ? "min-h-11 w-full rounded-md bg-primary px-3 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
-        : "min-h-11 w-full rounded-md border border-rule px-3 text-sm text-ink hover:bg-canvas disabled:opacity-50",
+      class: danger
+        ? "min-h-11 w-full rounded-md bg-danger-text px-3 text-sm font-medium text-white hover:bg-danger-text/90 disabled:opacity-50"
+        : primary
+          ? "min-h-11 w-full rounded-md bg-primary px-3 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+          : "min-h-11 w-full rounded-md border border-rule px-3 text-sm text-ink hover:bg-canvas disabled:opacity-50",
     },
     label,
   );
@@ -117,6 +125,12 @@ function errorMessage(error) {
       return "すでにサインインしています。";
     case "credential_conflict":
       return "このパスキーは既に登録されています。別の端末のパスキーを使ってください。";
+    case "credential_limit":
+      return "パスキーは20個までです。不要なパスキーを削除してから追加してください。";
+    case "last_credential":
+      return "最後のパスキーは削除できません。先に別のパスキーを追加してください。";
+    case "recent_auth_required":
+      return "安全のため、現在のパスキーでもう一度本人確認してください。";
     case "csrf_forbidden":
       return "セッションを更新できませんでした。もう一度お試しください。";
     case "unauthorized":
@@ -211,6 +225,9 @@ const AUTH_COOLDOWN_ACTIONS = new Set([
   "register-submit",
   "sign-in",
   "retry",
+  "add-passkey-confirm",
+  "add-passkey-create",
+  "remove-passkey-confirm",
 ]);
 
 function refreshAccountButton() {
@@ -352,7 +369,10 @@ function disclosure() {
     "div",
     { class: "space-y-2 rounded-md bg-canvas p-3 text-xs text-muted" },
     paragraph(
-      "パスキーをすべて失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる迂回はありません。",
+      "最後のパスキーは削除できません。パスキーをすべて失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる迂回はありません。",
+    ),
+    paragraph(
+      "パスキーを追加しても、暗号化キーの登録や、失われた暗号化キーの復旧は行われません。",
     ),
     paragraph(
       "サインアウトしても、この端末のローカルデータは削除されません。サインインしてもローカルデータは暗号化されず、失われた暗号化鍵を復旧することもできません。",
@@ -443,6 +463,259 @@ function historySection() {
   );
 }
 
+function formatTimestamp(value) {
+  if (!Number.isSafeInteger(value) || value < 0) return "不明";
+  try {
+    return new Intl.DateTimeFormat("ja-JP", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return "不明";
+  }
+}
+
+function timestampIso(value) {
+  try {
+    return new Date(value).toISOString();
+  } catch {
+    return "";
+  }
+}
+
+function sortedCredentials(credentials) {
+  return credentials.toSorted(
+    (left, right) =>
+      left.created_at - right.created_at || left.id.localeCompare(right.id),
+  );
+}
+
+function credentialSection() {
+  const credentials = state.credentials;
+  const known = Array.isArray(credentials);
+  const count = known ? credentials.length : 0;
+  const children = [
+    element(
+      "h3",
+      { id: "auth-credentials-title", class: "text-sm font-semibold" },
+      "パスキー",
+    ),
+    paragraph(
+      "このアカウントでサインインに使えるパスキーです。パスキーを追加しても、暗号化キーの登録や失われた鍵の復旧は行われません。",
+    ),
+  ];
+  if (state.credentialsLoading && !known) {
+    children.push(
+      paragraph("パスキーを読み込んでいます。", "text-xs text-muted"),
+    );
+  } else if (state.credentialsError) {
+    children.push(
+      element(
+        "p",
+        { role: "alert", class: "text-sm text-danger-text" },
+        state.credentialsError,
+      ),
+      actionButton("reload-credentials", "一覧を再読み込み"),
+    );
+  } else if (known) {
+    if (count === 0) {
+      children.push(paragraph("登録済みのパスキーを読み込めませんでした。"));
+    } else {
+      const list = element("ul", {
+        class: "list-none space-y-2 p-0",
+        "aria-label": "登録済みのパスキー",
+      });
+      credentials.forEach((credential, index) => {
+        const label = `パスキー ${index + 1}`;
+        const created = formatTimestamp(credential.created_at);
+        const lastUsed = formatTimestamp(credential.last_used_at);
+        const backup = credential.backup_eligible
+          ? credential.backup_state
+            ? "バックアップ対象（バックアップ済み）"
+            : "バックアップ対象"
+          : "バックアップ対象外";
+        const detail = element(
+          "div",
+          { class: "min-w-0 space-y-1" },
+          element("p", { class: "break-words text-sm font-medium" }, label),
+          element(
+            "p",
+            { class: "text-xs text-muted" },
+            "作成: ",
+            element(
+              "time",
+              { datetime: timestampIso(credential.created_at) },
+              created,
+            ),
+          ),
+          element(
+            "p",
+            { class: "text-xs text-muted" },
+            "最終使用: ",
+            element(
+              "time",
+              { datetime: timestampIso(credential.last_used_at) },
+              lastUsed,
+            ),
+          ),
+          element("p", { class: "text-xs text-muted" }, backup),
+        );
+        const remove = element(
+          "button",
+          {
+            type: "button",
+            "data-action": "remove-passkey",
+            "data-credential-index": String(index),
+            "aria-label": `${label}（作成 ${created}）を削除`,
+            ...(count <= 1 ? { disabled: true, "data-disabled": "true" } : {}),
+            class:
+              "min-h-9 shrink-0 rounded-md border border-danger/30 px-3 text-xs text-danger-text hover:bg-danger/10 disabled:opacity-50",
+          },
+          "削除",
+        );
+        list.append(
+          element(
+            "li",
+            {
+              class:
+                "flex flex-wrap items-start justify-between gap-2 rounded-md border border-rule bg-canvas p-2",
+            },
+            detail,
+            remove,
+          ),
+        );
+      });
+      children.push(list);
+    }
+    if (count >= 20) {
+      children.push(
+        paragraph(
+          "パスキーは20個までです。追加するには、不要なパスキーを削除してください。",
+        ),
+      );
+    } else {
+      children.push(
+        actionButton("add-passkey", "パスキーを追加", { primary: true }),
+      );
+    }
+    if (count === 1) {
+      children.push(
+        element(
+          "p",
+          {
+            id: "auth-last-credential-note",
+            class: "text-xs text-muted",
+          },
+          "最後のパスキーは削除できません。先に別のパスキーを追加してください。",
+        ),
+      );
+    }
+    children.push(
+      paragraph(
+        "すべてのパスキーを失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる復旧はありません。",
+        "text-xs text-muted",
+      ),
+    );
+  }
+  return element(
+    "section",
+    {
+      class: "space-y-2 rounded-md border border-rule p-3",
+      "aria-labelledby": "auth-credentials-title",
+      ...(state.credentialsLoading ? { "aria-busy": "true" } : {}),
+    },
+    children,
+  );
+}
+
+function addPasskeyBody() {
+  const count = state.credentials?.length ?? 0;
+  const recent = state.session?.recent_auth === true;
+  const body = [
+    element("h3", { class: "text-sm font-semibold" }, "パスキーを追加"),
+    paragraph(
+      "パスキーを追加すると、このアカウントのサインイン手段が増えます。暗号化キーや失われたデータの復旧にはなりません。",
+    ),
+    paragraph(
+      recent
+        ? "この操作を確認してください。追加する前に、現在のパスキーで本人確認を行う場合があります。"
+        : "安全のため、追加する前に現在のパスキーで本人確認を行います。",
+    ),
+  ];
+  if (count >= 20) {
+    body.push(
+      element(
+        "p",
+        { class: "text-sm text-danger-text" },
+        "パスキーは20個までです。追加するには、不要なパスキーを削除してください。",
+      ),
+    );
+  } else {
+    body.push(
+      actionButton(
+        "add-passkey-confirm",
+        recent ? "パスキーを追加" : "本人確認して追加",
+        { primary: true, autofocus: true },
+      ),
+    );
+  }
+  body.push(actionButton("add-passkey-back", "キャンセル"));
+  return body;
+}
+
+function addPasskeyReadyBody() {
+  return [
+    element("h3", { class: "text-sm font-semibold" }, "本人確認が完了しました"),
+    paragraph(
+      "新しいパスキーを作成します。作成しても、このアカウントの既存のパスキーはそのまま使えます。",
+    ),
+    actionButton("add-passkey-create", "パスキーを作成", {
+      primary: true,
+      autofocus: true,
+    }),
+    actionButton("add-passkey-back", "キャンセル"),
+  ];
+}
+
+function removePasskeyBody() {
+  const credential = state.pendingRemoval;
+  if (!credential) return [paragraph("削除するパスキーを選んでください。")];
+  return [
+    element(
+      "h3",
+      { class: "text-sm font-semibold" },
+      "パスキーを削除しますか？",
+    ),
+    paragraph(
+      `作成日 ${formatTimestamp(credential.created_at)} のパスキーを削除します。`,
+    ),
+    element(
+      "div",
+      {
+        class: "space-y-2 rounded-md border border-danger/30 bg-danger/5 p-3",
+      },
+      element(
+        "p",
+        { class: "text-sm font-medium text-danger-text" },
+        "このパスキーを削除すると、このアカウントのすべてのサインイン中のセッションが終了します。",
+      ),
+      paragraph(
+        "残っているパスキーでサインインし直す必要があります。この端末のローカルプランは削除されません。",
+        "text-xs text-muted",
+      ),
+      paragraph(
+        "最後のパスキーは削除できません。すべてのパスキーを失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる復旧はありません。",
+        "text-xs text-muted",
+      ),
+    ),
+    actionButton("remove-passkey-confirm", "このパスキーを削除", {
+      danger: true,
+      autofocus: true,
+    }),
+    actionButton("remove-passkey-back", "キャンセル"),
+  ];
+}
+
 function signedOutBody() {
   return [
     paragraph(
@@ -477,6 +750,7 @@ function activeBody() {
   ];
   if (state.stale) body.push(staleSection());
   if (state.historyMismatch) body.push(historySection());
+  if (!state.stale && !state.historyMismatch) body.push(credentialSection());
   if (state.pendingCopy) body.push(copySection());
   if (state.pendingUpload) body.push(uploadSection());
   if (state.pendingCopy && !state.pendingUpload)
@@ -527,6 +801,9 @@ function mainBody() {
       ...(state.historyMismatch ? [historySection()] : []),
     ];
   }
+  if (state.mode === "add-passkey") return addPasskeyBody();
+  if (state.mode === "add-passkey-ready") return addPasskeyReadyBody();
+  if (state.mode === "remove-passkey") return removePasskeyBody();
   if (state.sessionState === "active") return activeBody();
   if (state.sessionState === "reauth_required") return reauthBody();
   if (state.sessionState === "loading")
@@ -551,14 +828,9 @@ function renderDialog() {
     ?.getAttribute("data-action");
   const body = mainBody();
   if (
-    state.sessionState === "active" &&
-    !state.pendingCopy &&
-    !state.pendingUpload
+    (state.sessionState === "active" || state.mode === "register") &&
+    (state.mode === "main" || state.mode === "register")
   ) {
-    body.push(disclosure());
-  } else if (state.sessionState === "active") {
-    body.push(disclosure());
-  } else if (state.mode === "register") {
     body.push(disclosure());
   }
   dialog.body.replaceChildren(...body);
@@ -572,7 +844,9 @@ function renderDialog() {
   for (const button of dialog.body.querySelectorAll("button")) {
     const action = button.getAttribute("data-action");
     button.disabled =
-      state.busy || (cooldown && AUTH_COOLDOWN_ACTIONS.has(action));
+      button.dataset.disabled === "true" ||
+      state.busy ||
+      (cooldown && AUTH_COOLDOWN_ACTIONS.has(action));
   }
   const input = dialog.body.querySelector("#auth-display-name");
   if (input) input.disabled = state.busy;
@@ -665,7 +939,11 @@ async function openDialog() {
     dialog = { backdrop, panel, body: bodyNode, status, bound: false };
     bindDialogActions();
     renderDialog();
-    panel.querySelector("[data-autofocus]")?.focus({ preventScroll: true });
+    if (state.sessionState === "active") void loadCredentials();
+    const focusTarget =
+      panel.querySelector("[data-autofocus]") ??
+      panel.querySelector("button:not([disabled])");
+    focusTarget?.focus({ preventScroll: true });
   } finally {
     opening = false;
   }
@@ -678,6 +956,7 @@ function closeDialog() {
   dialog = null;
   state.open = false;
   state.mode = "main";
+  state.pendingRemoval = null;
   state.message = null;
   state.messageKind = "status";
   accountButton()?.focus({ preventScroll: true });
@@ -722,6 +1001,10 @@ async function adoptActiveSession(session, expected) {
   state.displayName = session.account.display_name;
   state.session = session;
   state.sessionState = "active";
+  state.credentials = null;
+  state.credentialsError = null;
+  state.pendingRemoval = null;
+  state.mode = "main";
   try {
     await statusClient.read();
   } catch {
@@ -757,6 +1040,468 @@ async function recoverCeremony(expected, ceremony) {
   } catch (error) {
     if (error?.code === "stale_account") throw error;
     return false;
+  }
+}
+
+function statusFailure(status) {
+  if (status.kind === SESSION_STATUS_KINDS.RATE_LIMITED) {
+    setRetryCooldown(status.retry_after);
+    return new AuthClientError("rate_limited", {
+      retryAfter: status.retry_after,
+    });
+  }
+  if (
+    status.kind === SESSION_STATUS_KINDS.SIGNED_OUT ||
+    status.kind === SESSION_STATUS_KINDS.REAUTH_REQUIRED
+  )
+    return new AuthClientError("unauthorized");
+  return new AuthClientError("temporarily_unavailable");
+}
+
+async function activeStatus(expected) {
+  await checkCeremonyScope(expected);
+  const status = await statusClient.read();
+  await checkCeremonyScope(expected);
+  if (status.kind !== SESSION_STATUS_KINDS.ACTIVE) throw statusFailure(status);
+  if (status.session.account.handle !== expected.accountHandle)
+    throw Object.assign(new Error("account_changed"), {
+      code: "account_changed",
+    });
+  const csrfToken = statusClient.csrfTokenFor(status);
+  if (csrfToken === null) throw new AuthClientError("csrf_forbidden");
+  state.session = { ...status.session };
+  state.displayName = status.session.account.display_name;
+  return { ...status.session, csrf_token: csrfToken };
+}
+
+async function freshCsrf(expected) {
+  const session = await activeStatus(expected);
+  return { csrfToken: session.csrf_token };
+}
+
+async function ensureRecentAuth(expected, signal) {
+  const session = await activeStatus(expected);
+  if (session.recent_auth === true) return;
+  const result = await authClient.stepUp({
+    csrfToken: statusClient.csrfToken,
+    signal,
+    beforeVerify: () => freshCsrf(expected),
+  });
+  state.session = {
+    ...(state.session ?? session),
+    recent_auth: true,
+    recent_auth_expires_at: result.recent_auth_expires_at,
+  };
+}
+
+function renderCredentialState() {
+  renderAccountButton();
+  renderNotice();
+  renderDialog();
+}
+
+async function markReauthRequired(expected, message) {
+  abortCeremony("auth_change");
+  state.busy = false;
+  state.session = null;
+  state.sessionState = "reauth_required";
+  state.mode = "main";
+  state.pendingRemoval = null;
+  state.credentials = null;
+  state.credentialsError = null;
+  statusClient?.clear();
+  if (authState && expected) {
+    try {
+      const written = await authState.setSessionState(
+        "reauth_required",
+        expected,
+      );
+      state.auth = written;
+      state.decisionScope = scopeOf(written);
+    } catch (error) {
+      if (error?.code === "stale_account") {
+        state.stale = true;
+        state.sessionState =
+          state.auth?.sessionState === "signed_out"
+            ? "signed_out"
+            : "reauth_required";
+      }
+    }
+  }
+  void pauseSync();
+  state.message = message;
+  state.messageKind = "status";
+  renderCredentialState();
+}
+
+function markStale(message = errorMessage({ code: "stale_account" })) {
+  abortCeremony("auth_change");
+  state.busy = false;
+  state.stale = true;
+  state.mode = "main";
+  state.pendingRemoval = null;
+  state.credentials = null;
+  state.credentialsError = null;
+  statusClient?.clear();
+  void pauseSync();
+  state.message = message;
+  state.messageKind = "alert";
+  renderCredentialState();
+}
+
+async function handleCredentialFailure(
+  error,
+  expected,
+  { retryMode = "main" } = {},
+) {
+  if (error?.code === "rate_limited") setRetryCooldown(error.retryAfter);
+  const code = error?.code;
+  if (code === "stale_account" || code === "account_changed") {
+    markStale(errorMessage(error));
+    return;
+  }
+  if (code === "unauthorized" || code === "expired") {
+    await markReauthRequired(
+      expected,
+      "セッションの有効期限が切れました。残っているパスキーでサインインし直してください。ローカルのプランは残っています。",
+    );
+    return;
+  }
+  if (code === "not_found") {
+    state.busy = false;
+    state.pendingRemoval = null;
+    state.mode = "main";
+    await loadCredentials({ expected });
+    state.message = "このパスキーは見つかりませんでした。一覧を更新しました。";
+    state.messageKind = "alert";
+    renderDialog();
+    return;
+  }
+  if (code === "credential_limit" || code === "last_credential") {
+    state.busy = false;
+    state.pendingRemoval = null;
+    state.mode = "main";
+    await loadCredentials({ expected });
+    state.message = errorMessage(error);
+    state.messageKind = "alert";
+    renderDialog();
+    return;
+  }
+  if (code === "credential_conflict") {
+    state.busy = false;
+    state.mode = "main";
+    state.message = errorMessage(error);
+    state.messageKind = "alert";
+    renderDialog();
+    return;
+  }
+  state.busy = false;
+  if (code === "recent_auth_required") {
+    state.mode = retryMode === "add-passkey-ready" ? "add-passkey" : retryMode;
+    state.message = errorMessage(error);
+    state.messageKind = "alert";
+    renderDialog();
+    return;
+  }
+  state.mode = retryMode;
+  state.message = errorMessage(error);
+  state.messageKind = "alert";
+  renderDialog();
+}
+
+async function loadCredentials({ expected } = {}) {
+  if (
+    !authClient ||
+    !authState ||
+    logoutPending ||
+    state.sessionState !== "active"
+  )
+    return;
+  if (credentialsPromise) return credentialsPromise;
+  const scope = expected ?? state.decisionScope ?? scopeOf(state.auth);
+  if (!scope?.accountHandle) return;
+  state.credentialsLoading = true;
+  state.credentialsError = null;
+  renderDialog();
+  credentialsPromise = (async () => {
+    try {
+      const before = await activeStatus(scope);
+      const credentials = await authClient.listCredentials();
+      const after = await activeStatus(scope);
+      // The handle can return to its original value after another tab signs in
+      // twice. Require the same session binding around this response as well.
+      if (before.csrf_token !== after.csrf_token)
+        throw Object.assign(new Error("account_changed"), {
+          code: "account_changed",
+        });
+      await checkCeremonyScope(scope);
+      state.credentials = sortedCredentials(credentials);
+      state.credentialsError = null;
+    } catch (error) {
+      if (
+        error?.code === "stale_account" ||
+        error?.code === "account_changed"
+      ) {
+        markStale(errorMessage(error));
+      } else if (error?.code === "unauthorized") {
+        await markReauthRequired(
+          scope,
+          "セッションの有効期限が切れました。残っているパスキーでサインインし直してください。ローカルのプランは残っています。",
+        );
+      } else {
+        if (error?.code === "rate_limited") setRetryCooldown(error.retryAfter);
+        state.credentialsError = errorMessage(error);
+      }
+    } finally {
+      state.credentialsLoading = false;
+      credentialsPromise = null;
+      renderDialog();
+    }
+  })();
+  return credentialsPromise;
+}
+
+function beginAddPasskey() {
+  if (state.busy || state.sessionState !== "active") return;
+  if ((state.credentials?.length ?? 0) >= 20) {
+    setMessage(errorMessage({ code: "credential_limit" }), "alert");
+    return;
+  }
+  state.mode = "add-passkey";
+  state.message = null;
+  state.messageKind = "status";
+  renderDialog();
+}
+
+async function confirmAddPasskey() {
+  if (state.busy || !authClient || !authState) return;
+  let expected;
+  try {
+    expected = state.decisionScope ?? (await currentScope());
+  } catch (error) {
+    markStale(errorMessage(error));
+    return;
+  }
+  if (!expected?.accountHandle) {
+    setMessage("サインイン状態を確認できませんでした。", "alert");
+    return;
+  }
+  state.busy = true;
+  state.message = null;
+  state.messageKind = "status";
+  const ceremony = new AbortController();
+  state.ceremony = ceremony;
+  state.ceremonyReason = null;
+  renderDialog();
+  try {
+    await ensureRecentAuth(expected, ceremony.signal);
+    if (ceremony.signal.aborted || state.ceremony !== ceremony)
+      throw new AuthClientError("canceled");
+    finishCeremony(ceremony);
+    state.busy = false;
+    state.mode = "add-passkey-ready";
+    state.message =
+      "本人確認が完了しました。新しいパスキーを作成してください。";
+    state.messageKind = "status";
+    renderDialog();
+  } catch (error) {
+    const reason = state.ceremonyReason;
+    const aborted = ceremony.signal.aborted;
+    finishCeremony(ceremony);
+    if (aborted) {
+      state.busy = false;
+      if (reason === "dialog") {
+        state.mode = "main";
+        state.pendingRemoval = null;
+        state.message = null;
+        return;
+      }
+      if (reason === "auth_change") {
+        markStale(errorMessage({ code: "stale_account" }));
+      } else {
+        state.mode = "add-passkey";
+        setMessage(errorMessage({ code: "canceled" }), "alert");
+      }
+      return;
+    }
+    await handleCredentialFailure(error, expected, {
+      retryMode: "add-passkey",
+    });
+  }
+}
+
+async function createPasskey() {
+  if (state.busy || !authClient || !authState) return;
+  let expected;
+  try {
+    expected = state.decisionScope ?? (await currentScope());
+  } catch (error) {
+    markStale(errorMessage(error));
+    return;
+  }
+  if (!expected?.accountHandle) {
+    setMessage("サインイン状態を確認できませんでした。", "alert");
+    return;
+  }
+  state.busy = true;
+  state.message = null;
+  state.messageKind = "status";
+  const ceremony = new AbortController();
+  state.ceremony = ceremony;
+  state.ceremonyReason = null;
+  renderDialog();
+  try {
+    const added = await authClient.addCredential({
+      csrfToken: statusClient.csrfToken ?? undefined,
+      signal: ceremony.signal,
+      beforeVerify: () => freshCsrf(expected),
+    });
+    if (ceremony.signal.aborted || state.ceremony !== ceremony)
+      throw new AuthClientError("canceled");
+    finishCeremony(ceremony);
+    state.busy = false;
+    state.mode = "main";
+    const current = state.credentials ?? [];
+    state.credentials = sortedCredentials([
+      ...current.filter((credential) => credential.id !== added.id),
+      added,
+    ]);
+    state.credentialsError = null;
+    state.message = "パスキーを追加しました。";
+    state.messageKind = "status";
+    renderCredentialState();
+    void loadCredentials({ expected });
+  } catch (error) {
+    const reason = state.ceremonyReason;
+    const aborted = ceremony.signal.aborted;
+    finishCeremony(ceremony);
+    if (aborted) {
+      state.busy = false;
+      if (reason === "dialog") {
+        state.mode = "main";
+        state.pendingRemoval = null;
+        state.message = null;
+        return;
+      }
+      if (reason === "auth_change") {
+        markStale(errorMessage({ code: "stale_account" }));
+      } else {
+        state.mode = "add-passkey-ready";
+        setMessage(errorMessage({ code: "canceled" }), "alert");
+      }
+      return;
+    }
+    if (error?.code === "offline" || error?.code === "timeout") {
+      await loadCredentials({ expected });
+      state.busy = false;
+      state.mode = "main";
+      state.message =
+        "追加できたか一覧を確認してください。通信が不安定な場合は、新しい画面で状態を確認してください。";
+      state.messageKind = "alert";
+      renderCredentialState();
+      return;
+    }
+    await handleCredentialFailure(error, expected, {
+      retryMode: "add-passkey-ready",
+    });
+  }
+}
+
+function beginRemovePasskey(index) {
+  if (state.busy) return;
+  const credential = state.credentials?.[index];
+  if (!credential) {
+    setMessage(
+      "削除するパスキーを確認できません。一覧を再読み込みしてください。",
+      "alert",
+    );
+    return;
+  }
+  if ((state.credentials?.length ?? 0) <= 1) {
+    setMessage(errorMessage({ code: "last_credential" }), "alert");
+    return;
+  }
+  state.pendingRemoval = credential;
+  state.mode = "remove-passkey";
+  state.message = null;
+  state.messageKind = "status";
+  renderDialog();
+}
+
+async function confirmRemovePasskey() {
+  if (state.busy || !authClient || !authState) return;
+  const removed = state.pendingRemoval;
+  if (!removed) return;
+  let expected;
+  try {
+    expected = state.decisionScope ?? (await currentScope());
+  } catch (error) {
+    markStale(errorMessage(error));
+    return;
+  }
+  if (!expected?.accountHandle) {
+    setMessage("サインイン状態を確認できませんでした。", "alert");
+    return;
+  }
+  state.busy = true;
+  state.message = null;
+  state.messageKind = "status";
+  const ceremony = new AbortController();
+  state.ceremony = ceremony;
+  state.ceremonyReason = null;
+  renderDialog();
+  try {
+    await ensureRecentAuth(expected, ceremony.signal);
+    if (ceremony.signal.aborted || state.ceremony !== ceremony)
+      throw new AuthClientError("canceled");
+    await authClient.removeCredential({
+      credentialId: removed.id,
+      csrfToken: statusClient.csrfToken ?? undefined,
+      signal: ceremony.signal,
+      beforeVerify: () => freshCsrf(expected),
+    });
+    finishCeremony(ceremony);
+    await markReauthRequired(
+      expected,
+      "パスキーを削除し、このアカウントのすべてのセッションを終了しました。残りのパスキーでサインインし直してください。ローカルのプランは残っています。",
+    );
+  } catch (error) {
+    const reason = state.ceremonyReason;
+    const aborted = ceremony.signal.aborted;
+    finishCeremony(ceremony);
+    if (aborted) {
+      state.busy = false;
+      if (reason === "dialog") {
+        state.mode = "main";
+        state.pendingRemoval = null;
+        state.message = null;
+        return;
+      }
+      if (reason === "auth_change") {
+        markStale(errorMessage({ code: "stale_account" }));
+      } else {
+        state.mode = "remove-passkey";
+        setMessage(errorMessage({ code: "canceled" }), "alert");
+      }
+      return;
+    }
+    if (error?.code === "offline" || error?.code === "timeout") {
+      try {
+        const status = await statusClient.read();
+        if (status.kind !== SESSION_STATUS_KINDS.ACTIVE) {
+          await markReauthRequired(
+            expected,
+            "削除が完了した可能性があります。残りのパスキーでサインインし直してください。ローカルのプランは残っています。",
+          );
+          return;
+        }
+      } catch {
+        // Fall through to the explicit retry message.
+      }
+    }
+    await handleCredentialFailure(error, expected, {
+      retryMode: "remove-passkey",
+    });
   }
 }
 
@@ -907,12 +1652,16 @@ async function logout() {
     setMessage(errorMessage(error), "alert");
     return;
   }
+  logoutPending = true;
   state.busy = true;
   state.message = null;
   renderDialog();
   abortCeremony("auth_change");
   await pauseSync();
   try {
+    // Finish account reads before invalidating the cookie they use.
+    await credentialsPromise;
+    await checkCeremonyScope(expected);
     const verified = await statusClient.read();
     await checkCeremonyScope(expected);
     if (
@@ -928,7 +1677,10 @@ async function logout() {
       verified.kind !== SESSION_STATUS_KINDS.REAUTH_REQUIRED
     )
       throw new AuthClientError("temporarily_unavailable");
-    const csrf = statusClient?.csrfToken ?? undefined;
+    const csrf =
+      verified.kind === SESSION_STATUS_KINDS.ACTIVE
+        ? (statusClient.csrfTokenFor(verified) ?? undefined)
+        : undefined;
     try {
       await authClient.logout({ csrfToken: csrf });
     } catch (error) {
@@ -940,7 +1692,9 @@ async function logout() {
             throw Object.assign(new Error("account_changed"), {
               code: "account_changed",
             });
-          await authClient.logout({ csrfToken: statusClient.csrfToken });
+          await authClient.logout({
+            csrfToken: statusClient.csrfTokenFor(refreshed) ?? undefined,
+          });
         } else if (
           refreshed.kind !== SESSION_STATUS_KINDS.SIGNED_OUT &&
           refreshed.kind !== SESSION_STATUS_KINDS.REAUTH_REQUIRED
@@ -962,6 +1716,10 @@ async function logout() {
     state.displayName = null;
     state.pendingCopy = false;
     state.pendingUpload = false;
+    state.credentials = null;
+    state.credentialsError = null;
+    state.pendingRemoval = null;
+    state.mode = "main";
     closeDialog();
     globalThis.location.reload();
   } catch (error) {
@@ -978,6 +1736,8 @@ async function logout() {
       renderNotice();
     }
     setMessage(errorMessage(error), "alert");
+  } finally {
+    logoutPending = false;
   }
 }
 
@@ -1125,7 +1885,7 @@ function downloadPlan() {
   setMessage("ローカルプランを書き出しました。", "status");
 }
 
-async function onAction(action) {
+async function onAction(action, button) {
   if (AUTH_COOLDOWN_ACTIONS.has(action) && Date.now() < state.retryNotBefore)
     return;
   switch (action) {
@@ -1147,6 +1907,32 @@ async function onAction(action) {
       break;
     case "logout":
       await logout();
+      break;
+    case "reload-credentials":
+      await loadCredentials();
+      break;
+    case "add-passkey":
+      beginAddPasskey();
+      break;
+    case "add-passkey-confirm":
+      await confirmAddPasskey();
+      break;
+    case "add-passkey-create":
+      await createPasskey();
+      break;
+    case "add-passkey-back":
+    case "remove-passkey-back":
+      state.mode = "main";
+      state.pendingRemoval = null;
+      state.message = null;
+      state.messageKind = "status";
+      renderDialog();
+      break;
+    case "remove-passkey":
+      beginRemovePasskey(Number(button?.dataset.credentialIndex));
+      break;
+    case "remove-passkey-confirm":
+      await confirmRemovePasskey();
       break;
     case "copy-plan":
       await copyPlan();
@@ -1184,7 +1970,7 @@ function bindDialogActions() {
   dialog.body.addEventListener("click", (event) => {
     const button = event.target.closest?.("button[data-action]");
     if (!button) return;
-    void onAction(button.getAttribute("data-action"));
+    void onAction(button.getAttribute("data-action"), button);
   });
 }
 
@@ -1228,8 +2014,13 @@ async function refresh() {
       current.sessionState === "reauth_required"
     ) {
       // A status GET cannot substitute for an explicit new sign-in ceremony.
+      abortCeremony("auth_change");
       state.session = null;
       state.sessionState = "reauth_required";
+      state.credentials = null;
+      state.credentialsError = null;
+      state.pendingRemoval = null;
+      state.mode = "main";
     } else if (status.kind === SESSION_STATUS_KINDS.ACTIVE) {
       const session = status.session;
       if (
@@ -1246,6 +2037,10 @@ async function refresh() {
           "別のアカウントのセッションに変わりました。サインインし直してください。";
         state.messageKind = "alert";
         state.displayName = null;
+        state.credentials = null;
+        state.credentialsError = null;
+        state.pendingRemoval = null;
+        state.mode = "main";
       } else {
         const pendingUpload = await authState.isPendingUpload(
           session.account.handle,
@@ -1275,6 +2070,7 @@ async function refresh() {
         state.sessionState = "active";
         state.pendingUpload = pendingUpload;
         state.pendingCopy = pendingCopy;
+        if (state.open) void loadCredentials({ expected: scopeOf(adopted) });
       }
     } else if (
       status.kind === SESSION_STATUS_KINDS.SIGNED_OUT ||
@@ -1292,9 +2088,17 @@ async function refresh() {
         state.auth.sessionState === "signed_out"
           ? "signed_out"
           : "reauth_required";
+      state.credentials = null;
+      state.credentialsError = null;
+      state.pendingRemoval = null;
+      state.mode = "main";
     } else if (status.kind === SESSION_STATUS_KINDS.MALFORMED) {
       state.session = null;
       state.sessionState = "error";
+      state.credentials = null;
+      state.credentialsError = null;
+      state.pendingRemoval = null;
+      state.mode = "main";
       state.message = descriptionForStatus(status);
       state.messageKind = "alert";
     } else {
@@ -1303,6 +2107,10 @@ async function refresh() {
         state.auth.sessionState === "reauth_required"
           ? "reauth_required"
           : "offline";
+      state.credentials = null;
+      state.credentialsError = null;
+      state.pendingRemoval = null;
+      state.mode = "main";
       state.message = descriptionForStatus(status);
       state.messageKind = "status";
     }
@@ -1377,7 +2185,12 @@ function handleSyncStatus(status = {}) {
   )
     lifecycleEpoch += 1;
   if (status.code === "reauth_required" || status.code === "unauthorized") {
+    abortCeremony("auth_change");
     state.sessionState = "reauth_required";
+    state.credentials = null;
+    state.credentialsError = null;
+    state.pendingRemoval = null;
+    state.mode = "main";
     const expected = scopeOf(state.auth);
     if (expected && state.auth?.sessionState === "active") {
       void authState
@@ -1399,7 +2212,12 @@ function handleSyncStatus(status = {}) {
     }
     renderAccountButton();
   } else if (status.code === "stale_account") {
+    abortCeremony("auth_change");
     state.stale = true;
+    state.credentials = null;
+    state.credentialsError = null;
+    state.pendingRemoval = null;
+    state.mode = "main";
     renderAccountButton();
     renderNotice();
   } else if (status.code === "history_mismatch") {
@@ -1454,6 +2272,10 @@ function boot() {
       state.stale = true;
       state.sessionState =
         next.sessionState === "signed_out" ? "signed_out" : next.sessionState;
+      state.credentials = null;
+      state.credentialsError = null;
+      state.pendingRemoval = null;
+      state.mode = "main";
       void pauseSync();
     } else if (next.sessionState !== current.sessionState) {
       state.auth = next;
@@ -1499,6 +2321,31 @@ function boot() {
     if (event.key === "Escape" && state.open) {
       event.preventDefault();
       closeDialog();
+      return;
+    }
+    if (event.key === "Tab" && state.open && dialog) {
+      const focusable = [
+        ...dialog.panel.querySelectorAll(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((node) => node.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      const active = document.activeElement;
+      if (
+        event.shiftKey &&
+        (active === first || !dialog.panel.contains(active))
+      ) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (
+        !event.shiftKey &&
+        (active === last || !dialog.panel.contains(active))
+      ) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
     }
   });
   const observer = new MutationObserver(() => {

@@ -17,6 +17,10 @@ export const AUTH_CLIENT_ERRORS = Object.freeze({
   CSRF_FORBIDDEN: "csrf_forbidden",
   ALREADY_AUTHENTICATED: "already_authenticated",
   CREDENTIAL_CONFLICT: "credential_conflict",
+  CREDENTIAL_LIMIT: "credential_limit",
+  LAST_CREDENTIAL: "last_credential",
+  RECENT_AUTH_REQUIRED: "recent_auth_required",
+  NOT_FOUND: "not_found",
   MALFORMED: "malformed",
   UNAVAILABLE: "temporarily_unavailable",
 });
@@ -104,7 +108,7 @@ function projectInteger(value, code = "malformed") {
 function projectCredentialDescriptor(value) {
   if (!exactKeys(value, ["type", "id"]) || value.type !== "public-key")
     fail("malformed");
-  canonicalToken(value.id);
+  canonicalCredentialId(value.id);
   return {
     type: "public-key",
     id: decodeBase64Url(value.id).buffer,
@@ -180,7 +184,7 @@ function projectRegistrationOptions(publicKey) {
   };
 }
 
-function projectAssertionOptions(publicKey) {
+function projectAssertionOptions(publicKey, { allow = "empty" } = {}) {
   if (
     !exactKeys(publicKey, [
       "challenge",
@@ -193,14 +197,19 @@ function projectAssertionOptions(publicKey) {
     publicKey.userVerification !== "required"
   )
     fail("malformed");
-  if (publicKey.allowCredentials.length !== 0) fail("malformed");
+  if (allow === "empty" && publicKey.allowCredentials.length !== 0)
+    fail("malformed");
+  if (allow === "nonempty" && publicKey.allowCredentials.length === 0)
+    fail("malformed");
   const challenge = decodeBase64Url(publicKey.challenge);
   if (challenge.byteLength !== 32) fail("malformed");
   return {
     challenge: challenge.buffer,
     timeout: projectInteger(publicKey.timeout),
     rpId: projectString(publicKey.rpId),
-    allowCredentials: [],
+    allowCredentials: publicKey.allowCredentials.map(
+      projectCredentialDescriptor,
+    ),
     userVerification: "required",
   };
 }
@@ -212,7 +221,7 @@ export function parseCredentialOptions(body, kind) {
   )
     fail("malformed");
   const id = challengeId(body.challenge_id);
-  if (kind === "registration")
+  if (kind === "registration" || kind === "add_credential")
     return {
       challengeId: id,
       publicKey: projectRegistrationOptions(body.publicKey),
@@ -221,6 +230,11 @@ export function parseCredentialOptions(body, kind) {
     return {
       challengeId: id,
       publicKey: projectAssertionOptions(body.publicKey),
+    };
+  if (kind === "step_up")
+    return {
+      challengeId: id,
+      publicKey: projectAssertionOptions(body.publicKey, { allow: "nonempty" }),
     };
   fail("malformed");
 }
@@ -254,7 +268,10 @@ export function serializeRegistrationCredential(credential) {
   };
 }
 
-export function serializeAssertionCredential(credential) {
+export function serializeAssertionCredential(
+  credential,
+  { userHandleRequired = true } = {},
+) {
   if (!record(credential) || credential.type !== "public-key")
     fail("unsupported");
   if (typeof credential.id !== "string") fail("unsupported");
@@ -265,6 +282,9 @@ export function serializeAssertionCredential(credential) {
   if (credential.id !== id) fail("unsupported");
   const response = credential.response;
   if (!record(response)) fail("unsupported");
+  const hasUserHandle =
+    response.userHandle !== undefined && response.userHandle !== null;
+  if (!hasUserHandle && userHandleRequired) fail("unsupported");
   return {
     id,
     rawId: id,
@@ -273,7 +293,11 @@ export function serializeAssertionCredential(credential) {
       clientDataJSON: encodedField(response.clientDataJSON),
       authenticatorData: encodedField(response.authenticatorData),
       signature: encodedField(response.signature),
-      userHandle: encodedField(response.userHandle, { min: 32, max: 32 }),
+      ...(hasUserHandle
+        ? {
+            userHandle: encodedField(response.userHandle, { min: 32, max: 32 }),
+          }
+        : {}),
     },
   };
 }
@@ -346,6 +370,12 @@ function statusCodeError(code, status, response) {
       return new AuthClientError("already_authenticated", detail);
     case "credential_conflict":
       return new AuthClientError("credential_conflict", detail);
+    case "credential_limit":
+      return new AuthClientError("credential_limit", detail);
+    case "last_credential":
+      return new AuthClientError("last_credential", detail);
+    case "recent_auth_required":
+      return new AuthClientError("recent_auth_required", detail);
     case "malformed_request":
     case "unsupported_media_type":
     case "request_too_large":
@@ -422,6 +452,72 @@ async function readText(response, controller) {
   } catch {
     fail("malformed");
   }
+}
+
+function canonicalCredentialId(value) {
+  const bytes = decodeBase64Url(value);
+  if (bytes.byteLength < 1 || bytes.byteLength > 1023) fail("malformed");
+  return value;
+}
+
+function credentialMetadata(value) {
+  if (
+    !exactKeys(value, [
+      "id",
+      "created_at",
+      "last_used_at",
+      "backup_eligible",
+      "backup_state",
+    ])
+  )
+    fail("malformed");
+  if (
+    typeof value.backup_eligible !== "boolean" ||
+    typeof value.backup_state !== "boolean"
+  )
+    fail("malformed");
+  return {
+    id: canonicalCredentialId(value.id),
+    created_at: projectInteger(value.created_at),
+    last_used_at: projectInteger(value.last_used_at),
+    backup_eligible: value.backup_eligible,
+    backup_state: value.backup_state,
+  };
+}
+
+function credentialListBody(body) {
+  if (!exactKeys(body, ["credentials"]) || !Array.isArray(body.credentials))
+    fail("malformed");
+  const credentials = body.credentials.map(credentialMetadata);
+  const ids = new Set(credentials.map((credential) => credential.id));
+  if (ids.size !== credentials.length) fail("malformed");
+  return credentials;
+}
+
+function addedCredentialBody(body) {
+  if (!exactKeys(body, ["credential"])) fail("malformed");
+  return credentialMetadata(body.credential);
+}
+
+function recentAuthBody(body) {
+  if (
+    !exactKeys(body, ["recent_auth", "recent_auth_expires_at"]) ||
+    body.recent_auth !== true
+  )
+    fail("malformed");
+  return {
+    recent_auth: true,
+    recent_auth_expires_at: projectInteger(body.recent_auth_expires_at),
+  };
+}
+
+async function verifiedCsrfToken(beforeVerify, csrfToken) {
+  const value = await beforeVerify?.();
+  if (record(value) && typeof value.csrfToken === "string") {
+    canonicalToken(value.csrfToken, "csrf_forbidden");
+    return value.csrfToken;
+  }
+  return csrfToken;
 }
 
 function statusSuccess(status) {
@@ -585,6 +681,104 @@ export function createAuthClient({
     return sessionBody(verified);
   }
 
+  async function stepUp({ csrfToken, signal, beforeVerify } = {}) {
+    if (!credentials || typeof credentials.get !== "function")
+      throw new AuthClientError("unsupported");
+    let token = await verifiedCsrfToken(beforeVerify, csrfToken);
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    const options = await request("/api/v1/auth/step-up/options", {
+      method: "POST",
+      body: {},
+      csrfToken: token,
+      signal,
+    });
+    const parsed = parseCredentialOptions(options, "step_up");
+    let credential;
+    try {
+      credential = await credentials.get({
+        publicKey: parsed.publicKey,
+        signal,
+      });
+    } catch (error) {
+      if (signal?.aborted) throw new AuthClientError("canceled");
+      throw credentialFailure(error);
+    }
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    if (!credential) throw new AuthClientError("canceled");
+    const serialized = serializeAssertionCredential(credential, {
+      userHandleRequired: false,
+    });
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    token = await verifiedCsrfToken(beforeVerify, token);
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    const verified = await request("/api/v1/auth/step-up/verify", {
+      method: "POST",
+      body: { challenge_id: parsed.challengeId, credential: serialized },
+      csrfToken: token,
+      signal,
+    });
+    return recentAuthBody(verified);
+  }
+
+  async function listCredentials({ signal } = {}) {
+    return credentialListBody(
+      await request("/api/v1/auth/credentials", { signal }),
+    );
+  }
+
+  async function addCredential({ csrfToken, signal, beforeVerify } = {}) {
+    if (!credentials || typeof credentials.create !== "function")
+      throw new AuthClientError("unsupported");
+    let token = await verifiedCsrfToken(beforeVerify, csrfToken);
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    const options = await request("/api/v1/auth/credentials/options", {
+      method: "POST",
+      body: {},
+      csrfToken: token,
+      signal,
+    });
+    const parsed = parseCredentialOptions(options, "add_credential");
+    let credential;
+    try {
+      credential = await credentials.create({
+        publicKey: parsed.publicKey,
+        signal,
+      });
+    } catch (error) {
+      if (signal?.aborted) throw new AuthClientError("canceled");
+      throw credentialFailure(error);
+    }
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    if (!credential) throw new AuthClientError("canceled");
+    const serialized = serializeRegistrationCredential(credential);
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    token = await verifiedCsrfToken(beforeVerify, token);
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    const verified = await request("/api/v1/auth/credentials/verify", {
+      method: "POST",
+      body: { challenge_id: parsed.challengeId, credential: serialized },
+      csrfToken: token,
+      signal,
+    });
+    return addedCredentialBody(verified);
+  }
+
+  async function removeCredential({
+    credentialId,
+    csrfToken,
+    signal,
+    beforeVerify,
+  } = {}) {
+    const id = canonicalCredentialId(credentialId);
+    const token = await verifiedCsrfToken(beforeVerify, csrfToken);
+    if (signal?.aborted) throw new AuthClientError("canceled");
+    await request(`/api/v1/auth/credentials/${id}/remove`, {
+      method: "POST",
+      csrfToken: token,
+      signal,
+    });
+  }
+
   async function logout({ csrfToken, signal } = {}) {
     await request("/api/v1/auth/logout", {
       method: "POST",
@@ -600,5 +794,14 @@ export function createAuthClient({
     return sessionBody(body);
   }
 
-  return Object.freeze({ register, signIn, logout, status: readStatus });
+  return Object.freeze({
+    register,
+    signIn,
+    stepUp,
+    listCredentials,
+    addCredential,
+    removeCredential,
+    logout,
+    status: readStatus,
+  });
 }

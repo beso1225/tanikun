@@ -99,7 +99,7 @@ test-browser: build-web
 
 # Test existing browser assets without requiring the source build tools.
 test-browser-built:
-    node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs tests/integration/auth-stale-status.test.mjs tests/integration/auth-rate-status.test.mjs tests/integration/auth-stale-logout.test.mjs
+    node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs tests/integration/auth-stale-status.test.mjs tests/integration/auth-rate-status.test.mjs tests/integration/auth-stale-logout.test.mjs tests/integration/auth-credentials.test.mjs tests/integration/auth-credential-faults.test.mjs
 
 # Run sync convergence and fault suites against a real local Worker and D1.
 # Set both TANIKUN_WEB_DIST and TANIKUN_API_DIST to reuse packaged artifacts.
@@ -113,7 +113,7 @@ test-sync:
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/session-account-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/session-account-journey.test.mjs tests/integration/session-credential-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
