@@ -14,6 +14,9 @@ let
       ../apps/web/fixtures
       ../apps/web/moon.mod
       ../apps/web/public/index.html
+      ../apps/web/public/auth-client.js
+      ../apps/web/public/auth-shell.js
+      ../apps/web/public/auth-state.js
       ../apps/web/public/persistence-transactions.js
       ../apps/web/public/persistence.js
       ../apps/web/public/planner-document.js
