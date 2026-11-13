@@ -72,8 +72,9 @@ persistence, not sync.
   fallback.
 - Session mode is same-origin `https://localhost:4300`, requires
   `X-CSRF-Token` for appends, uses `POST` bootstrap, and resolves the owner only
-  from the session. The 120/minute session window is charged before ownership
-  or body work. Foreign and missing documents remain indistinguishable `404`.
+  from the session. The 120/minute session window is charged after ownership
+  and request validation. Foreign and missing documents remain
+  indistinguishable `404`.
   Session mode rejects `Authorization`; a failed session never falls back to
   dev bearer or a cookie from another mode.
 - `none` payloads are plaintext Automerge changes. Do not describe the

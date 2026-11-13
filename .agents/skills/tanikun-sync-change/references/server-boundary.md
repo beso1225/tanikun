@@ -120,13 +120,14 @@ them.
 ## Session sync
 
 `AUTH_MODE=session` resolves the principal only from the HttpOnly cookie through
-`createSessionAdmission.admitSessionSync`. The exact `https://localhost:4300`
-Origin is required, session appends require `X-CSRF-Token`, and the 120/minute
-session fixed window is charged before ownership or body work. Bootstrap is
+the shared session admission and rate-limit guards. The exact
+`https://localhost:4300` Origin is required, session appends require
+`X-CSRF-Token`, and the 120/minute session fixed window is charged after
+ownership and request validation. Bootstrap is
 `POST /api/v1/sync/document`; `GET` returns `405 Allow: POST`. The owner is the
 server-resolved user ID. Foreign and missing documents are indistinguishable
-`404`, and no route creates, rebinds, or accepts a caller owner. Session errors
-have no CORS or `WWW-Authenticate` header and clear an invalid presented
+`404`, and append/pull never create or rebind a document. Provisioning accepts no
+caller owner. Session errors have no CORS or `WWW-Authenticate` header and clear an invalid presented
 session cookie.
 
 A `401` is not a dev fallback: session mode rejects any `Authorization` header

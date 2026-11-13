@@ -615,7 +615,7 @@ describe("session principal sync authorization", () => {
     });
   });
 
-  it("enforces the canonical session sync window before ownership or body work", async () => {
+  it("enforces the session window after request validation", async () => {
     const alice = await register(sessionEnv(), { idFill: 8 });
     const { document_id: documentId } = await bootstrap(alice);
     // Bootstrap already charged the first request in this fixed window. The
@@ -632,10 +632,27 @@ describe("session principal sync authorization", () => {
     expect(blocked.headers.get("Access-Control-Allow-Origin")).toBeNull();
     expect(await blocked.json()).toEqual({ error: { code: "rate_limited" } });
 
-    // The session budget is already exhausted, but this request still cannot
-    // reveal ownership or parse a body; the rate check stays before both.
-    const foreign = await pull(alice, "33333333-3333-4333-8333-333333333333");
-    expect(foreign.status).toBe(429);
+    // Body errors precede the quota, even when this session is exhausted.
+    const malformed = await worker.fetch(
+      syncRequest(alice, `/api/v1/sync/documents/${documentId}/changes`, {
+        method: "POST",
+        body: "{",
+      }),
+      sessionEnv(),
+    );
+    expect(malformed.status).toBe(400);
+    const invalidEnvelope = await append(alice, documentId, [
+      { invalid: true },
+    ]);
+    expect(invalidEnvelope.status).toBe(400);
+    const unexpectedBootstrapBody = await worker.fetch(
+      syncRequest(alice, "/api/v1/sync/document", {
+        method: "POST",
+        body: {},
+      }),
+      sessionEnv(),
+    );
+    expect(unexpectedBootstrapBody.status).toBe(400);
   });
 
   it("uses POST-only bootstrap and rejects origin, CSRF, method, query, and body violations", async () => {

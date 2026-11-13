@@ -1,6 +1,7 @@
 import {
   SYNC_LIMITS,
   requireDocumentId,
+  validateAppend,
 } from "../../../packages/sync-contract/contract.mjs";
 import { createChangeRepository } from "../repositories/changes.mjs";
 import {
@@ -156,7 +157,7 @@ async function dispatchDev(request, env) {
 
 async function dispatchSession(request, env, dependencies) {
   // PHASE_5 rejection order: mode/config gate, Origin, route, method, session,
-  // CSRF, rate, owned resource/body, operation. The configuration gate is the
+  // CSRF, owned resource/body, rate, operation. The configuration gate is the
   // first check and failure is indistinguishable from an unknown route.
   const config = readSessionAuthConfig(env);
   if (!config) throw new ApiError("not_found");
@@ -173,11 +174,11 @@ async function dispatchSession(request, env, dependencies) {
     ...(dependencies.now ? { now: dependencies.now } : {}),
   });
   // This is the #180/#181 session admission handoff: exact Origin, one active
-  // cookie session, CSRF on writes, and the 120/minute session sync window.
+  // cookie session and CSRF on writes. Charge the sync window after parsing.
   // A valid presented session may complete after a concurrent revocation by
   // contract; append keeps the principal resolved here and retains ADR-0013
   // retry semantics.
-  const admitted = await admission.admitSessionSync(request, config, env, {
+  const admitted = await admission.admitRequest(request, config, {
     csrf: request.method === "POST",
   });
   const ownerId = admitted.session.userId;
@@ -189,6 +190,7 @@ async function dispatchSession(request, env, dependencies) {
   if (route.kind === "bootstrap") {
     assertNoQuery(url);
     await assertEmptyBody(request);
+    await admission.enforceSessionSyncRate(request, env, admitted);
     return jsonResponse(
       200,
       await repository.provisionSessionDocument(ownerId),
@@ -205,6 +207,8 @@ async function dispatchSession(request, env, dependencies) {
     assertNoQuery(url);
     const body = await readJsonBody(request, SYNC_LIMITS.maxRequestBytes);
     const changes = appendChanges(body);
+    validateAppend(changes, route.documentId);
+    await admission.enforceSessionSyncRate(request, env, admitted);
     return jsonResponse(
       200,
       await repository.append(ownerId, route.documentId, changes),
@@ -212,6 +216,7 @@ async function dispatchSession(request, env, dependencies) {
   }
 
   const page = parsePagination(url);
+  await admission.enforceSessionSyncRate(request, env, admitted);
   return jsonResponse(
     200,
     await repository.pull(ownerId, route.documentId, page),

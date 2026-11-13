@@ -196,16 +196,9 @@ export function createSessionAdmission({
     return { ...presented, cookies };
   }
 
-  // #182 handoff: reuse the exact Origin, session, and optional CSRF guard
-  // above, then apply the session-scope fixed window. It does not provision a
-  // document, resolve an owner, or duplicate authentication policy. #182 owns
-  // wiring this into bootstrap, append, and pull.
-  async function admitSessionSync(request, config, env, { csrf = true } = {}) {
-    const admitted = await admitRequest(request, config, {
-      csrf,
-      recent: false,
-      touch: true,
-    });
+  // Apply only after route-owned media/body validation. The combined helper
+  // below remains useful to callers with no body work.
+  async function enforceSessionSyncRate(request, env, admitted) {
     if (!db) throw new AuthStorageError("temporarily_unavailable");
     const limiter = await createConfiguredAuthRateLimiter({
       db,
@@ -218,6 +211,15 @@ export function createSessionAdmission({
       session: admitted.session.digest,
       account: admitted.session.userId,
     });
+  }
+
+  async function admitSessionSync(request, config, env, { csrf = true } = {}) {
+    const admitted = await admitRequest(request, config, {
+      csrf,
+      recent: false,
+      touch: true,
+    });
+    await enforceSessionSyncRate(request, env, admitted);
     return admitted;
   }
 
@@ -225,6 +227,7 @@ export function createSessionAdmission({
     auth,
     admitRequest,
     admitSessionSync,
+    enforceSessionSyncRate,
     readBinding,
     readBindingForRate,
     readPresentedSession,
