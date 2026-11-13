@@ -315,3 +315,67 @@ it("rejects a session digest collision without replacing the existing session", 
   expect(row.created_at).toBe(completed.session.createdAt);
   expect(row.user_id).toBe(accountId("alice0001"));
 });
+
+it("guards logout-all with the presented session and recent auth in one mutation", async () => {
+  const clock = fakeClock();
+  const alice = await registerAccount({ clock });
+  const second = await alice.repo.createSession({
+    userId: accountId("alice0001"),
+    digest: bytes(32, 0x91),
+    csrfDigest: bytes(32, 0x92),
+  });
+
+  clock.advance(AUTH_STORAGE_LIMITS.recentAuthWindowMs + 1);
+  await expectAuthError(
+    () =>
+      alice.repo.revokeAllSessionsForSession({
+        sessionDigest: alice.session.digest,
+        userId: accountId("alice0001"),
+        csrfDigest: alice.session.csrfDigest,
+      }),
+    { code: "recent_auth_required" },
+  );
+  expect(await alice.repo.resolveSession(alice.session.digest)).not.toBeNull();
+  expect(await alice.repo.resolveSession(second.digest)).not.toBeNull();
+  expect((await sessionRow(second.digest)).revoked_at).toBeNull();
+
+  await alice.repo.recordRecentAuth({
+    sessionDigest: alice.session.digest,
+    userId: accountId("alice0001"),
+  });
+  expect(
+    await alice.repo.revokeAllSessionsForSession({
+      sessionDigest: alice.session.digest,
+      userId: accountId("alice0001"),
+      csrfDigest: alice.session.csrfDigest,
+    }),
+  ).toBe(2);
+  expect(await alice.repo.resolveSession(alice.session.digest)).toBeNull();
+  expect(await alice.repo.resolveSession(second.digest)).toBeNull();
+  expect((await sessionRow(second.digest)).revoke_reason).toBe("logout_all");
+});
+
+it("does not revoke other sessions when logout-all rechecks a revoked session", async () => {
+  const clock = fakeClock();
+  const alice = await registerAccount({ clock });
+  const second = await alice.repo.createSession({
+    userId: accountId("alice0001"),
+    digest: bytes(32, 0x93),
+    csrfDigest: bytes(32, 0x94),
+  });
+  await alice.repo.revokeSession({
+    sessionDigest: alice.session.digest,
+    reason: "logout",
+  });
+  await expectAuthError(
+    () =>
+      alice.repo.revokeAllSessionsForSession({
+        sessionDigest: alice.session.digest,
+        userId: accountId("alice0001"),
+        csrfDigest: alice.session.csrfDigest,
+      }),
+    { code: "unauthorized" },
+  );
+  expect(await alice.repo.resolveSession(second.digest)).not.toBeNull();
+  expect((await sessionRow(second.digest)).revoked_at).toBeNull();
+});

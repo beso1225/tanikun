@@ -42,12 +42,15 @@ test("packaged Worker imports and handles requests without build-tree files", as
   assert.equal(post.headers.get("Allow"), "GET");
 });
 
-test("packaged Worker bridge does not register the WebAuthn handler", async () => {
+test("packaged Worker bridge does not register either auth handler", async () => {
   const bridge = await readFile(
     join(release, "api/apps/api/bridges/worker.mjs"),
     "utf8",
   );
-  assert.doesNotMatch(bridge, /webauthn/i);
+  assert.doesNotMatch(
+    bridge,
+    /webauthn|session-auth|handleSessionAuthRequest/i,
+  );
 });
 
 test("packaged API includes the self-contained WebAuthn verifier and auth entry", async () => {
@@ -69,6 +72,16 @@ test("packaged API includes the self-contained WebAuthn verifier and auth entry"
     );
     assert.doesNotMatch(bundle, /\brequire\s*\(\s*["']/u);
   }
+});
+
+test("packaged auth entry exports the session and ceremony boundaries", async () => {
+  const entry = await import(
+    pathToFileURL(join(release, "api/apps/api/webauthn/auth.js"))
+  );
+  assert.equal(typeof entry.handleWebAuthnRequest, "function");
+  assert.equal(typeof entry.handleSessionAuthRequest, "function");
+  assert.equal(typeof entry.createSessionMaterial, "function");
+  assert.equal(typeof entry.readSessionAuthConfig, "function");
 });
 
 test("packaged API includes every Worker module, migration, and runtime config", async () => {
@@ -104,7 +117,7 @@ test("packaged API includes every Worker module, migration, and runtime config",
   );
   assert.equal(
     authShim,
-    'export { handleWebAuthnRequest } from "../webauthn/auth.js";\n',
+    'export { handleSessionAuthRequest, handleWebAuthnRequest } from "../webauthn/auth.js";\n',
   );
 
   const configText = await readFile(join(api, "wrangler.jsonc"), "utf8");

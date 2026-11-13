@@ -15,7 +15,7 @@ export function parseJson(text) {
   return parseWireJson(text);
 }
 
-export async function readJsonBody(request, maxBytes) {
+export async function readBodyBytes(request, maxBytes) {
   const contentEncoding = request.headers.get("Content-Encoding");
   if (contentEncoding !== null && contentEncoding.toLowerCase() !== "identity")
     throw new ApiError("unsupported_media_type");
@@ -24,7 +24,7 @@ export async function readJsonBody(request, maxBytes) {
     if (!/^\d+$/.test(contentLength) || Number(contentLength) > maxBytes)
       throw new ApiError("request_too_large");
   }
-  if (!request.body) throw new ApiError("malformed_request");
+  if (request.body === null) return new Uint8Array();
   const reader = request.body.getReader();
   const chunks = [];
   let total = 0;
@@ -52,6 +52,12 @@ export async function readJsonBody(request, maxBytes) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  return bytes;
+}
+
+export async function readJsonBody(request, maxBytes) {
+  const bytes = await readBodyBytes(request, maxBytes);
+  if (bytes.byteLength === 0) throw new ApiError("malformed_request");
   let text;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);

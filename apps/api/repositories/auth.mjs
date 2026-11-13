@@ -982,16 +982,25 @@ export function createAuthRepository(
       };
     },
 
-    async revokeSession({ sessionDigest, reason = "logout" }) {
+    async revokeSession({
+      sessionDigest,
+      reason = "logout",
+      csrfDigest = null,
+    }) {
       const checkedDigest = requireDigest(sessionDigest);
       const checkedReason = requireRevokeReason(reason);
+      const checkedCsrf =
+        csrfDigest === null ? null : requireDigest(csrfDigest);
       const current = currentTime();
+      const csrfGuard = checkedCsrf === null ? "" : " AND csrf_digest = ?4";
+      const bindings = [checkedDigest, current, checkedReason];
+      if (checkedCsrf !== null) bindings.push(checkedCsrf);
       const result = await guarded(() =>
         db
           .prepare(
-            "UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE digest = ?1 AND revoked_at IS NULL",
+            `UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE digest = ?1${csrfGuard} AND revoked_at IS NULL`,
           )
-          .bind(checkedDigest, current, checkedReason)
+          .bind(...bindings)
           .run(),
       );
       return result.meta.changes === 1;
@@ -1009,6 +1018,48 @@ export function createAuthRepository(
           .bind(checkedUser, current, checkedReason)
           .run(),
       );
+      return result.meta.changes;
+    },
+
+    // Logout-all is a sensitive auth mutation: the update rechecks the
+    // presented session and its recent-auth window in the same SQL statement
+    // that revokes every account session. A concurrent revocation or an
+    // expired recent-auth window changes no row; diagnosis then maps the race
+    // to 401 or 403 without revoking extra sessions.
+    async revokeAllSessionsForSession({
+      sessionDigest,
+      userId,
+      csrfDigest,
+      reason = "logout_all",
+    }) {
+      const checkedDigest = requireDigest(sessionDigest);
+      const checkedUser = requireUserId(userId);
+      const checkedCsrf = requireDigest(csrfDigest);
+      const checkedReason = requireRevokeReason(reason);
+      const current = currentTime();
+      const recentCutoff = current - AUTH_STORAGE_LIMITS.recentAuthWindowMs;
+      let result;
+      try {
+        result = await db
+          .prepare(
+            "UPDATE sessions SET revoked_at = ?2, revoke_reason = ?3 WHERE user_id = ?1 AND revoked_at IS NULL AND EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?4 AND s.user_id = ?1 AND s.csrf_digest = ?6 AND s.revoked_at IS NULL AND s.expires_at > ?2 AND s.idle_expires_at > ?2 AND s.recent_auth_at IS NOT NULL AND s.recent_auth_at > ?5 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL)",
+          )
+          .bind(
+            checkedUser,
+            current,
+            checkedReason,
+            checkedDigest,
+            recentCutoff,
+            checkedCsrf,
+          )
+          .run();
+      } catch (error) {
+        throw databaseError(error);
+      }
+      if (result.meta.changes === 0) {
+        await diagnoseSession(checkedDigest, checkedUser, current);
+        throw new AuthStorageError("recent_auth_required");
+      }
       return result.meta.changes;
     },
 

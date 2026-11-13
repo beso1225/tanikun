@@ -138,12 +138,13 @@ let
     # Keep the bridge's relative imports intact. The WebAuthn verifier and the
     # Phase 5 auth-service entry are bundled into self-contained ESM files so
     # the release artifact has no bare npm import or source-checkout fallback.
-    # The handler remains unregistered in the Worker bridge until #180 adds the
-    # cookie/session/CSRF layer and #181 adds abuse limits. Include every
-    # production module, migration, and a runtime config that does not depend
-    # on the source tree's Moon project. The source config keeps its build/watch
-    # hooks for local development; the packaged copy strips them and the missing
-    # schema path so Wrangler can start inside the Nix output.
+    # The entry now includes the #180 cookie/session/CSRF boundary, but neither
+    # handler is registered in the Worker bridge: #181 must add fixed-window
+    # abuse limits and #182 must integrate session sync before registration.
+    # Include every production module, migration, and a runtime config that does
+    # not depend on the source tree's Moon project. The source config keeps its
+    # build/watch hooks for local development; the packaged copy strips them and
+    # the missing schema path so Wrangler can start inside the Nix output.
     installPhase = ''
       mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
@@ -164,7 +165,7 @@ let
         --platform=browser \
         --target=es2022 \
         --outfile="$out/apps/api/webauthn/auth.js"
-      printf 'export { handleWebAuthnRequest } from "../webauthn/auth.js";\n' \
+      printf 'export { handleSessionAuthRequest, handleWebAuthnRequest } from "../webauthn/auth.js";\n' \
         > "$out/apps/api/http/webauthn.mjs"
       node --input-type=module <<'NODE'
       import { readFileSync, writeFileSync } from "node:fs";
