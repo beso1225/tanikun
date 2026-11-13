@@ -980,3 +980,50 @@ test("session status 429 preserves retry metadata and recovers", async () => {
   });
   assert.equal((await client.read()).kind, S.SIGNED_OUT);
 });
+
+test("session status retries body stream failures and timeouts after 200 headers", async () => {
+  for (const failure of ["stream", "timeout"]) {
+    let attempts = 0;
+    const client = createSessionStatusClient({
+      baseUrl,
+      timeoutMs: 5,
+      fetch: async (_url, { signal }) => {
+        attempts += 1;
+        if (attempts > 1) return jsonResponse({ session: null });
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              if (failure === "stream")
+                controller.error(new TypeError("connection lost"));
+              else
+                signal.addEventListener(
+                  "abort",
+                  () =>
+                    controller.error(new DOMException("aborted", "AbortError")),
+                  { once: true },
+                );
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+    assert.deepEqual(await client.read(), {
+      kind: S.UNAVAILABLE,
+      retryable: true,
+    });
+    assert.equal((await client.read()).kind, S.SIGNED_OUT);
+    assert.equal(attempts, 2);
+  }
+});
+
+test("session status keeps fully read invalid JSON terminal", async () => {
+  const client = createSessionStatusClient({
+    baseUrl,
+    fetch: async () => new Response("{", { status: 200 }),
+  });
+  assert.deepEqual(await client.read(), {
+    kind: S.MALFORMED,
+    retryable: false,
+  });
+});

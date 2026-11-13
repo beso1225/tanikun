@@ -114,9 +114,17 @@ export function createSessionStatusClient({
         return { kind: SESSION_STATUS_KINDS.UNAVAILABLE, retryable: true };
       if (response.status !== 200)
         return { kind: SESSION_STATUS_KINDS.MALFORMED, retryable: false };
+      let text;
+      try {
+        text = await response.text();
+      } catch {
+        // Headers do not complete the request. A broken/aborted body stream
+        // is a transport failure; only fully read invalid JSON is malformed.
+        return { kind: SESSION_STATUS_KINDS.UNAVAILABLE, retryable: true };
+      }
       let body;
       try {
-        body = JSON.parse(await response.text());
+        body = JSON.parse(text);
       } catch {
         return { kind: SESSION_STATUS_KINDS.MALFORMED, retryable: false };
       }

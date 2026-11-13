@@ -252,12 +252,12 @@ async function dispatch(request, env, dependencies, state) {
   return { response: result.response, setCookies };
 }
 
-// The #180/#181 endpoint composition. It is not imported by the default Worker
-// bridge. This handler owns exact Origin, cookie/session/CSRF admission, the
-// D1 fixed-window check, and the #179 ceremony handoff. #182 must route this
-// session principal into sync before any route activation. Tests exercise it
-// with the real WebAuthn service and D1; a request header or body can never
-// supply `bindingDigest`, `session`, or `csrfVerified`.
+// The API router dispatches this composition only after the explicit session
+// mode gate. This handler owns exact Origin, cookie/session/CSRF admission,
+// D1 fixed-window limits, and the verified ceremony handoff. Sync routes use
+// the same admission guards in sync.mjs. Default deployment config remains
+// closed; request headers/body never supply bindingDigest, session, or
+// csrfVerified context values.
 export async function handleSessionAuthRequest(
   request,
   env,

@@ -1,6 +1,6 @@
-// Reusable Phase 5 session admission. #180 uses this for its auth routes; #182
-// must use the same guard for session-authenticated sync bootstrap, append, and
-// pull so invalid or revoked sessions never fall back to dev bearer identity.
+// Shared Phase 5 session admission for auth routes and session sync bootstrap,
+// append, and pull. Invalid or revoked sessions never fall back to a dev-bearer
+// identity. The API router activates these paths behind the session mode gate.
 //
 // Timing contract: a request that has passed admission may complete after a
 // concurrent revocation. Revocation prevents new admissions and auth mutations

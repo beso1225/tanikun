@@ -19,10 +19,10 @@
 // - `options`: reuse a valid cookie or mint one only on a successful response.
 // - `verify`: require exactly one valid cookie; never mint or rebind.
 //
-// This table deliberately does not register anything in the Worker bridge.
-// #181 applies the fixed-window D1 limits in the session boundary. #182 must
-// add the sync principal and #184 must add credential routes before these
-// routes can become reachable in a deployed Worker.
+// The API router activates this table through the session boundary only when
+// explicit session configuration passes. The boundary applies D1 limits;
+// sync.mjs shares its admission guards. Default/production config stays
+// closed. Credential list/remove routes remain #184 work.
 const route = (value) => Object.freeze(value);
 
 export const AUTH_ROUTES = Object.freeze({

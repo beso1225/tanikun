@@ -203,7 +203,8 @@ async function dispatch(request, env, context, dependencies) {
 // This ceremony-only handler is intentionally not registered in the Worker
 // bridge. The reachable composition is handleSessionAuthRequest, which applies
 // the #181 fixed-window limits before calling this dispatcher. Do not register
-// this handler directly; #182 still owns session sync and route activation. The
+// this handler directly. The API router activates the session composition
+// only behind the explicit session mode gate; default config is closed. The
 // binding digest, resolved session, and csrfVerified flag are server-only
 // context values; a request body or header can never supply them.
 export async function handleWebAuthnRequest(
