@@ -532,7 +532,7 @@ function credentialSection() {
           ? credential.backup_state
             ? "バックアップ対象（バックアップ済み）"
             : "バックアップ対象"
-          : "この端末用";
+          : "バックアップ対象外";
         const detail = element(
           "div",
           { class: "min-w-0 space-y-1" },
@@ -1060,19 +1060,22 @@ function statusFailure(status) {
 async function activeStatus(expected) {
   await checkCeremonyScope(expected);
   const status = await statusClient.read();
+  await checkCeremonyScope(expected);
   if (status.kind !== SESSION_STATUS_KINDS.ACTIVE) throw statusFailure(status);
   if (status.session.account.handle !== expected.accountHandle)
     throw Object.assign(new Error("account_changed"), {
       code: "account_changed",
     });
+  const csrfToken = statusClient.csrfTokenFor(status);
+  if (csrfToken === null) throw new AuthClientError("csrf_forbidden");
   state.session = { ...status.session };
   state.displayName = status.session.account.display_name;
-  return status.session;
+  return { ...status.session, csrf_token: csrfToken };
 }
 
 async function freshCsrf(expected) {
-  await activeStatus(expected);
-  return { csrfToken: statusClient.csrfToken };
+  const session = await activeStatus(expected);
+  return { csrfToken: session.csrf_token };
 }
 
 async function ensureRecentAuth(expected, signal) {
@@ -1215,12 +1218,17 @@ async function loadCredentials({ expected } = {}) {
   renderDialog();
   credentialsPromise = (async () => {
     try {
+      await activeStatus(scope);
       const credentials = await authClient.listCredentials();
+      await activeStatus(scope);
       await checkCeremonyScope(scope);
       state.credentials = sortedCredentials(credentials);
       state.credentialsError = null;
     } catch (error) {
-      if (error?.code === "stale_account") {
+      if (
+        error?.code === "stale_account" ||
+        error?.code === "account_changed"
+      ) {
         markStale(errorMessage(error));
       } else if (error?.code === "unauthorized") {
         await markReauthRequired(
@@ -1652,7 +1660,10 @@ async function logout() {
       verified.kind !== SESSION_STATUS_KINDS.REAUTH_REQUIRED
     )
       throw new AuthClientError("temporarily_unavailable");
-    const csrf = statusClient?.csrfToken ?? undefined;
+    const csrf =
+      verified.kind === SESSION_STATUS_KINDS.ACTIVE
+        ? (statusClient.csrfTokenFor(verified) ?? undefined)
+        : undefined;
     try {
       await authClient.logout({ csrfToken: csrf });
     } catch (error) {
@@ -1664,7 +1675,9 @@ async function logout() {
             throw Object.assign(new Error("account_changed"), {
               code: "account_changed",
             });
-          await authClient.logout({ csrfToken: statusClient.csrfToken });
+          await authClient.logout({
+            csrfToken: statusClient.csrfTokenFor(refreshed) ?? undefined,
+          });
         } else if (
           refreshed.kind !== SESSION_STATUS_KINDS.SIGNED_OUT &&
           refreshed.kind !== SESSION_STATUS_KINDS.REAUTH_REQUIRED
@@ -2038,7 +2051,7 @@ async function refresh() {
         state.sessionState = "active";
         state.pendingUpload = pendingUpload;
         state.pendingCopy = pendingCopy;
-        void loadCredentials({ expected: scopeOf(adopted) });
+        if (state.open) void loadCredentials({ expected: scopeOf(adopted) });
       }
     } else if (
       status.kind === SESSION_STATUS_KINDS.SIGNED_OUT ||

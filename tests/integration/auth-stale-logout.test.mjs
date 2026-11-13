@@ -107,6 +107,16 @@ for (const scenario of [
       () => document.querySelector("#account-button")?.textContent === "Alice",
     );
 
+    await page.locator("#account-button").click();
+    assert.match(
+      await page.locator("#auth-dialog").innerText(),
+      /サインイン中: Alice/u,
+    );
+    // Let the account's credential-list read settle before the external switch.
+    await page.waitForFunction(
+      () => !globalThis.tanikunAuthController.state.credentialsLoading,
+    );
+
     // Another tab signs in Bob: server cookie and shared IndexedDB auth state move.
     if (!csrfRetry) serverSession = "bob";
     if (sharedStateChanges)
@@ -123,11 +133,7 @@ for (const scenario of [
         { handle: bob },
       );
     assert.equal(await page.locator("#account-button").innerText(), "Alice");
-    await page.locator("#account-button").click();
-    assert.match(
-      await page.locator("#auth-dialog").innerText(),
-      /サインイン中: Alice/u,
-    );
+
     const reloaded =
       scenario === "csrf-expiry" ? page.waitForEvent("load") : null;
     await page.locator('[data-action="logout"]').click();

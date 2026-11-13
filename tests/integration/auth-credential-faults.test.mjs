@@ -77,13 +77,18 @@ async function openPage(t, { beforeGoto } = {}) {
   return { page, errors, origin };
 }
 
-async function installRoutes(page, origin, { stepUpStatus = 200 } = {}) {
+async function installRoutes(
+  page,
+  origin,
+  { stepUpStatus = 200, onSession } = {},
+) {
   const counts = { stepUpOptions: 0, stepUpVerify: 0, nativeGet: 0 };
   await page.route(`${origin}/api/v1/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/auth/session") {
-      await route.fulfill(json(200, active()));
+      const status = await onSession?.();
+      await route.fulfill(json(200, status ?? active()));
       return;
     }
     if (
@@ -263,4 +268,148 @@ test("a stale tab fences the add confirmation before any step-up request", async
   assert.equal(counts.stepUpOptions, 0);
   assert.equal(counts.stepUpVerify, 0);
   assert.equal(errors.length, 0, errors.join("; "));
+});
+
+test("a delayed CSRF status cannot verify step-up after a silent account switch", async (t) => {
+  let counts;
+  let heldResolve;
+  const held = new Promise((resolveHeld) => {
+    heldResolve = resolveHeld;
+  });
+  let releaseStatus;
+  const released = new Promise((release) => {
+    releaseStatus = release;
+  });
+  let didHold = false;
+  const { page, errors } = await openPage(t, {
+    async beforeGoto(targetPage, origin) {
+      await targetPage.route(`${origin}/sync-shell.js`, (route) =>
+        route.fulfill({ contentType: "text/javascript", body: "export {};" }),
+      );
+      await targetPage.addInitScript(() => {
+        Object.defineProperty(navigator, "credentials", {
+          configurable: true,
+          value: {
+            async get() {
+              const rawId = new Uint8Array(16).fill(1);
+              return {
+                id: btoa(String.fromCharCode(...rawId))
+                  .replaceAll("=", "")
+                  .replaceAll("+", "-")
+                  .replaceAll("/", "_"),
+                rawId: rawId.buffer,
+                type: "public-key",
+                response: {
+                  clientDataJSON: new Uint8Array([1]).buffer,
+                  authenticatorData: new Uint8Array(37).buffer,
+                  signature: new Uint8Array([1]).buffer,
+                },
+              };
+            },
+          },
+        });
+      });
+      counts = await installRoutes(targetPage, origin, {
+        onSession: async () => {
+          if (counts?.stepUpOptions === 1 && !didHold) {
+            didHold = true;
+            heldResolve();
+            await released;
+          }
+        },
+      });
+    },
+  });
+  await openAddConfirmation(page);
+  await page.locator('[data-action="add-passkey-confirm"]').click();
+  await held;
+  await page.evaluate(async (accountHandle) => {
+    const other = globalThis.tanikunAuthStateModule.createAuthStateStore({
+      indexedDB: globalThis.indexedDB,
+      locks: null,
+      channelFactory: null,
+    });
+    await other.write({ accountHandle, sessionState: "active" });
+    other.close();
+  }, OTHER_HANDLE);
+  releaseStatus();
+  await page.waitForFunction(
+    () => globalThis.tanikunAuthController.state.busy === false,
+  );
+  assert.equal(counts.stepUpVerify, 0);
+  assert.equal(
+    (await page.evaluate(() => globalThis.tanikunAuthState.read()))
+      .accountHandle,
+    OTHER_HANDLE,
+  );
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunAuthController.state.stale),
+    true,
+  );
+  assert.deepEqual(errors, []);
+});
+
+test("credential lists are not adopted after a server-only account switch", async (t) => {
+  let switchOnList = false;
+  let serverChanged = false;
+  const { page, errors } = await openPage(t, {
+    async beforeGoto(targetPage, origin) {
+      await targetPage.route(`${origin}/sync-shell.js`, (route) =>
+        route.fulfill({ contentType: "text/javascript", body: "export {};" }),
+      );
+      await installRoutes(targetPage, origin, {
+        onSession: async () => {
+          const status = active();
+          if (serverChanged) status.session.account.handle = OTHER_HANDLE;
+          return status;
+        },
+      });
+      await targetPage.route(
+        `${origin}/api/v1/auth/credentials`,
+        async (route) => {
+          if (switchOnList) serverChanged = true;
+          await route.fulfill(
+            json(200, {
+              credentials: [
+                {
+                  ...credential,
+                  id: serverChanged
+                    ? Buffer.alloc(16, 2).toString("base64url")
+                    : credential.id,
+                },
+              ],
+            }),
+          );
+        },
+      );
+    },
+  });
+  await page.locator("#account-button-mobile").click();
+  await page.waitForFunction(
+    () =>
+      globalThis.tanikunAuthController.state.credentials !== null &&
+      !globalThis.tanikunAuthController.state.credentialsLoading,
+  );
+  await page.locator("#auth-close").click();
+  switchOnList = true;
+  await page.locator("#account-button-mobile").click();
+  await page.waitForFunction(
+    () => !globalThis.tanikunAuthController.state.credentialsLoading,
+  );
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunAuthController.state.stale),
+    true,
+  );
+  assert.equal(
+    await page.evaluate(
+      () => globalThis.tanikunAuthController.state.credentials,
+    ),
+    null,
+  );
+  assert.equal(
+    (await page.evaluate(() => globalThis.tanikunAuthState.read()))
+      .accountHandle,
+    HANDLE,
+  );
+  assert.deepEqual(errors, []);
 });

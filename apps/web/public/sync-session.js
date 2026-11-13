@@ -72,10 +72,12 @@ export function createSessionStatusClient({
 
   let csrfToken = null;
   let account = null;
+  let csrfByResult = new WeakMap();
 
   function clear() {
     csrfToken = null;
     account = null;
+    csrfByResult = new WeakMap();
   }
 
   async function read() {
@@ -152,7 +154,7 @@ export function createSessionStatusClient({
       }
       csrfToken = active.csrf_token;
       account = active.account;
-      return {
+      const result = {
         kind: SESSION_STATUS_KINDS.ACTIVE,
         retryable: false,
         session: {
@@ -163,6 +165,9 @@ export function createSessionStatusClient({
           recent_auth_expires_at: active.recent_auth_expires_at,
         },
       };
+      // Keep the token out of public results while binding it to this read.
+      csrfByResult.set(result, active.csrf_token);
+      return result;
     } finally {
       clearTimeout(timer);
     }
@@ -171,6 +176,9 @@ export function createSessionStatusClient({
   return Object.freeze({
     clear,
     read,
+    csrfTokenFor(result) {
+      return csrfByResult.get(result) ?? null;
+    },
     get csrfToken() {
       return csrfToken;
     },
