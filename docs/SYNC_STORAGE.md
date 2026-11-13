@@ -287,3 +287,11 @@ through the shared validator. CLI verification applies `0001_sync.sql` to an
 empty local database, repeats it as a no-op, and reads the recorded filename.
 This establishes local D1 and local Worker behavior, not production deployment,
 production identity, cryptographic protection, or browser synchronization.
+
+### Session browser activation gate
+
+The session transport and status client are available, but the planner shell
+keeps session sync paused until #183 supplies account-scoped storage, generation
+fencing, and explicit consent for importing an unbound plan. A valid session
+alone does not authorize uploading the offline `planner` record. The Phase 4
+dev-bearer shell remains available with its explicit mode.

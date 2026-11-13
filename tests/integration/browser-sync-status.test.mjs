@@ -542,34 +542,31 @@ test(
 );
 
 test(
-  "session transport uses same-origin cookies and in-memory CSRF without a bearer",
+  "session status cannot upload the unbound planner before account isolation",
   { timeout: 60_000 },
   async (t) => {
     const { page, api, errors } = await openPage(t, undefined, {
       mode: "session",
     });
-    await waitForSync(page, "同期済み");
+    await waitForSync(page, "同期未設定");
     assert.ok(api.authCalls >= 1);
     assert.equal(api.authorizationSeen, null);
-    assert.equal(api.bootstrapCalls.length, 1);
-    assert.equal(api.bootstrapCalls[0].method, "POST");
-    assert.equal(api.bootstrapCalls[0].csrf, api.csrf);
-    assert.equal(api.bootstrapCalls[0].body, null);
-    assert.equal(new URL(api.bootstrapUrl).search, "");
-    assert.ok(api.pullCalls.length >= 1);
-    assert.ok(api.pushCsrf.length >= 1);
-    for (const csrf of api.pushCsrf) assert.equal(csrf, api.csrf);
+    assert.equal(api.bootstrapCalls.length, 0);
+    assert.equal(api.pushBodies.length, 0);
+    assert.equal(api.pullCalls.length, 0);
+    await addOffering(page);
+    await waitForPersistence(page);
+    await page.reload();
+    await waitForPersistence(page);
+    await waitForSync(page, "同期未設定");
+    assert.equal(api.bootstrapCalls.length, 0);
+    assert.equal(api.pushBodies.length, 0);
+    assert.equal(api.pullCalls.length, 0);
     const session = await page.evaluate(
       () => globalThis.tanikunSyncShell.session,
     );
     assert.equal(session.account.handle, api.handle);
     assert.equal(JSON.stringify(session).includes(api.csrf), false);
-    assert.deepEqual(errors, []);
-
-    api.unauthorized = true;
-    await addOffering(page);
-    await waitForSync(page, "再認証が必要");
-    assert.equal(await page.locator("#sync-retry").isVisible(), false);
     assert.deepEqual(errors, []);
   },
 );

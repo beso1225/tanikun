@@ -19,6 +19,7 @@ for (const file of [
   "sync-store.js",
   "sync-metadata.js",
   "sync-coordinator.js",
+  "sync-session.js",
   "sync-shell.js",
   "sync-transport.js",
   "sync-contract.mjs",

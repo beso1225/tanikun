@@ -241,7 +241,6 @@ async function startOnce() {
     setStatus("error", "storage_unavailable");
     return;
   }
-  installLocalSaveTrigger(storage);
   const local = await waitForLocalReady();
   if (local !== "saved") {
     setStatus("error", "local_storage_unavailable");
@@ -278,7 +277,13 @@ async function startOnce() {
       setStatus("error", "sync_setup_failed");
       return;
     }
+    // #183 must supply account-scoped storage and generation fencing before
+    // cookie sync can run. The current storage is the unbound offline plan;
+    // authenticating alone never authorizes its upload or a remote merge.
+    setStatus("unconfigured", "account_isolation_required");
+    return;
   }
+  installLocalSaveTrigger(storage);
   try {
     coordinator = createCoordinator(config, storage, sessionClient);
   } catch {
