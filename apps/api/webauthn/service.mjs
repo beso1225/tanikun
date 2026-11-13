@@ -66,16 +66,8 @@ function decodeClientData(encoded, { type, config }) {
   if (clientData.origin !== config.origin) fail();
   if (clientData.crossOrigin !== false) fail();
   if (clientData.topOrigin !== undefined) fail();
-  try {
-    if (
-      decodeBase64Url(clientData.challenge, "authentication_failed").length !==
-      32
-    )
-      fail();
-  } catch (error) {
-    if (error instanceof AuthStorageError) throw error;
-    fail();
-  }
+  // The verifier's expectedChallenge callback owns challenge decoding,
+  // length, and digest comparison, including malformed values.
 }
 
 function precheckAttestation(encoded) {

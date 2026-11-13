@@ -53,6 +53,7 @@ describe("registration rejection", () => {
       { userPresent: false },
       { userVerified: false },
       { malformedClientData: true },
+      { challenge: "not-base64url" },
     ];
     for (let index = 0; index < cases.length; index += 1) {
       const clock = fakeClock();
@@ -231,6 +232,7 @@ describe("assertion rejection and replay", () => {
       { userPresent: false },
       { userVerified: false },
       { malformedClientData: true },
+      { challenge: "not-base64url" },
     ];
     for (let index = 0; index < cases.length; index += 1) {
       const binding = bytes(32, 0x80 + index);
