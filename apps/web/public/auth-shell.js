@@ -1114,6 +1114,19 @@ function boot() {
       openDialog();
     }
   });
+  globalThis.tanikunStorage?.onStaleAccount?.(() => {
+    state.stale = true;
+    state.sessionState =
+      state.auth?.sessionState === "active"
+        ? "active"
+        : state.auth?.sessionState === "reauth_required"
+          ? "reauth_required"
+          : "signed_out";
+    void pauseSync();
+    renderAccountButton();
+    renderNotice();
+    renderDialog();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.open) {
       event.preventDefault();

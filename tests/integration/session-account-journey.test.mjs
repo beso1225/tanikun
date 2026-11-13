@@ -509,6 +509,12 @@ test(
       await tabB.page.locator("#auth-notice").innerText(),
       /アカウントが切り替わりました/u,
     );
+    assert.equal(
+      await tabB.page.evaluate(
+        () => globalThis.tanikunAuthController?.state?.stale,
+      ),
+      true,
+    );
     const before = await readPlannerText(tabB.page, aliceKey);
     await tabB.page.locator("#open-catalogue-picker").click();
     await tabB.page.locator("#add-offering-phy302-s").click();
