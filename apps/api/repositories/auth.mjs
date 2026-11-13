@@ -444,6 +444,80 @@ export function createAuthRepository(
       };
     },
 
+    // Ceremony verification consumes by server-owned challenge ID, purpose,
+    // and browser binding before the expensive verifier runs. The stored
+    // challenge digest is returned so the verifier's expectedChallenge
+    // callback can compare it against the clientDataJSON challenge. No caller
+    // supplies a raw challenge or account handle to this primitive.
+    async consumeCeremonyChallenge({
+      challengeId,
+      bindingDigest,
+      purpose,
+      userId,
+      sessionDigest,
+    }) {
+      const checkedId = requireChallengeId(
+        challengeId,
+        "authentication_failed",
+      );
+      const checkedBinding = requireDigest(
+        bindingDigest,
+        "authentication_failed",
+      );
+      const checkedPurpose = requirePurpose(purpose, "authentication_failed");
+      const current = currentTime();
+      let conditions =
+        "id = ?1 AND binding_digest = ?2 AND purpose = ?3 AND consumed_at IS NULL AND expires_at > ?4";
+      const bindings = [checkedId, checkedBinding, checkedPurpose, current];
+      if (checkedPurpose === "register") {
+        conditions +=
+          " AND account_handle IS NOT NULL AND display_name IS NOT NULL";
+      } else if (checkedPurpose === "sign_in") {
+        conditions += " AND account_handle IS NULL";
+      } else {
+        const checkedUser = requireUserId(userId, "authentication_failed");
+        const checkedSession = requireDigest(
+          sessionDigest,
+          "authentication_failed",
+        );
+        conditions +=
+          " AND user_id = ?5 AND session_digest = ?6 AND EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?6 AND s.user_id = ?5 AND s.revoked_at IS NULL AND s.expires_at > ?4 AND s.idle_expires_at > ?4 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL)";
+        bindings.push(checkedUser, checkedSession);
+      }
+      let results;
+      try {
+        results = await db.batch([
+          db
+            .prepare(
+              `UPDATE challenges SET consumed_at = ?4 WHERE ${conditions}`,
+            )
+            .bind(...bindings),
+          db
+            .prepare(
+              "SELECT id, purpose, challenge_digest, account_handle, display_name, user_id, session_digest, created_at, expires_at, consumed_at FROM challenges WHERE id = ?1",
+            )
+            .bind(checkedId),
+        ]);
+      } catch (error) {
+        throw databaseError(error);
+      }
+      if (results[0].meta.changes !== 1)
+        throw new AuthStorageError("authentication_failed");
+      const row = results[1].results[0];
+      return {
+        challengeId: row.id,
+        purpose: row.purpose,
+        challengeDigest: toBytes(row.challenge_digest),
+        accountHandle: row.account_handle,
+        displayName: row.display_name,
+        userId: row.user_id,
+        sessionDigest: row.session_digest ? toBytes(row.session_digest) : null,
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+        consumedAt: row.consumed_at,
+      };
+    },
+
     async cleanupChallenges(limit = AUTH_STORAGE_LIMITS.cleanupBatch) {
       return cleanupChallengeRows(limit);
     },
@@ -564,6 +638,184 @@ export function createAuthRepository(
           current,
         ),
       };
+    },
+
+    // Sign-in finalization is one batch: recheck the credential, ownership,
+    // backup eligibility, and counter guard; insert the replacement session;
+    // and revoke the presented session. A failed guard changes no row, and a
+    // failed insert rolls the counter update back with the batch transaction.
+    async completeSignIn({
+      challengeId,
+      bindingDigest,
+      credentialId,
+      userId,
+      newCounter,
+      backupEligible,
+      backupState,
+      session,
+      presentedSessionDigest = null,
+    }) {
+      const checkedChallengeId = requireChallengeId(
+        challengeId,
+        "authentication_failed",
+      );
+      const checkedBinding = requireDigest(
+        bindingDigest,
+        "authentication_failed",
+      );
+      const checked = normalizeAssertion({
+        credentialId,
+        userId,
+        newCounter,
+        backupEligible,
+        backupState,
+      });
+      const checkedSession = normalizeSessionCredentials(session);
+      const current = currentTime();
+      const absoluteExpiry =
+        current + AUTH_STORAGE_LIMITS.sessionAbsoluteLifetimeMs;
+      const idleExpiry = current + AUTH_STORAGE_LIMITS.sessionIdleLifetimeMs;
+      const statements = [
+        db
+          .prepare(
+            "UPDATE credentials SET counter = CASE WHEN backup_eligible = 1 THEN MAX(counter, ?2) ELSE ?2 END, backup_state = ?3, last_used_at = ?4 WHERE credential_id = ?1 AND user_id = ?5 AND backup_eligible = ?6 AND (backup_eligible = 1 OR ?2 > counter OR (counter = 0 AND ?2 = 0)) AND EXISTS (SELECT 1 FROM challenges c WHERE c.id = ?7 AND c.purpose = 'sign_in' AND c.consumed_at IS NOT NULL AND c.consumed_at <= ?4 AND c.expires_at > ?4 AND c.binding_digest = ?8) AND EXISTS (SELECT 1 FROM users u WHERE u.id = ?5 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL)",
+          )
+          .bind(
+            checked.credentialId,
+            checked.newCounter,
+            checked.backupState ? 1 : 0,
+            current,
+            checked.userId,
+            checked.backupEligible ? 1 : 0,
+            checkedChallengeId,
+            checkedBinding,
+          ),
+      ];
+      const insertIndex = statements.length;
+      statements.push(
+        db
+          .prepare(
+            "INSERT INTO sessions (digest, user_id, csrf_digest, created_at, last_seen_at, expires_at, idle_expires_at, recent_auth_at) SELECT ?1, u.id, ?2, ?3, ?3, ?4, ?5, ?3 FROM users u WHERE u.id = ?6 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL AND changes() = 1",
+          )
+          .bind(
+            checkedSession.digest,
+            checkedSession.csrfDigest,
+            current,
+            absoluteExpiry,
+            idleExpiry,
+            checked.userId,
+          ),
+      );
+      if (
+        presentedSessionDigest !== undefined &&
+        presentedSessionDigest !== null
+      ) {
+        statements.push(
+          db
+            .prepare(
+              "UPDATE sessions SET revoked_at = ?2, revoke_reason = 'sign_in_rotation' WHERE digest = ?1 AND digest != ?3 AND revoked_at IS NULL AND EXISTS (SELECT 1 FROM sessions s2 WHERE s2.digest = ?3 AND s2.user_id = ?4 AND s2.revoked_at IS NULL)",
+            )
+            .bind(
+              requireDigest(presentedSessionDigest, "authentication_failed"),
+              current,
+              checkedSession.digest,
+              checked.userId,
+            ),
+        );
+      }
+      const selectIndex = statements.length;
+      statements.push(
+        db
+          .prepare(
+            "SELECT s.digest, s.user_id, s.csrf_digest, s.created_at, s.last_seen_at, s.expires_at, s.idle_expires_at, s.recent_auth_at, s.revoked_at, s.revoke_reason, u.handle, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?1",
+          )
+          .bind(checkedSession.digest),
+      );
+      let results;
+      try {
+        results = await db.batch(statements);
+      } catch (error) {
+        throw databaseError(error);
+      }
+      if (results[insertIndex].meta.changes !== 1)
+        throw new AuthStorageError("authentication_failed");
+      const row = results[selectIndex].results[0];
+      if (!row) throw new AuthStorageError("temporarily_unavailable");
+      return {
+        session: sessionRow(row, current),
+      };
+    },
+
+    // Step-up finalization keeps the presented session and only raises recent
+    // auth. The credential counter update and the session recent-auth update
+    // run in the same batch, guarded by changes() from the credential update.
+    async completeStepUp({
+      challengeId,
+      bindingDigest,
+      credentialId,
+      userId,
+      newCounter,
+      backupEligible,
+      backupState,
+      sessionDigest,
+    }) {
+      const checkedChallengeId = requireChallengeId(
+        challengeId,
+        "authentication_failed",
+      );
+      const checkedBinding = requireDigest(
+        bindingDigest,
+        "authentication_failed",
+      );
+      const checkedSession = requireDigest(
+        sessionDigest,
+        "authentication_failed",
+      );
+      const checked = normalizeAssertion({
+        credentialId,
+        userId,
+        newCounter,
+        backupEligible,
+        backupState,
+      });
+      const current = currentTime();
+      let results;
+      try {
+        results = await db.batch([
+          db
+            .prepare(
+              "UPDATE credentials SET counter = CASE WHEN backup_eligible = 1 THEN MAX(counter, ?2) ELSE ?2 END, backup_state = ?3, last_used_at = ?4 WHERE credential_id = ?1 AND user_id = ?5 AND backup_eligible = ?6 AND (backup_eligible = 1 OR ?2 > counter OR (counter = 0 AND ?2 = 0)) AND EXISTS (SELECT 1 FROM challenges c WHERE c.id = ?7 AND c.purpose = 'step_up' AND c.consumed_at IS NOT NULL AND c.consumed_at <= ?4 AND c.expires_at > ?4 AND c.binding_digest = ?8 AND c.user_id = ?5 AND c.session_digest = ?9) AND EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?9 AND s.user_id = ?5 AND s.revoked_at IS NULL AND s.expires_at > ?4 AND s.idle_expires_at > ?4 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL)",
+            )
+            .bind(
+              checked.credentialId,
+              checked.newCounter,
+              checked.backupState ? 1 : 0,
+              current,
+              checked.userId,
+              checked.backupEligible ? 1 : 0,
+              checkedChallengeId,
+              checkedBinding,
+              checkedSession,
+            ),
+          db
+            .prepare(
+              "UPDATE sessions SET recent_auth_at = ?3 WHERE digest = ?1 AND user_id = ?2 AND revoked_at IS NULL AND expires_at > ?3 AND idle_expires_at > ?3 AND EXISTS (SELECT 1 FROM users u WHERE u.id = sessions.user_id AND u.handle IS NOT NULL AND u.display_name IS NOT NULL) AND changes() = 1",
+            )
+            .bind(checkedSession, checked.userId, current),
+          db
+            .prepare(
+              "SELECT s.digest, s.user_id, s.csrf_digest, s.created_at, s.last_seen_at, s.expires_at, s.idle_expires_at, s.recent_auth_at, s.revoked_at, s.revoke_reason, u.handle, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?1 AND s.user_id = ?2 AND s.revoked_at IS NULL AND s.expires_at > ?3 AND s.idle_expires_at > ?3 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL",
+            )
+            .bind(checkedSession, checked.userId, current),
+        ]);
+      } catch (error) {
+        throw databaseError(error);
+      }
+      if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1)
+        throw new AuthStorageError("authentication_failed");
+      const row = results[2].results[0];
+      if (!row) throw new AuthStorageError("authentication_failed");
+      return sessionRow(row, current);
     },
 
     async createSession({ userId, digest, csrfDigest, recentAuthAt }) {
@@ -821,31 +1073,55 @@ export function createAuthRepository(
       return row.count;
     },
 
-    async addCredential({ sessionDigest, userId, credential }) {
+    async addCredential({
+      sessionDigest,
+      userId,
+      credential,
+      challengeId = null,
+      bindingDigest = null,
+    }) {
       const checkedSession = requireDigest(sessionDigest);
       const checkedUser = requireUserId(userId);
       const checkedCredential = normalizeCredential(credential);
+      const challengeBound = challengeId !== null && challengeId !== undefined;
+      if (
+        challengeBound !==
+        (bindingDigest !== null && bindingDigest !== undefined)
+      )
+        throw new AuthStorageError("malformed_request");
+      const checkedChallenge = challengeBound
+        ? requireChallengeId(challengeId, "authentication_failed")
+        : null;
+      const checkedBinding = challengeBound
+        ? requireDigest(bindingDigest, "authentication_failed")
+        : null;
       const current = currentTime();
       const recentCutoff = current - AUTH_STORAGE_LIMITS.recentAuthWindowMs;
+      const challengeGuard = checkedChallenge
+        ? " AND EXISTS (SELECT 1 FROM challenges ch WHERE ch.id = ?11 AND ch.purpose = 'add_credential' AND ch.consumed_at IS NOT NULL AND ch.binding_digest = ?12 AND ch.user_id = ?2 AND ch.session_digest = ?8 AND ch.expires_at > ?7)"
+        : "";
+      const bindings = [
+        checkedCredential.credentialId,
+        checkedUser,
+        checkedCredential.publicKey,
+        checkedCredential.counter,
+        checkedCredential.backupEligible ? 1 : 0,
+        checkedCredential.backupState ? 1 : 0,
+        current,
+        checkedSession,
+        recentCutoff,
+        AUTH_STORAGE_LIMITS.credentialLimit,
+      ];
+      if (checkedChallenge) bindings.push(checkedChallenge, checkedBinding);
       let results;
       try {
         results = await db.batch([
           db
             .prepare(
-              "INSERT INTO credentials (credential_id, user_id, public_key, counter, backup_eligible, backup_state, created_at, last_used_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7 WHERE EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?8 AND s.user_id = ?2 AND s.revoked_at IS NULL AND s.expires_at > ?7 AND s.idle_expires_at > ?7 AND s.recent_auth_at IS NOT NULL AND s.recent_auth_at > ?9 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL) AND (SELECT COUNT(*) FROM credentials c WHERE c.user_id = ?2) < ?10",
+              "INSERT INTO credentials (credential_id, user_id, public_key, counter, backup_eligible, backup_state, created_at, last_used_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7 WHERE EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.digest = ?8 AND s.user_id = ?2 AND s.revoked_at IS NULL AND s.expires_at > ?7 AND s.idle_expires_at > ?7 AND s.recent_auth_at IS NOT NULL AND s.recent_auth_at > ?9 AND u.handle IS NOT NULL AND u.display_name IS NOT NULL) AND (SELECT COUNT(*) FROM credentials c WHERE c.user_id = ?2) < ?10" +
+                challengeGuard,
             )
-            .bind(
-              checkedCredential.credentialId,
-              checkedUser,
-              checkedCredential.publicKey,
-              checkedCredential.counter,
-              checkedCredential.backupEligible ? 1 : 0,
-              checkedCredential.backupState ? 1 : 0,
-              current,
-              checkedSession,
-              recentCutoff,
-              AUTH_STORAGE_LIMITS.credentialLimit,
-            ),
+            .bind(...bindings),
           db
             .prepare(
               "SELECT credential_id, user_id, public_key, counter, backup_eligible, backup_state, created_at, last_used_at FROM credentials WHERE credential_id = ?1 AND user_id = ?2",
@@ -856,6 +1132,23 @@ export function createAuthRepository(
         throw databaseError(error);
       }
       if (results[0].meta.changes !== 1) {
+        if (checkedChallenge) {
+          const challenge = await guarded(() =>
+            db
+              .prepare(
+                "SELECT 1 AS found FROM challenges WHERE id = ?1 AND purpose = 'add_credential' AND consumed_at IS NOT NULL AND binding_digest = ?2 AND user_id = ?3 AND session_digest = ?4 AND expires_at > ?5",
+              )
+              .bind(
+                checkedChallenge,
+                checkedBinding,
+                checkedUser,
+                checkedSession,
+                current,
+              )
+              .first(),
+          );
+          if (!challenge) throw new AuthStorageError("authentication_failed");
+        }
         await diagnoseAddCredential(
           checkedSession,
           checkedUser,

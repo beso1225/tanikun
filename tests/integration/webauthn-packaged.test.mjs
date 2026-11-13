@@ -94,12 +94,19 @@ test(
   },
 );
 
-function workerSource(bundlePath) {
+function workerSource(bundlePath, authBundlePath) {
   return `
 import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from ${JSON.stringify(bundlePath)};
+import {
+  buildRegistrationOptions,
+  createSessionMaterial,
+  handleWebAuthnRequest,
+  parseRegistrationVerification,
+  readSessionAuthConfig,
+} from ${JSON.stringify(authBundlePath)};
 
 async function rejectionMessage(promise) {
   try {
@@ -162,7 +169,56 @@ export default {
       }),
     );
 
+    const unconfigured = await handleWebAuthnRequest(
+      new Request("https://localhost:4300/api/v1/auth/register/options", {
+        method: "POST",
+      }),
+      {},
+      {},
+    );
+    const authOptions = await buildRegistrationOptions({
+      rpID: "localhost",
+      rpName: "Tanikun",
+      accountHandle: "A".repeat(43),
+      displayName: "Packaged user",
+      challenge: new Uint8Array(32),
+    });
+    const sessionMaterial = await createSessionMaterial();
+    let authEntryRejection = null;
+    try {
+      parseRegistrationVerification({
+        challenge_id: "A".repeat(22),
+        credential: {
+          id: "AQ",
+          rawId: "AQ",
+          type: "public-key",
+          response: { clientDataJSON: "AQ", attestationObject: "AQ" },
+        },
+        clientExtensionResults: { prf: "packaged-canary" },
+      });
+    } catch (error) {
+      authEntryRejection = error.code;
+    }
+    const sessionConfig = readSessionAuthConfig({
+      AUTH_MODE: "session",
+      APP_ENV: "test",
+      AUTH_ORIGIN: "https://localhost:4300",
+      RP_ID: "localhost",
+      AUTH_RATE_LIMIT_KEY: "A".repeat(43),
+    });
+
     return Response.json({
+      authEntry: {
+        userID: authOptions.user.id,
+        keys: Object.keys(authOptions).sort(),
+        hasExtensions: Object.hasOwn(authOptions, "extensions"),
+        hasHints: Object.hasOwn(authOptions, "hints"),
+        tokenLength: sessionMaterial.token.length,
+        csrfLength: sessionMaterial.csrfToken.length,
+        configMode: sessionConfig?.mode ?? null,
+        rejection: authEntryRejection,
+        handlerStatus: unconfigured.response.status,
+      },
       registration: registration.verified,
       authentication: authentication.verified,
       modifiedAssertion: modifiedAssertion.verified,
@@ -227,7 +283,9 @@ test(
   { skip: !apiRoot, timeout: 120_000 },
   async (t) => {
     const bundlePath = join(apiRoot, "apps/api/webauthn/verify.js");
+    const authBundlePath = join(apiRoot, "apps/api/webauthn/auth.js");
     await access(bundlePath);
+    await access(authBundlePath);
     const bundle = await readFile(bundlePath, "utf8");
     assert.doesNotMatch(
       bundle,
@@ -251,7 +309,7 @@ test(
     const output = await mkdtemp(join(tmpdir(), "tanikun-webauthn-packaged-"));
     t.after(() => rm(output, { recursive: true, force: true }));
     const workerPath = join(output, "worker.mjs");
-    await writeFile(workerPath, workerSource(bundlePath));
+    await writeFile(workerPath, workerSource(bundlePath, authBundlePath));
     const configPath = join(output, "wrangler.jsonc");
     await writeFile(
       configPath,
@@ -360,6 +418,24 @@ test(
     assert.deepEqual(result.credential.publicKey, [
       ...proof.credential.publicKey,
     ]);
+    assert.equal(result.authEntry.userID, "A".repeat(43));
+    assert.deepEqual(result.authEntry.keys, [
+      "attestation",
+      "authenticatorSelection",
+      "challenge",
+      "excludeCredentials",
+      "pubKeyCredParams",
+      "rp",
+      "timeout",
+      "user",
+    ]);
+    assert.equal(result.authEntry.hasExtensions, false);
+    assert.equal(result.authEntry.hasHints, false);
+    assert.equal(result.authEntry.tokenLength, 43);
+    assert.equal(result.authEntry.csrfLength, 43);
+    assert.equal(result.authEntry.configMode, "session");
+    assert.equal(result.authEntry.rejection, "malformed_request");
+    assert.equal(result.authEntry.handlerStatus, 404);
     for (const key of ["wrongChallenge", "wrongOrigin", "wrongRPID"]) {
       assert.equal(Object.keys(result[key]).length, 2);
     }

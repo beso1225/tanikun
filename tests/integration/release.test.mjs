@@ -42,7 +42,7 @@ test("packaged Worker imports and handles requests without build-tree files", as
   assert.equal(post.headers.get("Allow"), "GET");
 });
 
-test("packaged Worker bridge does not import the WebAuthn spike", async () => {
+test("packaged Worker bridge does not register the WebAuthn handler", async () => {
   const bridge = await readFile(
     join(release, "api/apps/api/bridges/worker.mjs"),
     "utf8",
@@ -50,22 +50,25 @@ test("packaged Worker bridge does not import the WebAuthn spike", async () => {
   assert.doesNotMatch(bridge, /webauthn/i);
 });
 
-test("packaged API includes the self-contained WebAuthn spike verifier", async () => {
-  const bundle = await readFile(
-    join(release, "api/apps/api/webauthn/verify.js"),
-    "utf8",
-  );
-  assert.ok(bundle.length > 0);
-  assert.doesNotMatch(
-    bundle,
-    /^\s*import\s+[^("]/mu,
-    "verifier bundle must not have external static imports",
-  );
-  assert.doesNotMatch(
-    bundle,
-    /^\s*export\s+.*\bfrom\s+["']/mu,
-    "verifier bundle must not re-export from an external module",
-  );
+test("packaged API includes the self-contained WebAuthn verifier and auth entry", async () => {
+  for (const path of [
+    "api/apps/api/webauthn/verify.js",
+    "api/apps/api/webauthn/auth.js",
+  ]) {
+    const bundle = await readFile(join(release, path), "utf8");
+    assert.ok(bundle.length > 0);
+    assert.doesNotMatch(
+      bundle,
+      /^\s*import\s+[^("]/mu,
+      `${path} must not have external static imports`,
+    );
+    assert.doesNotMatch(
+      bundle,
+      /^\s*export\s+.*\bfrom\s+["']/mu,
+      `${path} must not re-export from an external module`,
+    );
+    assert.doesNotMatch(bundle, /\brequire\s*\(\s*["']/u);
+  }
 });
 
 test("packaged API includes every Worker module, migration, and runtime config", async () => {
@@ -73,6 +76,7 @@ test("packaged API includes every Worker module, migration, and runtime config",
   const required = [
     "apps/api/bridges/worker.mjs",
     "apps/api/http/auth.mjs",
+    "apps/api/http/webauthn.mjs",
     "apps/api/http/errors.mjs",
     "apps/api/http/json.mjs",
     "apps/api/http/respond.mjs",
@@ -80,6 +84,7 @@ test("packaged API includes every Worker module, migration, and runtime config",
     "apps/api/repositories/auth-data.mjs",
     "apps/api/repositories/auth.mjs",
     "apps/api/repositories/changes.mjs",
+    "apps/api/webauthn/auth.js",
     "apps/api/migrations/0001_sync.sql",
     "apps/api/migrations/0002_auth_storage.sql",
     "packages/sync-contract/contract.mjs",
@@ -91,6 +96,15 @@ test("packaged API includes every Worker module, migration, and runtime config",
   assert.deepEqual(
     (await readdir(join(api, "apps/api/migrations"))).toSorted(),
     ["0001_sync.sql", "0002_auth_storage.sql"],
+  );
+
+  const authShim = await readFile(
+    join(api, "apps/api/http/webauthn.mjs"),
+    "utf8",
+  );
+  assert.equal(
+    authShim,
+    'export { handleWebAuthnRequest } from "../webauthn/auth.js";\n',
   );
 
   const configText = await readFile(join(api, "wrangler.jsonc"), "utf8");

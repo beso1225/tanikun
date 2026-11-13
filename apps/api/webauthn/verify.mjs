@@ -1,9 +1,9 @@
-// Spike-only WebAuthn verifier boundary. The Worker bridge does not import
-// this module; #176 proves the selected library in the pinned Workers runtime
-// and in the packaged API artifact before #177 chooses product integration.
+// WebAuthn verifier boundary. The library owns CBOR parsing, attestation, and
+// signature verification. Do not add hand-written WebAuthn cryptography here.
 //
-// The library owns CBOR parsing and signature verification. Do not add
-// hand-written WebAuthn cryptography here.
+// Source tests import this module directly. The packaged API consumes the
+// self-contained `auth.js` bundle built from `entry.mjs`, so this module's bare
+// library imports never leak into the Nix output.
 export {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
