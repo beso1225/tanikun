@@ -242,3 +242,56 @@ test("a slow initial session status selects the account planner before loading",
   await page.evaluate(() => globalThis.tanikunStorage.load());
   assert.equal(await page.locator("#planner-error").count(), 0);
 });
+
+test("a stalled initial status times out and permits local planning", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((close) => server.close(close)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    globalThis["__TANIKUN_SYNC_CONFIG__"] = { mode: "session", maxRetry: 0 };
+  });
+  // Leave the status request pending until the production client aborts it.
+  await page.route(`${origin}/api/v1/auth/session`, () => {});
+  await page.goto(origin);
+  await page.waitForFunction(
+    () => globalThis.tanikunAuthController !== undefined,
+  );
+  assert.equal(
+    await page.evaluate(
+      () => globalThis.tanikunAuthController.state.sessionState,
+    ),
+    "loading",
+  );
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#persistence-status")?.textContent === "保存済み",
+    undefined,
+    { timeout: 25_000 },
+  );
+  await page.evaluate(() => globalThis.tanikunAuthController.ready);
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunStorage.scope().plannerKey),
+    "planner",
+  );
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunAuthController.state.stale),
+    false,
+  );
+  assert.equal(
+    await page.evaluate(
+      () => globalThis.tanikunAuthController.state.sessionState,
+    ),
+    "offline",
+  );
+  await page.locator('[id="open-detail-phy101-s1-月-1"]').click();
+  await page.locator("#status-in-progress").click();
+  await page.locator("#close-detail").click();
+  assert.equal(
+    await page.locator("#summary-total-standard").innerText(),
+    "2単位",
+  );
+  await waitForPersistence(page);
+  assert.equal(await page.locator("#planner-error").count(), 0);
+});

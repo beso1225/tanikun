@@ -352,6 +352,14 @@ unbound plan remains available while signed out. Unrelated Automerge roots stop
 with `history_mismatch` and preserve both plans, outbox entries, seen hashes,
 and cursors; the browser never merges them automatically.
 
+Initial planner load waits for session bootstrap before selecting the account
+scope. This deliberately favors a correct scope over an earlier local start:
+a stalled status request can keep the planner loading until the session
+client's existing 15-second timeout. Ordinary offline errors settle immediately.
+After an unavailable status settles, the planner uses the retained local account
+or unbound scope while sync stays paused. A separate, shorter fallback timer
+would let a valid but slow response change the account behind the initial load.
+
 A session `401`, expiry, or signed-out response moves the local state to
 `reauth_required` without changing the generation, so the current account plan
 stays editable while sync pauses. A successful reauthentication increments the
@@ -375,7 +383,7 @@ The #183 implementation and its lifecycle fixes were verified on macOS arm64:
 - `just test`: 174 JavaScript tests passed (24 export/document tests and 150
   runtime tests), plus 294 MoonBit tests.
 - `just test-d1`: 305 passed.
-- `just test-browser`: 57 browser tests and 1 allocation test passed.
+- `just test-browser`: 58 browser tests and 1 allocation test passed.
 - `just test-sync` from source: 53 passed and 4 packaged-only tests skipped.
 - `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 57 passed,
   including all nine session account journeys.
