@@ -53,9 +53,9 @@ no actionable blockers. Merge still requires the user's approval.
 4. Run `just lint`. Run `just test` only when the change reaches MoonBit, the
    JavaScript export, or shared code that it covers.
 5. For sync, Worker, D1, local auth, or coordinator changes, load
-   `tanikun-sync-change` and run its focused ladder. Run `just test-sync` when
-   the change crosses the real Worker, D1, or browser boundary. Do not run the
-   real harness for a docs-only change.
+   `tanikun-sync-change` and run its focused ladder. Run `just test-sync` or
+   `just test-session-proof` when the change crosses the real Worker, D1, or
+   browser boundary. Do not run the real harness for a docs-only change.
 6. For a docs-only PR, run `just lint` and the relevant link checks.
 7. Push the fix before replying to the thread.
 

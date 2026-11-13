@@ -17,6 +17,21 @@ succeeded at that merge SHA. The decision is
 contract. ADR-0015 replaces only ADR-0014's deferred real-identity boundary,
 not the separate dev-bearer mode.
 
+## Session proof
+
+[Issue #185](https://github.com/beso1225/tanikun/issues/185) owns the bounded
+real-session browser proof. Run `nix develop -c just test-session-proof` from
+source, or set both `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST` to test packaged
+Nix artifacts. The recipe is separate from the Phase 4 dev-bearer
+`just test-sync` suite. It covers two Alice replicas over real session HTTP,
+Bob's owner-scoped read and write denial, account-switch outbox isolation,
+Chromium cookie flags, CSRF and Origin rejection, replay and invalid challenge
+rejection, session logout and expiry, response loss, sanitized evidence, and
+owned teardown. The proof and its virtual-authenticator limits are in
+[PHASE_5_SESSION_PROOF.md](PHASE_5_SESSION_PROOF.md). Physical providers,
+screen readers, public deployment, and Linux execution are not claimed by the
+local proof.
+
 ## Verifier baseline
 
 The selected verifier is `@simplewebauthn/server@14.1.0` (MIT). The

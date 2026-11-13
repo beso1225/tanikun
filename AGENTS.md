@@ -53,6 +53,12 @@ Automerge document tests. It needs `pnpm install --frozen-lockfile`.
 Standalone pure-package tests need MoonBit only. Web tooling, browser, Worker,
 and D1 tests also need the installed packages.
 
+`just test-sync` runs the Phase 4 dev-bearer convergence and fault suite.
+`just test-session-proof` runs the Phase 5 real passkey-session proof. Set both
+`TANIKUN_WEB_DIST` and `TANIKUN_API_DIST` to test packaged Nix artifacts; never
+set only one. Both commands own their Worker, D1, browser, and temporary
+storage, and both need port 4300 to be free.
+
 `just mutate` runs the local mutation baseline. It is not a required CI gate.
 Load `tanikun-mutation-refresh` before updating the baseline.
 
@@ -69,8 +75,8 @@ Load `tanikun-mutation-refresh` before updating the baseline.
 - [tanikun-nix-ci](.agents/skills/tanikun-nix-ci/SKILL.md):
   Nix and GitHub Actions failure triage.
 - [tanikun-sync-change](.agents/skills/tanikun-sync-change/SKILL.md):
-  Phase 4 HTTP sync contract, Worker, D1, local auth, browser client, and real
-  convergence harness.
+  Phase 4 HTTP sync contract, Phase 5 session proof, Worker, D1, auth, browser
+  client, and real convergence harness.
 - [tanikun-toolchain-update](.agents/skills/tanikun-toolchain-update/SKILL.md):
   MoonBit, Node.js, pnpm, Warren, mooncakes, and turtles pins.
 - [verify](.agents/skills/verify/SKILL.md):
@@ -114,6 +120,9 @@ Actual screen-reader evidence for the requirement summary remains open in
   [ADR-0015](docs/adr/0015-passkey-session-account-boundary.md). The
   [#176](https://github.com/beso1225/tanikun/issues/176) verifier evidence is
   merged; the dependent issues implement the authentication contract.
+- [docs/PHASE_5_SESSION_PROOF.md](docs/PHASE_5_SESSION_PROOF.md) records the
+  bounded #185 real-session proof, its virtual-authenticator properties, and
+  the physical, screen-reader, and Linux CI limits.
 - [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) is the planner UI baseline.
 - [docs/MUTATION.md](docs/MUTATION.md) records mutation evidence.
 - [GLOSSARY.md](GLOSSARY.md) defines domain terms.

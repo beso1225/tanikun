@@ -136,9 +136,9 @@ proves runtime loading of that packaged module, not just its existence:
 6. It asserts the positive results, the rejected mutations, and the rejected
    wrong values.
 
-`just test-sync` includes this file. In the CI packaged mode it runs with
-`TANIKUN_API_DIST="$PWD/result-api"`, so the verified code comes from the Nix
-artifact. The Node-only release test also checks the bundle's presence and
+`just test-session-proof` includes this file. In the CI packaged mode it runs
+with `TANIKUN_API_DIST="$PWD/result-api"`, so the verified code comes from the
+Nix artifact. The Node-only release test also checks the bundle's presence and
 self-containment, but the workerd packaged test is the runtime proof.
 
 The packaged runtime uses `wrangler@4.151.1`, which resolves

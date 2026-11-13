@@ -11,8 +11,9 @@ network API, or internal setters.
 
 Configured sync status, outbox, network, convergence, and fault verification
 belong to the sibling `tanikun-sync-change` skill at
-`../tanikun-sync-change/SKILL.md`. The static page can show `同期未設定`; that
-does not prove HTTP sync. The session account button is hidden without a
+`../tanikun-sync-change/SKILL.md`. Phase 4 uses `just test-sync`; Phase 5
+passkey-session proof uses `just test-session-proof`. The static page can show
+`同期未設定`; that does not prove HTTP sync. The session account button is hidden without a
 session configuration. Registration, discoverable sign-in, copy consent,
 account switch, reauthentication, and the account settings disclosure are
 covered by the session journeys in that skill, not by this static driver.
@@ -90,8 +91,8 @@ coverage. Timetable also checks 390px overflow, keyboard dismissal with focus
 restoration, status badges, and A1/A2 winter grouping.
 
 Configured sync status, outbox, network, convergence, and fault verification
-are not part of `drive.mjs all`. Use the sibling `tanikun-sync-change` skill
-and `just test-sync`.
+are not part of `drive.mjs all`. Use the sibling `tanikun-sync-change` skill,
+`just test-sync` for Phase 4, and `just test-session-proof` for Phase 5.
 
 Run doctor before first drive and after failure. Failed runs close their owned
 instances in `finally`; start a fresh mode after doctor succeeds. Inspect
@@ -113,8 +114,9 @@ screenshots and one combined `all-trace.zip`.
 The Playwright browser regression test uses the same failure artifact paths for
 the Phase 2 journey. Evidence is never deleted by cleanup.
 
-Sync evidence under `.cache/verify/sync/` belongs to the sibling sync skill and
-`just test-sync`, not this static driver.
+Sync evidence under `.cache/verify/sync/` belongs to the sibling sync skill,
+`just test-sync` for Phase 4, and `just test-session-proof` for Phase 5. It is
+not this static driver.
 
 ## Cleanup
 

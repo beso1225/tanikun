@@ -1,20 +1,22 @@
 # Verification
 
 Read this when you run the sync checks, change the harness, or add a fault case.
-The existing `SyncHarness` in `tests/integration/sync-harness.mjs` and
-`just test-sync` own the real run. Do not add a second browser framework, a new
-endpoint, or a standalone doctor command.
+The existing `SyncHarness` in `tests/integration/sync-harness.mjs`,
+`just test-sync` for Phase 4, and `just test-session-proof` for Phase 5 own the
+real runs. Do not add a second browser framework, a new endpoint, or a
+standalone doctor command.
 
 ## Choose the layer
 
-| Change                                        | Command                                                                                                                                    | What it proves                                                                                    |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Contract, transport, coordinator, persistence | `node --test tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs tests/integration/persistence.test.mjs` | Pure JavaScript behavior against fake IndexedDB and a fake transport                              |
-| D1 schema, repository, Worker HTTP            | `just test-d1`                                                                                                                             | Real Workers runtime and local D1, including auth, CORS, limits, ownership                        |
-| Worker health or bridge only                  | `just test-worker`                                                                                                                         | One health case. It does not prove sync auth or D1                                                |
-| Static page status                            | `just test-browser`                                                                                                                        | Built page with a fake API. It does not prove real convergence                                    |
-| Real Worker, D1, and two browsers             | `just test-sync`                                                                                                                           | Convergence and faults; Phase 4 baseline: packaged 44 pass, source 43 pass + 1 packaged-only skip |
-| Nix checks                                    | `nix flake check path:. -L`                                                                                                                | Nix checks and packaged artifacts. It does not run the real sync harness                          |
+| Change                                        | Command                                                                                                                                    | What it proves                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Contract, transport, coordinator, persistence | `node --test tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs tests/integration/persistence.test.mjs` | Pure JavaScript behavior against fake IndexedDB and a fake transport                     |
+| D1 schema, repository, Worker HTTP            | `just test-d1`                                                                                                                             | Real Workers runtime and local D1, including auth, CORS, limits, ownership               |
+| Worker health or bridge only                  | `just test-worker`                                                                                                                         | One health case. It does not prove sync auth or D1                                       |
+| Static page status                            | `just test-browser`                                                                                                                        | Built page with a fake API. It does not prove real convergence                           |
+| Real Worker, D1, and two browsers             | `just test-sync`                                                                                                                           | Phase 4 dev-bearer convergence and faults                                                |
+| Real session proof                            | `just test-session-proof`                                                                                                                  | Phase 5 session replicas, ownership, CSRF/Origin, replay, expiry, evidence, and teardown |
+| Nix checks                                    | `nix flake check path:. -L`                                                                                                                | Nix checks and packaged artifacts. It does not run the real sync harness                 |
 
 Run commands inside `nix develop`. Install dependencies once with
 `pnpm install --frozen-lockfile`. Before a source web build, run
@@ -23,7 +25,7 @@ Run commands inside `nix develop`. Install dependencies once with
 
 ## Source and packaged modes
 
-`just test-sync` has two modes:
+Both real-session recipes have two modes:
 
 - Source: leave both `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST` unset. The recipe
   builds `apps/web/dist` and the MoonBit API first.
@@ -34,7 +36,7 @@ nix develop
 nix build path:.#web --out-link result-web
 nix build path:.#api --out-link result-api
 TANIKUN_WEB_DIST="$PWD/result-web" \
-  TANIKUN_API_DIST="$PWD/result-api" just test-sync
+  TANIKUN_API_DIST="$PWD/result-api" just test-session-proof
 ```
 
 Setting only one variable is an error. Never set `TANIKUN_API_DIST="$PWD"` or
@@ -53,13 +55,15 @@ source tree.
 2. Creates isolated home, config, cache, and persistence directories.
 3. Reads the API config and artifact paths.
 4. Applies the D1 migrations before the first Worker request.
-5. Starts the static web server on `http://127.0.0.1:4300`.
+5. Starts the static web server. Dev bearer uses `http://127.0.0.1:4300`;
+   session mode uses `https://localhost:4300` with a disposable loopback
+   certificate.
 6. Starts Wrangler with `--port 0` and reads the actual origin from the
    `Ready on` line.
 7. Waits for `GET /api/health`.
 
 The API origin is never fixed at 8787. The web origin is fixed at 4300 because
-ADR-0014 allows exactly that Origin. If 4300 is occupied, the harness fails with
+ADR-0014 and ADR-0015 allow exactly those origins. If 4300 is occupied, the harness fails with
 a clear message and does not touch the listener. Stop and coordinate. Do not
 kill the process, reuse the listener, or change the CORS port.
 
@@ -145,6 +149,34 @@ requests gated offline, clears its seeded planner through the production
 B. It compares normalized source, sorted heads, merged cursors, observed
 high-water, outbox emptiness, and D1 sequence uniqueness. It then reloads both
 browsers and exchanges again to prove idempotency. Keep those assertions.
+`session-replica-proof.test.mjs` repeats the replica shape over real session
+cookies, CSRF, and discoverable passkey sign-in. It must keep the server
+history pull, duplicate append, and reload checks.
+
+## Session proof
+
+`just test-session-proof` is the bounded Phase 5 gate. It runs:
+
+- `session-sync-packaged.test.mjs` and `webauthn-packaged.test.mjs` for Nix
+  artifact wiring;
+- `session-account-journey.test.mjs` and
+  `session-credential-journey.test.mjs` for copy consent, account switch,
+  multi-tab fencing, reauthentication, second passkeys, and revocation;
+- `session-replica-proof.test.mjs` for two Alice replicas over session HTTP;
+- `session-account-proof.test.mjs` for Bob's foreign read/write denial and the
+  Alice-to-Bob outbox fence;
+- `session-auth-faults.test.mjs` for replay, invalid challenge, wrong binding,
+  cookie flags, CSRF/Origin rejection, logout revocation, and D1 expiry;
+- `session-response-loss.test.mjs` for a lost session push response;
+- `session-failure-evidence.test.mjs` for sanitized failure logs, screenshots,
+  traces, and owned cleanup.
+
+The new tests use `session-proof-helpers.mjs` to inspect Chromium's cookie jar,
+send an exact hostile Origin from the context request API, count D1 writes, and
+assert sanitized evidence and owned teardown. Do not replace the page fetch or
+context cookie jar with a manual Cookie header. Page fetch cannot set Origin, so
+the Origin-negative case deliberately uses the context request API with the
+browser's cookie store.
 
 ## Evidence
 
@@ -173,7 +205,9 @@ not stack-free.
 Do not attach a raw trace, a full Wrangler debug log, a token, a document ID, or
 a payload to a public report. Use the redacted evidence under
 `.cache/verify/sync/`. Cleanup removes the temporary directory and owned
-processes, not the evidence.
+processes, not the evidence. The new session tests call
+`assertEvidenceSanitized` and `assertHarnessCleaned` after `close()`. Keep those
+checks when adding a journey.
 
 ## Handoff
 
