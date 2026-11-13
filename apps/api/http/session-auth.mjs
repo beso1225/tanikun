@@ -1,6 +1,9 @@
 import { createConfiguredAuthRateLimiter } from "../rate-limits/limiter.mjs";
 import { AUTH_ROUTE_RATE_LIMIT_POLICIES } from "../rate-limits/policy.mjs";
-import { AuthStorageError } from "../repositories/auth-data.mjs";
+import {
+  AuthStorageError,
+  requireCredentialId,
+} from "../repositories/auth-data.mjs";
 import {
   assertSessionOrigin,
   createSessionAdmission,
@@ -15,7 +18,7 @@ import {
 import { readSessionAuthConfig } from "../webauthn/config.mjs";
 import { decodeSessionToken } from "../webauthn/session-material.mjs";
 import { AUTH_BODY_MAX_BYTES, parseCeremonyBody } from "../webauthn/wire.mjs";
-import { AUTH_ROUTES } from "./auth-routes.mjs";
+import { matchAuthRoute } from "./auth-routes.mjs";
 import { ApiError } from "./errors.mjs";
 import { parseJson, readBodyBytes, readJsonBody } from "./json.mjs";
 import { emptyResponse, jsonResponse } from "./respond.mjs";
@@ -24,6 +27,16 @@ import {
   assertJsonRequest,
   dispatchWebAuthnRequest,
 } from "./webauthn.mjs";
+
+function credentialMetadata(credential) {
+  return {
+    id: credential.credentialId,
+    created_at: credential.createdAt,
+    last_used_at: credential.lastUsedAt,
+    backup_eligible: credential.backupEligible,
+    backup_state: credential.backupState,
+  };
+}
 
 function sessionBody(session, csrfToken) {
   return {
@@ -80,8 +93,9 @@ async function dispatch(request, env, dependencies, state) {
   assertSessionOrigin(request, config);
 
   const url = new URL(request.url);
-  const route = AUTH_ROUTES[url.pathname];
-  if (!route) throw new ApiError("not_found");
+  const matched = matchAuthRoute(url.pathname);
+  if (!matched) throw new ApiError("not_found");
+  const { route } = matched;
   if (!route.methods.includes(request.method))
     throw new ApiError("method_not_allowed", { allow: route.allow });
 
@@ -154,6 +168,13 @@ async function dispatch(request, env, dependencies, state) {
   )
     throw new ApiError("already_authenticated");
 
+  // The path credential ID is request shape, so it is validated with the
+  // media/body before fixed-window admission or the repository mutation.
+  const pathCredentialId =
+    route.id === "credential_remove"
+      ? requireCredentialId(matched.credentialId)
+      : null;
+
   // Fixed-window admission runs after media/body validation and before the
   // binding challenge, ceremony consumption, cryptography, or operation. The
   // body parse is shared with the ceremony dispatch below.
@@ -192,6 +213,26 @@ async function dispatch(request, env, dependencies, state) {
   }
 
   if (route.kind === "session") {
+    if (route.id === "credential_list") {
+      const credentials = await admission.auth.listCredentials(session.userId);
+      return {
+        response: jsonResponse(200, {
+          credentials: credentials.map(credentialMetadata),
+        }),
+        setCookies: [],
+      };
+    }
+    if (route.id === "credential_remove") {
+      await admission.auth.removeCredential({
+        sessionDigest: session.digest,
+        userId: session.userId,
+        credentialId: pathCredentialId,
+      });
+      return {
+        response: emptyResponse(204),
+        setCookies: [clearSessionCookie()],
+      };
+    }
     if (route.id === "session_status") {
       return {
         response: jsonResponse(200, sessionBody(session, presented.csrfToken)),
