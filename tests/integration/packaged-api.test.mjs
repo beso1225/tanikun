@@ -57,10 +57,15 @@ test(
       "0003_auth_rate_limits.sql",
     ]);
     for (const modulePath of [
+      "apps/api/http/api.mjs",
+      "apps/api/http/api.js",
+      "apps/api/http/session-auth.mjs",
       "apps/api/rate-limits/limiter.mjs",
       "apps/api/rate-limits/policy.mjs",
       "apps/api/repositories/auth-data.mjs",
       "apps/api/repositories/auth.mjs",
+      "apps/api/session/admission.mjs",
+      "apps/api/session/cookies.mjs",
     ]) {
       await access(resolve(apiRoot, modulePath));
     }
