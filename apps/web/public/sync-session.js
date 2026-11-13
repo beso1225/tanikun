@@ -95,7 +95,11 @@ export function createSessionStatusClient({
           },
         );
       } catch {
-        return { kind: SESSION_STATUS_KINDS.UNAVAILABLE, retryable: true };
+        return {
+          kind: SESSION_STATUS_KINDS.UNAVAILABLE,
+          retryable: true,
+          reason: "offline",
+        };
       }
       if (response.status === 401) {
         clear();
@@ -111,7 +115,11 @@ export function createSessionStatusClient({
         return result;
       }
       if (response.status >= 500)
-        return { kind: SESSION_STATUS_KINDS.UNAVAILABLE, retryable: true };
+        return {
+          kind: SESSION_STATUS_KINDS.UNAVAILABLE,
+          retryable: true,
+          reason: "server",
+        };
       if (response.status !== 200)
         return { kind: SESSION_STATUS_KINDS.MALFORMED, retryable: false };
       let text;
@@ -120,7 +128,11 @@ export function createSessionStatusClient({
       } catch {
         // Headers do not complete the request. A broken/aborted body stream
         // is a transport failure; only fully read invalid JSON is malformed.
-        return { kind: SESSION_STATUS_KINDS.UNAVAILABLE, retryable: true };
+        return {
+          kind: SESSION_STATUS_KINDS.UNAVAILABLE,
+          retryable: true,
+          reason: "offline",
+        };
       }
       let body;
       try {

@@ -25,6 +25,8 @@
             # Node.js is managed by fnm from .node-version, not nixpkgs.
             pkgs.fnm
             pkgs.just
+            # Loopback TLS for the Phase 5 session browser journey.
+            pkgs.openssl
             # `timeout` is required by turtles on macOS.
             pkgs.coreutils
             # The browser test uses nixpkgs' Playwright core and browsers so the

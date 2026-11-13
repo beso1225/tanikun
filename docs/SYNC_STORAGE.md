@@ -291,10 +291,116 @@ empty local database, repeats it as a no-op, and reads the recorded filename.
 This establishes local D1 and local Worker behavior, not production deployment,
 production identity, cryptographic protection, or browser synchronization.
 
-### Session browser activation gate
+### Session account isolation
 
-The session transport and status client are available, but the planner shell
-keeps session sync paused until #183 supplies account-scoped storage, generation
-fencing, and explicit consent for importing an unbound plan. A valid session
-alone does not authorize uploading the offline `planner` record. The Phase 4
-dev-bearer shell remains available with its explicit mode.
+[#183](https://github.com/beso1225/tanikun/issues/183) activates session sync
+behind [ADR-0015](adr/0015-passkey-session-account-boundary.md) and the local
+state contract in [PHASE_5.md](PHASE_5.md). The unbound `planner` record is
+never uploaded by authentication alone.
+
+The browser keeps the following local layout:
+
+| Data            | Session mode                                                       | Dev bearer mode                                  |
+| --------------- | ------------------------------------------------------------------ | ------------------------------------------------ |
+| Unbound plan    | `planner`                                                          | `planner`                                        |
+| Account plan    | `account:<handle>:planner`                                         | not used                                         |
+| Auth state      | `auth:state` with version, 128-bit generation, handle, local state | not used                                         |
+| Metadata        | `sync:` + `JSON.stringify([handle, apiOrigin, documentId])`        | `sync:` + `JSON.stringify([origin, documentId])` |
+| Outbox and seen | `<handle>\|<apiOrigin>\|<documentId>`                              | `<apiOrigin>:<documentId>`                       |
+| Sync Web Lock   | `tanikun-sync:<handle>:<apiOrigin>:<documentId>`                   | `tanikun-sync:<apiOrigin>:<documentId>`          |
+| Auth Web Lock   | `tanikun-auth-v1`                                                  | not used                                         |
+
+`auth:state` contains no session token, CSRF token, challenge, or planner
+payload. The additional `auth:upload:<handle>` marker records an explicitly
+copied unbound plan that has not received first-upload consent yet.
+`auth:copy:<handle>` records an explicit decline so a reload does not repeat
+the copy prompt.
+
+A success registration or sign-in writes the active state under the auth Web
+Lock, increments the generation, and announces the change on the
+`tanikun-auth-v1` broadcast channel. Sign-out and account switch do the same.
+Every delayed status, expiry, explicit sign-in, logout, copy, decline, and
+first-upload consent carries the expected generation and handle into the same
+IndexedDB transaction. A mismatch aborts with `stale_account` before changing
+state. A delayed status response cannot adopt or expire a newer account, and a
+copy or consent decision from an old tab cannot create or clear another
+lifecycle's marker.
+
+A registration or sign-in ceremony owns an `AbortController`. Closing the
+account dialog, signing out, an account switch, or another auth broadcast aborts
+the native credential operation and any in-flight request. A credential that
+arrives after cancellation is discarded before the verification request. If the
+server already committed a cookie, the client reports an explicit session
+mismatch and never writes the old scope locally.
+
+Outbox, seen, and clear mutations run under the shared auth lock and recheck the
+expected scope inside that lock. The planner and sync databases are still
+separate; this is serialization, not a cross-database transaction claim.
+Saves compare the generation and handle with `auth:state` in the same IndexedDB
+transaction as the planner write. A mismatch aborts with `stale_account` and
+retains the attempted text in memory for copy or export. Sync checks the
+generation and handle before bootstrap, after bootstrap before binding, before
+each pull, and before applying or acknowledging a page. Session status is read
+before bootstrap and at the start of each sync, so a server handle mismatch
+stops with `account_changed` or `reauth_required` without writing planner bytes.
+
+The browser offers an explicit local copy only when the account has no account
+plan and an unbound plan exists. The copy leaves `planner` untouched and sets
+the pending-upload marker. The first upload requires a second confirmation.
+Declining the copy keeps the account on its own local and server state; the
+unbound plan remains available while signed out. Unrelated Automerge roots stop
+with `history_mismatch` and preserve both plans, outbox entries, seen hashes,
+and cursors; the browser never merges them automatically.
+
+Initial planner load waits for session bootstrap before selecting the account
+scope. This deliberately favors a correct scope over an earlier local start:
+a stalled status request can keep the planner loading until the session
+client's existing 15-second timeout. Ordinary offline errors settle immediately.
+After an unavailable status settles, the planner uses the retained local account
+or unbound scope while sync stays paused. A separate, shorter fallback timer
+would let a valid but slow response change the account behind the initial load.
+
+A session `401`, expiry, or signed-out response moves the local state to
+`reauth_required` without changing the generation, so the current account plan
+stays editable while sync pauses. A successful reauthentication increments the
+generation and reloads the account scope. Logout hides account data rather than
+deleting or encrypting it. The account dialog states that authentication does
+not provide a Phase 6 document key and that losing every passkey has no
+recovery bypass.
+
+The real harness can run in `session` mode. It serves the app at
+`https://localhost:4300` with a disposable loopback certificate, proxies `/api`
+to the ephemeral Wrangler origin, and drives a Chromium virtual authenticator.
+The journeys use the real Worker, D1 migrations, cookies, CSRF, and Web Locks;
+the passkey and TLS material are synthetic test fixtures. This does not prove a
+physical authenticator, public deployment, or the Linux CI matrix owned by
+issue #185.
+
+### Account isolation evidence
+
+The #183 implementation and its lifecycle fixes were verified on macOS arm64:
+
+- `just test`: 174 JavaScript tests passed (24 export/document tests and 150
+  runtime tests), plus 294 MoonBit tests.
+- `just test-d1`: 305 passed.
+- `just test-browser`: 58 browser tests and 1 allocation test passed.
+- `just test-sync` from source: 53 passed and 4 packaged-only tests skipped.
+- `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 57 passed,
+  including all nine session account journeys.
+- `nix flake check path:. -L` on the current system: all checks passed,
+  including 6 release checks. It omitted the incompatible `x86_64-linux`
+  system locally; #185 owns the Linux TLS, cookie-jar, and virtual-auth CI
+  matrix.
+
+The account lifecycle regressions cover a late expiry after Alice switches to
+Bob, a late expiry after logout, a delayed active or expired status response,
+copy and first-upload consent from an old generation, a pending native ceremony
+canceled by a switch or dialog close, a switch at the acknowledge and
+mark-remote mutation boundaries, nested settings to account focus ownership,
+and account-dialog Retry-After cooldown. Both lock orderings for expiry and
+active status adoption preserve the same account generation and expose the
+reauthentication action rather than account-switch recovery.
+
+The session journeys use a disposable loopback certificate and a Chromium
+virtual authenticator. They do not prove a physical provider, screen-reader
+speech, public deployment, or Linux CI.

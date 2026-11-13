@@ -56,7 +56,36 @@ persistence, not sync.
   `sync-coordinator.js` `pullPages`.
 - Outbox and seen keys are scoped by `origin:document`. Pull before push.
   Retries send the exact saved envelope and change ID, so duplicate delivery
-  stays idempotent.
+  stays idempotent. Session mode scopes them by
+  `<handle>|<apiOrigin>|<documentId>` and gives metadata and the sync Web Lock
+  the matching handle. Dev bearer keeps the Phase 4 keys on its separate
+  origin.
+- Session saves compare `auth:state` generation and handle in the same IndexedDB
+  transaction as the planner write. Sync checks them before bootstrap, after
+  bootstrap before binding, before pull, and before apply or acknowledgement.
+  An unrelated root stops with `history_mismatch` and keeps both plans, outbox,
+  seen, and cursors.
+- An unbound `planner` is never uploaded automatically. Copying it to
+  `account:<handle>:planner` is explicit, keeps the original, and sets
+  `auth:upload:<handle>` until a separate first-upload consent. Copy, decline,
+  and consent carry the expected generation and handle into the same local
+  transaction.
+- Delayed status, expiry, sign-in, and logout transitions compare the expected
+  generation and handle in the same auth-state transaction. A mismatch is
+  `stale_account`, never an overwrite of a newer account.
+- Registration and sign-in use an AbortController. Dialog close, logout, an
+  account switch, or an auth broadcast aborts the native ceremony before the
+  verify request. A late server-committed cookie is an explicit mismatch, not
+  a local adoption.
+- Outbox, seen, and clear mutations use the shared auth lock and recheck the
+  expected scope while holding it. This serializes the separate sync database;
+  it is not a cross-database transaction.
+- A session `401` keeps the generation and becomes `reauth_required`; the
+  account plan remains locally editable and sync pauses without an automatic
+  retry. Account-dialog retry and sign-in actions share the session
+  `Retry-After` cooldown.
+- Opening the account dialog from settings closes the settings modal first, so
+  the generic focus trap owns exactly one modal.
 - Web Locks serialize sync per API origin and document. Without Web Locks, one
   leader is required. Compare-and-set rejects cursor rollback, but it does not
   make concurrent leaders safe.
@@ -103,18 +132,21 @@ Run commands inside `nix develop`. Install dependencies once with
 `pnpm install --frozen-lockfile`. Before a source web build, run
 `just setup-web` to install the repository-pinned Warren if it is absent.
 
-| Change                                        | Command                                                                                                                                    | What it proves                                                                                    |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Contract, transport, coordinator, persistence | `node --test tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs tests/integration/persistence.test.mjs` | Pure JavaScript behavior against fake IndexedDB and a fake transport                              |
-| D1, repository, Worker HTTP                   | `just test-d1`                                                                                                                             | Real Workers runtime and local D1, including auth, CORS, limits, ownership                        |
-| Worker health or bridge only                  | `just test-worker`                                                                                                                         | One health case. It does not prove sync auth or D1                                                |
-| Static page status                            | `just test-browser`                                                                                                                        | Built page with a fake API. It does not prove real convergence                                    |
-| Real Worker, D1, and two browsers             | `just test-sync`                                                                                                                           | Convergence and faults; Phase 4 baseline: packaged 44 pass, source 43 pass + 1 packaged-only skip |
-| Nix checks                                    | `nix flake check path:. -L`                                                                                                                | Nix checks and packaged artifacts. It does not run the real sync harness                          |
+| Change                                        | Command                                                                                                                                    | What it proves                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Contract, transport, coordinator, persistence | `node --test tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs tests/integration/persistence.test.mjs` | Pure JavaScript behavior against fake IndexedDB and a fake transport                             |
+| D1, repository, Worker HTTP                   | `just test-d1`                                                                                                                             | Real Workers runtime and local D1, including auth, CORS, limits, ownership                       |
+| Worker health or bridge only                  | `just test-worker`                                                                                                                         | One health case. It does not prove sync auth or D1                                               |
+| Static page status                            | `just test-browser`                                                                                                                        | Built page with a fake API. It does not prove real convergence                                   |
+| Real Worker, D1, and two browsers             | `just test-sync`                                                                                                                           | Convergence, faults, and the session account journeys. Read the run output for current totals.   |
+| Session auth and account switch               | `node --test tests/integration/session-account-journey.test.mjs`                                                                           | Real Worker, D1, loopback TLS, virtual authenticator, copy consent, switch, expiry, and multitab |
+| Nix checks                                    | `nix flake check path:. -L`                                                                                                                | Nix checks and packaged artifacts. It does not run the real sync harness                         |
 
 `just test-sync` has two modes. Leave both `TANIKUN_WEB_DIST` and
 `TANIKUN_API_DIST` unset to build from source. Set both to the roots of the Nix
-outputs to test packaged artifacts:
+outputs to test packaged artifacts. The session-account journey starts its own
+`SyncHarness({ mode: "session" })`; it does not reuse a source or packaged API
+fallback:
 
 ```sh
 nix build path:.#web --out-link result-web
@@ -135,6 +167,18 @@ starts the web server on `http://127.0.0.1:4300`, starts Wrangler on an
 ephemeral port, reads the actual API origin from the readiness line, and waits
 for `GET /api/health`. The API origin is never fixed at 8787. The web origin is
 fixed because ADR-0014 allows exactly that Origin.
+
+`SyncHarness({ mode: "session" })` is the Phase 5 path. It serves
+`https://localhost:4300` from a disposable loopback certificate generated in
+the harness temp directory, proxies `/api` to the ephemeral Wrangler origin, and
+sets the exact session configuration (`AUTH_ORIGIN=https://localhost:4300`,
+`RP_ID=localhost`, `APP_ENV=test`, and a test-only rate-limit key). Do not add a
+public HTTP exception, change the RP ID, or reuse the user's browser profile.
+The harness uses Chromium `ignoreHTTPSErrors` only inside its disposable
+context, never an OS trust-store change. A virtual authenticator supplies the
+resident ES256 passkey. This is synthetic browser automation, not a physical
+provider proof. #185 owns the broader Linux TLS, cookie-jar, and virtual-auth CI
+matrix.
 
 If 4300 is occupied, the harness fails with a clear message and leaves the
 listener alone. Stop and coordinate. Do not kill a process by name, reuse the

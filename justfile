@@ -42,7 +42,7 @@ test: build
         -p beso1225/tanikun-web/app \
         -p beso1225/tanikun-web/cmd/browser
     node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs tests/integration/deployment-config.test.mjs
-    node --test tests/integration/planner-record-reader.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs
+    node --test tests/integration/planner-record-reader.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/auth-client.test.mjs tests/integration/auth-state.test.mjs tests/integration/auth-persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs tests/integration/sync-account-fence.test.mjs
 
 # Apply versioned sync migrations to the local D1 database only.
 migrate-local:
@@ -95,7 +95,11 @@ build-web: build-css build-automerge
 test-browser: build-web
     moon run scripts/build-allocation-fixture.mbtx
     node --test tests/integration/browser-allocations.test.mjs
-    node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs
+    just test-browser-built
+
+# Test existing browser assets without requiring the source build tools.
+test-browser-built:
+    node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs tests/integration/auth-stale-status.test.mjs tests/integration/auth-rate-status.test.mjs tests/integration/auth-stale-logout.test.mjs
 
 # Run sync convergence and fault suites against a real local Worker and D1.
 # Set both TANIKUN_WEB_DIST and TANIKUN_API_DIST to reuse packaged artifacts.
@@ -109,7 +113,7 @@ test-sync:
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/session-account-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
