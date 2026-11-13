@@ -350,3 +350,22 @@ The journeys use the real Worker, D1 migrations, cookies, CSRF, and Web Locks;
 the passkey and TLS material are synthetic test fixtures. This does not prove a
 physical authenticator, public deployment, or the Linux CI matrix owned by
 issue #185.
+
+### Account isolation evidence
+
+The #183 implementation was verified on macOS arm64 at the merge base plus
+these commits:
+
+- `just test-d1`: 305 passed.
+- `just test-browser`: 41 passed.
+- `just test-sync` from source: 52 passed and 4 packaged-only tests skipped.
+- `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 56 passed,
+  including all eight session account journeys.
+- `nix flake check path:. -L` on the current system: all checks passed,
+  including 6 release checks. It omitted the incompatible `x86_64-linux`
+  system locally; #185 owns the Linux TLS, cookie-jar, and virtual-auth CI
+  matrix.
+
+The session journeys use a disposable loopback certificate and a Chromium
+virtual authenticator. They do not prove a physical provider, screen-reader
+speech, public deployment, or Linux CI.
