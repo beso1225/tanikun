@@ -49,6 +49,7 @@ const state = {
 let dialog = null;
 let notice = null;
 let refreshPromise = null;
+let lifecycleEpoch = 0;
 let statusClient = null;
 let authClient = null;
 let controller = null;
@@ -961,8 +962,9 @@ async function logout() {
     globalThis.location.reload();
   } catch (error) {
     state.busy = false;
-    if (error?.code === "stale_account") {
+    if (error?.code === "stale_account" || error?.code === "account_changed") {
       state.stale = true;
+      statusClient.clear();
       try {
         state.auth = await authState.read();
       } catch {
@@ -1186,6 +1188,7 @@ async function refresh() {
   if (!SESSION_MODE || !authState || !statusClient) return null;
   if (Date.now() < state.retryNotBefore) return state.auth;
   if (refreshPromise) return refreshPromise;
+  const expectedEpoch = lifecycleEpoch;
   refreshPromise = (async () => {
     state.sessionState = "loading";
     state.message = null;
@@ -1205,6 +1208,7 @@ async function refresh() {
       return null;
     }
     const status = await statusClient.read();
+    if (lifecycleEpoch !== expectedEpoch) return state.auth;
     state.kind = status.kind;
     state.reason = status.reason;
     const current = await authState.read();
@@ -1238,6 +1242,8 @@ async function refresh() {
         current.accountHandle !== null &&
         current.accountHandle !== session.account.handle
       ) {
+        state.stale = true;
+        statusClient.clear();
         state.sessionState =
           current.sessionState === "reauth_required"
             ? "reauth_required"
@@ -1247,6 +1253,11 @@ async function refresh() {
         state.messageKind = "alert";
         state.displayName = null;
       } else {
+        const pendingUpload = await authState.isPendingUpload(
+          session.account.handle,
+        );
+        const pendingCopy =
+          !pendingUpload && (await copyNeeded(session.account.handle));
         let adopted = current;
         if (
           current.sessionState !== "active" ||
@@ -1258,17 +1269,18 @@ async function refresh() {
             sessionState: "active",
             expected,
           });
+        } else {
+          // Even an already-active refresh must queue behind pending expiry.
+          adopted = await authState.setSessionState("active", expected);
         }
+        if (lifecycleEpoch !== expectedEpoch) return state.auth;
         state.auth = adopted;
         state.decisionScope = scopeOf(adopted);
         state.session = session;
         state.displayName = session.account.display_name;
         state.sessionState = "active";
-        state.pendingUpload = await authState.isPendingUpload(
-          session.account.handle,
-        );
-        state.pendingCopy =
-          !state.pendingUpload && (await copyNeeded(session.account.handle));
+        state.pendingUpload = pendingUpload;
+        state.pendingCopy = pendingCopy;
       }
     } else if (
       status.kind === SESSION_STATUS_KINDS.SIGNED_OUT ||
@@ -1340,6 +1352,15 @@ async function refresh() {
 }
 
 function handleSyncStatus(status = {}) {
+  if (
+    [
+      "reauth_required",
+      "unauthorized",
+      "stale_account",
+      "account_changed",
+    ].includes(status.code)
+  )
+    lifecycleEpoch += 1;
   if (status.code === "reauth_required" || status.code === "unauthorized") {
     state.sessionState = "reauth_required";
     const expected = scopeOf(state.auth);
@@ -1348,6 +1369,10 @@ function handleSyncStatus(status = {}) {
         .setSessionState("reauth_required", expected)
         .then((next) => {
           state.auth = next;
+          state.sessionState = next.sessionState;
+          renderAccountButton();
+          renderNotice();
+          renderDialog();
         })
         .catch((error) => {
           if (error?.code === "stale_account") {
@@ -1367,6 +1392,10 @@ function handleSyncStatus(status = {}) {
     renderAccountButton();
     renderNotice();
   } else if (status.code === "account_changed") {
+    state.stale = true;
+    statusClient.clear();
+    renderAccountButton();
+    renderNotice();
     state.message =
       "別のアカウントのセッションに変わりました。サインインし直してください。";
     state.messageKind = "alert";

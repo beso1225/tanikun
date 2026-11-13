@@ -660,3 +660,48 @@ test("failed bootstrap cannot notify expiry after switching accounts", async () 
   );
   assert.equal((await context.auth.read()).accountHandle, bobHandle);
 });
+
+test("bootstrap cannot bind a document after the server account changes", async () => {
+  const context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+  });
+  await context.storage.save(JSON.stringify(source));
+  context.transport.bootstrap = async () => {
+    context.setVerifyError("account_changed");
+    return { kind: "bootstrapped", document_id: bobDocument, cursor: 0 };
+  };
+  const result = await context.coordinator.sync();
+  assert.equal(result.code, "account_changed");
+  assert.equal(context.coordinator.documentId(), undefined);
+  assert.equal(context.transport.calls.pulls.length, 0);
+  assert.equal(context.transport.calls.pushes.length, 0);
+  assert.deepEqual(await context.readMetadata(), {
+    syncVersion: 1,
+    mergedCursor: 0,
+    observedHighWater: 0,
+  });
+});
+
+test("a server account change after pull cannot upload the local outbox", async () => {
+  let context;
+  context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+    page: () => {
+      context.setVerifyError("account_changed");
+      return null;
+    },
+  });
+  await context.storage.save(JSON.stringify(source));
+  const result = await context.coordinator.sync();
+  assert.equal(result.code, "account_changed");
+  assert.equal(context.transport.calls.pushes.length, 0);
+  const pending = await context.syncStore.listOutbox(
+    `${aliceHandle}|${apiOrigin}|${aliceDocument}`,
+  );
+  assert.ok(pending.length > 0);
+  assert.equal((await context.readMetadata()).mergedCursor, 0);
+});

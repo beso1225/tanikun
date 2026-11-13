@@ -8,7 +8,7 @@ import { startStaticServer, waitForPersistence } from "./planner-harness.mjs";
 const core = process.env.PLAYWRIGHT_CORE;
 assert.ok(core, "run inside nix develop");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
-const dist = resolve("apps/web/dist");
+const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 const json = (status, body, headers = {}) => ({
   status,
   contentType: "application/json",

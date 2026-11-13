@@ -252,6 +252,8 @@ const retryable = (result) =>
       await checkFence();
       if (result.kind !== "bootstrapped")
         throw new SyncCoordinatorError(result.code ?? result.kind, result);
+      await verifyBoundSession();
+      await checkFence();
       documentId = result.document_id;
       await metadataStore.observe(metadataKey(), result.cursor, fenceOptions());
     };
@@ -309,6 +311,7 @@ const retryable = (result) =>
     };
 
     const pushBatch = async (batch) => {
+      await verifyBoundSession();
       await checkFence();
       const result = await retry(() =>
         transport.push(
@@ -400,6 +403,7 @@ const retryable = (result) =>
         }
       }
       for (let pages = 0; pages < 10_000; pages += 1) {
+        await verifyBoundSession();
         await checkFence();
         const result = await retry(() =>
           transport.pull(documentId, {
