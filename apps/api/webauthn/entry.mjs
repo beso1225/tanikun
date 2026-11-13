@@ -17,5 +17,19 @@ export {
   parseAssertionVerification,
   parseRegistrationVerification,
 } from "./wire.mjs";
+export {
+  AUTH_RATE_LIMIT_POLICIES,
+  AUTH_RATE_LIMIT_STORAGE,
+  AUTH_ROUTE_RATE_LIMIT_POLICIES,
+  rateLimitPoliciesForRoute,
+} from "../rate-limits/policy.mjs";
+export {
+  createAuthRateLimiter,
+  createConfiguredAuthRateLimiter,
+  decodeRateLimitKey,
+  trustedClientAddress,
+  UNKNOWN_TRUSTED_ADDRESS,
+} from "../rate-limits/limiter.mjs";
+export { createSessionAdmission } from "../session/admission.mjs";
 export { handleWebAuthnRequest } from "../http/webauthn.mjs";
 export { handleSessionAuthRequest } from "../http/session-auth.mjs";

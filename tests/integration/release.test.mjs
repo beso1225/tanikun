@@ -82,6 +82,10 @@ test("packaged auth entry exports the session and ceremony boundaries", async ()
   assert.equal(typeof entry.handleSessionAuthRequest, "function");
   assert.equal(typeof entry.createSessionMaterial, "function");
   assert.equal(typeof entry.readSessionAuthConfig, "function");
+  assert.equal(typeof entry.createSessionAdmission, "function");
+  assert.equal(typeof entry.createConfiguredAuthRateLimiter, "function");
+  assert.equal(typeof entry.AUTH_RATE_LIMIT_POLICIES, "object");
+  assert.equal(typeof entry.trustedClientAddress, "function");
 });
 
 test("packaged API includes every Worker module, migration, and runtime config", async () => {
@@ -94,12 +98,15 @@ test("packaged API includes every Worker module, migration, and runtime config",
     "apps/api/http/json.mjs",
     "apps/api/http/respond.mjs",
     "apps/api/http/sync.mjs",
+    "apps/api/rate-limits/limiter.mjs",
+    "apps/api/rate-limits/policy.mjs",
     "apps/api/repositories/auth-data.mjs",
     "apps/api/repositories/auth.mjs",
     "apps/api/repositories/changes.mjs",
     "apps/api/webauthn/auth.js",
     "apps/api/migrations/0001_sync.sql",
     "apps/api/migrations/0002_auth_storage.sql",
+    "apps/api/migrations/0003_auth_rate_limits.sql",
     "packages/sync-contract/contract.mjs",
     "_build/js/release/build/beso1225/tanikun-api/tanikun-api.js",
     "wrangler.jsonc",
@@ -108,7 +115,7 @@ test("packaged API includes every Worker module, migration, and runtime config",
 
   assert.deepEqual(
     (await readdir(join(api, "apps/api/migrations"))).toSorted(),
-    ["0001_sync.sql", "0002_auth_storage.sql"],
+    ["0001_sync.sql", "0002_auth_storage.sql", "0003_auth_rate_limits.sql"],
   );
 
   const authShim = await readFile(

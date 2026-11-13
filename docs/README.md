@@ -19,6 +19,7 @@ Start with the current phase documents.
 - [Phase 5 WebAuthn verifier spike](PHASE_5_WEBAUTHN_SPIKE.md)
 - [Phase 5 authentication contract](PHASE_5.md)
 - [Phase 5 passkey sessions and account boundary](adr/0015-passkey-session-account-boundary.md)
+- [Phase 5 authentication abuse limits](AUTH_ABUSE_LIMITS.md)
 - [Accessibility baseline](ACCESSIBILITY.md)
 - [Mutation testing](MUTATION.md)
 - [Mutation baseline](mutation-baseline.json)

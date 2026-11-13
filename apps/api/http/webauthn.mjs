@@ -1,10 +1,6 @@
 import { readSessionAuthConfig } from "../webauthn/config.mjs";
 import { createAuthCeremonyService } from "../webauthn/service.mjs";
-import {
-  parseAuthenticationOptionsBody,
-  parseRegistrationOptionsBody,
-  AUTH_BODY_MAX_BYTES,
-} from "../webauthn/wire.mjs";
+import { AUTH_BODY_MAX_BYTES, parseCeremonyBody } from "../webauthn/wire.mjs";
 import { AUTH_ROUTES } from "./auth-routes.mjs";
 import { ApiError } from "./errors.mjs";
 import { readJsonBody } from "./json.mjs";
@@ -74,6 +70,7 @@ export async function dispatchWebAuthnRequest({
   config,
   route,
   body,
+  parsedBody = null,
   context,
   dependencies = {},
 }) {
@@ -84,6 +81,7 @@ export async function dispatchWebAuthnRequest({
   if (route.csrf && context?.csrfVerified !== true)
     throw new ApiError("csrf_forbidden");
   const checkedContext = assertContext(context);
+  const parsed = parsedBody ?? parseCeremonyBody(route.id, body);
   const service = createAuthCeremonyService({
     db: env.DB,
     config,
@@ -93,10 +91,9 @@ export async function dispatchWebAuthnRequest({
   switch (route.id) {
     case "registration_options": {
       if (checkedContext.session) throw new ApiError("already_authenticated");
-      const displayName = parseRegistrationOptionsBody(body);
       const result = await service.registrationOptions({
         bindingDigest: checkedContext.bindingDigest,
-        displayName,
+        displayName: parsed.displayName,
       });
       return { response: jsonResponse(200, result), handoff: null };
     }
@@ -105,6 +102,7 @@ export async function dispatchWebAuthnRequest({
       const result = await service.verifyRegistration({
         bindingDigest: checkedContext.bindingDigest,
         body,
+        parsed: parsed.registration,
         existingSession: checkedContext.session ?? null,
       });
       return {
@@ -113,7 +111,6 @@ export async function dispatchWebAuthnRequest({
       };
     }
     case "sign_in_options": {
-      parseAuthenticationOptionsBody(body);
       const result = await service.signInOptions({
         bindingDigest: checkedContext.bindingDigest,
       });
@@ -123,6 +120,7 @@ export async function dispatchWebAuthnRequest({
       const result = await service.verifySignIn({
         bindingDigest: checkedContext.bindingDigest,
         body,
+        parsed: parsed.assertion,
         presentedSession: checkedContext.session ?? null,
       });
       return {
@@ -131,7 +129,6 @@ export async function dispatchWebAuthnRequest({
       };
     }
     case "step_up_options": {
-      parseAuthenticationOptionsBody(body);
       const result = await service.stepUpOptions({
         bindingDigest: checkedContext.bindingDigest,
         session: sessionFor(checkedContext),
@@ -142,6 +139,7 @@ export async function dispatchWebAuthnRequest({
       const result = await service.verifyStepUp({
         bindingDigest: checkedContext.bindingDigest,
         body,
+        parsed: parsed.assertion,
         session: sessionFor(checkedContext),
       });
       return {
@@ -150,7 +148,6 @@ export async function dispatchWebAuthnRequest({
       };
     }
     case "credential_add_options": {
-      parseAuthenticationOptionsBody(body);
       const result = await service.addCredentialOptions({
         bindingDigest: checkedContext.bindingDigest,
         session: sessionFor(checkedContext),
@@ -161,6 +158,7 @@ export async function dispatchWebAuthnRequest({
       const result = await service.verifyAddCredential({
         bindingDigest: checkedContext.bindingDigest,
         body,
+        parsed: parsed.registration,
         session: sessionFor(checkedContext),
       });
       return {
@@ -202,11 +200,12 @@ async function dispatch(request, env, context, dependencies) {
   });
 }
 
-// This handler is intentionally not registered in the Worker bridge. #180
-// supplies the cookie/session/CSRF boundary and #181 must add the fixed-window
-// abuse limits before any auth route can become reachable. The binding digest,
-// resolved session, and csrfVerified flag are server-only context values; a
-// request body or header can never supply them.
+// This ceremony-only handler is intentionally not registered in the Worker
+// bridge. The reachable composition is handleSessionAuthRequest, which applies
+// the #181 fixed-window limits before calling this dispatcher. Do not register
+// this handler directly; #182 still owns session sync and route activation. The
+// binding digest, resolved session, and csrfVerified flag are server-only
+// context values; a request body or header can never supply them.
 export async function handleWebAuthnRequest(
   request,
   env,

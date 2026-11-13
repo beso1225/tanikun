@@ -20,8 +20,9 @@
 // - `verify`: require exactly one valid cookie; never mint or rebind.
 //
 // This table deliberately does not register anything in the Worker bridge.
-// #181 must add the fixed-window D1 abuse limits and #182 must add the sync
-// principal before these routes can become reachable in a deployed Worker.
+// #181 applies the fixed-window D1 limits in the session boundary. #182 must
+// add the sync principal and #184 must add credential routes before these
+// routes can become reachable in a deployed Worker.
 const route = (value) => Object.freeze(value);
 
 export const AUTH_ROUTES = Object.freeze({

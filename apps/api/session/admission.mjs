@@ -7,6 +7,8 @@
 // recheck the session (and recent auth where required) in the same D1 batch as
 // their final write. Sync append keeps the principal resolved here, matching
 // ADR-0013 retry semantics.
+import { createConfiguredAuthRateLimiter } from "../rate-limits/limiter.mjs";
+import { AUTH_ROUTE_RATE_LIMIT_POLICIES } from "../rate-limits/policy.mjs";
 import {
   AuthStorageError,
   decodeBase64Url,
@@ -89,6 +91,20 @@ async function verifyCsrf({ session, csrfToken, headerValue }) {
     throw new AuthStorageError("csrf_forbidden");
 }
 
+// Fixed-window admission needs the binding digest before the full verify
+// rejection path. This read never mints and never throws for an absent or
+// malformed cookie; the route's real binding check still owns that 401.
+export async function readBindingForRate(cookies) {
+  if (cookies.malformed) return null;
+  const values = cookieValues(cookies, BINDING_COOKIE_NAME);
+  if (values.length !== 1) return null;
+  try {
+    return { digest: await sha256(decodeBinding(values[0])) };
+  } catch {
+    return null;
+  }
+}
+
 export function createSessionAdmission({
   db,
   repository,
@@ -96,7 +112,8 @@ export function createSessionAdmission({
   newBinding = () => randomBytes(32),
 } = {}) {
   if (!repository && !db) throw new AuthStorageError("temporarily_unavailable");
-  const auth = repository ?? createAuthRepository(db, { now });
+  const clock = now ?? Date.now;
+  const auth = repository ?? createAuthRepository(db, { now: clock });
 
   async function readPresentedSession({ cookies, touch = true }) {
     if (cookies.malformed) return { kind: "invalid", present: true };
@@ -179,10 +196,37 @@ export function createSessionAdmission({
     return { ...presented, cookies };
   }
 
+  // #182 handoff: reuse the exact Origin, session, and optional CSRF guard
+  // above, then apply the session-scope fixed window. It does not provision a
+  // document, resolve an owner, or duplicate authentication policy. #182 owns
+  // wiring this into bootstrap, append, and pull.
+  async function admitSessionSync(request, config, env, { csrf = true } = {}) {
+    const admitted = await admitRequest(request, config, {
+      csrf,
+      recent: false,
+      touch: true,
+    });
+    if (!db) throw new AuthStorageError("temporarily_unavailable");
+    const limiter = await createConfiguredAuthRateLimiter({
+      db,
+      request,
+      env,
+      now: clock,
+    });
+    const policies = AUTH_ROUTE_RATE_LIMIT_POLICIES.sync_request;
+    await limiter.enforce(policies, {
+      session: admitted.session.digest,
+      account: admitted.session.userId,
+    });
+    return admitted;
+  }
+
   return {
     auth,
     admitRequest,
+    admitSessionSync,
     readBinding,
+    readBindingForRate,
     readPresentedSession,
     verifyCsrf,
   };

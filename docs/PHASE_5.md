@@ -1004,6 +1004,10 @@ Rules:
   not described as a globally exact quota, and they do not replace D1 checks.
 - No Durable Object, new service, or new framework is introduced by this policy.
 
+The implementation storage, key, trusted-address, concurrency, and failure
+details are in [AUTH_ABUSE_LIMITS.md](AUTH_ABUSE_LIMITS.md). The table above
+remains the accepted policy contract.
+
 ## PRF and authenticator verification allowlist
 
 Phase 5 does not request the `prf` extension, require PRF support, or use it for

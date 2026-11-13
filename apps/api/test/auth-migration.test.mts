@@ -53,6 +53,7 @@ it("migrates populated Phase 4 users, documents, and changes forward without rew
     .run();
 
   await applyD1Migrations(env.DB, migrationsNamed("0002_auth_storage.sql"));
+  await applyD1Migrations(env.DB, migrationsNamed("0003_auth_rate_limits.sql"));
 
   expect(
     await queryAll(
@@ -103,7 +104,11 @@ it("migrates populated Phase 4 users, documents, and changes forward without rew
   ]);
   expect(
     await queryAll("SELECT name FROM d1_migrations ORDER BY name"),
-  ).toEqual([{ name: "0001_sync.sql" }, { name: "0002_auth_storage.sql" }]);
+  ).toEqual([
+    { name: "0001_sync.sql" },
+    { name: "0002_auth_storage.sql" },
+    { name: "0003_auth_rate_limits.sql" },
+  ]);
 
   await expect(
     env.DB.prepare(
@@ -111,10 +116,10 @@ it("migrates populated Phase 4 users, documents, and changes forward without rew
     ).run(),
   ).rejects.toThrow(/UNIQUE constraint failed: documents\.owner_id/u);
 
-  await applyD1Migrations(env.DB, migrationsNamed("0002_auth_storage.sql"));
+  await applyD1Migrations(env.DB, migrationsNamed("0003_auth_rate_limits.sql"));
   expect(
     await queryAll("SELECT name FROM d1_migrations ORDER BY name"),
-  ).toHaveLength(2);
+  ).toHaveLength(3);
 });
 
 async function columns(table) {
@@ -125,9 +130,10 @@ it("creates digest-only auth tables with the accepted column sets and constraint
   await resetAuthDatabase();
 
   const tables = await queryAll(
-    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('users', 'documents', 'changes', 'credentials', 'challenges', 'sessions') ORDER BY name",
+    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('users', 'documents', 'changes', 'credentials', 'challenges', 'sessions', 'auth_rate_limit_counters') ORDER BY name",
   );
   expect(tables.map((row) => row.name)).toEqual([
+    "auth_rate_limit_counters",
     "challenges",
     "changes",
     "credentials",
@@ -177,12 +183,19 @@ it("creates digest-only auth tables with the accepted column sets and constraint
     "revoked_at",
     "revoke_reason",
   ]);
+  expect(await columns("auth_rate_limit_counters")).toEqual([
+    "bucket_key",
+    "window_start",
+    "count",
+    "expires_at",
+  ]);
 
   const allColumns = [
     ...(await columns("users")),
     ...(await columns("credentials")),
     ...(await columns("challenges")),
     ...(await columns("sessions")),
+    ...(await columns("auth_rate_limit_counters")),
   ];
   for (const forbidden of [
     "private_key",
@@ -201,9 +214,10 @@ it("creates digest-only auth tables with the accepted column sets and constraint
   }
 
   const indexes = await queryAll(
-    "SELECT name, sql FROM sqlite_schema WHERE type = 'index' AND name IN ('users_handle_unique', 'challenges_registration_handle', 'challenges_binding_active') ORDER BY name",
+    "SELECT name, sql FROM sqlite_schema WHERE type = 'index' AND name IN ('users_handle_unique', 'challenges_registration_handle', 'challenges_binding_active', 'auth_rate_limit_counters_expires') ORDER BY name",
   );
   expect(indexes.map((row) => row.name)).toEqual([
+    "auth_rate_limit_counters_expires",
     "challenges_binding_active",
     "challenges_registration_handle",
     "users_handle_unique",
@@ -271,6 +285,41 @@ it("creates digest-only auth tables with the accepted column sets and constraint
         bytes(32, 0x04),
         accountHandle(0x12),
       )
+      .run(),
+  ).rejects.toThrow(/CHECK constraint failed/u);
+
+  const bucketKey = "A".repeat(43);
+  await env.DB.prepare(
+    "INSERT INTO auth_rate_limit_counters (bucket_key, window_start, count, expires_at) VALUES (?1, 0, 1, 3600000)",
+  )
+    .bind(bucketKey)
+    .run();
+  await expect(
+    env.DB.prepare(
+      "INSERT INTO auth_rate_limit_counters (bucket_key, window_start, count, expires_at) VALUES (?1, 600000, 1, 4200000)",
+    )
+      .bind(bucketKey)
+      .run(),
+  ).resolves.toBeDefined();
+  await expect(
+    env.DB.prepare(
+      "INSERT INTO auth_rate_limit_counters (bucket_key, window_start, count, expires_at) VALUES (?1, 0, 1, 3600000)",
+    )
+      .bind(bucketKey)
+      .run(),
+  ).rejects.toThrow(/UNIQUE constraint failed/u);
+  await expect(
+    env.DB.prepare(
+      "INSERT INTO auth_rate_limit_counters (bucket_key, window_start, count, expires_at) VALUES (?1, 1200000, 1, 4800000)",
+    )
+      .bind("not-a-digest")
+      .run(),
+  ).rejects.toThrow(/CHECK constraint failed/u);
+  await expect(
+    env.DB.prepare(
+      "INSERT INTO auth_rate_limit_counters (bucket_key, window_start, count, expires_at) VALUES (?1, 1800000, 0, 5400000)",
+    )
+      .bind("B".repeat(43))
       .run(),
   ).rejects.toThrow(/CHECK constraint failed/u);
 });

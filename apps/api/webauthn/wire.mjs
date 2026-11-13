@@ -125,3 +125,34 @@ export function parseRegistrationOptionsBody(body) {
 export function parseAuthenticationOptionsBody(body) {
   exactKeys(body, []);
 }
+
+// One strict parse per ceremony body. The session boundary uses the returned
+// credential ID for the sign-in credential-scope budget before any challenge
+// lookup or signature verification. The ceremony dispatch passes the same
+// parsed value onward so a request is never interpreted twice.
+export function parseCeremonyBody(routeId, body) {
+  switch (routeId) {
+    case "registration_options":
+      return { displayName: parseRegistrationOptionsBody(body) };
+    case "sign_in_options":
+    case "step_up_options":
+    case "credential_add_options":
+      parseAuthenticationOptionsBody(body);
+      return {};
+    case "registration_verify":
+    case "credential_add_verify":
+      return { registration: parseRegistrationVerification(body) };
+    case "sign_in_verify": {
+      const assertion = parseAssertionVerification(body, {
+        discoverable: true,
+      });
+      return { assertion, credentialId: assertion.credential.id };
+    }
+    case "step_up_verify":
+      return {
+        assertion: parseAssertionVerification(body, { discoverable: false }),
+      };
+    default:
+      malformed("not_found");
+  }
+}

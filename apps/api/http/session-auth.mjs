@@ -1,3 +1,5 @@
+import { createConfiguredAuthRateLimiter } from "../rate-limits/limiter.mjs";
+import { AUTH_ROUTE_RATE_LIMIT_POLICIES } from "../rate-limits/policy.mjs";
 import { AuthStorageError } from "../repositories/auth-data.mjs";
 import {
   assertSessionOrigin,
@@ -12,7 +14,7 @@ import {
 } from "../session/cookies.mjs";
 import { readSessionAuthConfig } from "../webauthn/config.mjs";
 import { decodeSessionToken } from "../webauthn/session-material.mjs";
-import { AUTH_BODY_MAX_BYTES } from "../webauthn/wire.mjs";
+import { AUTH_BODY_MAX_BYTES, parseCeremonyBody } from "../webauthn/wire.mjs";
 import { AUTH_ROUTES } from "./auth-routes.mjs";
 import { ApiError } from "./errors.mjs";
 import { parseJson, readBodyBytes, readJsonBody } from "./json.mjs";
@@ -152,10 +154,40 @@ async function dispatch(request, env, dependencies, state) {
   )
     throw new ApiError("already_authenticated");
 
-  let binding = null;
-  if (route.binding === "options") {
-    binding = await admission.readBinding(cookies, { mode: "options" });
-  } else if (route.binding === "verify") {
+  // Fixed-window admission runs after media/body validation and before the
+  // binding challenge, ceremony consumption, cryptography, or operation. The
+  // body parse is shared with the ceremony dispatch below.
+  const ratePolicies = AUTH_ROUTE_RATE_LIMIT_POLICIES[route.id];
+  if (!ratePolicies) throw new ApiError("not_found");
+  const ceremony =
+    route.kind === "webauthn" ? parseCeremonyBody(route.id, body) : null;
+  // Charge the first issuance to the new binding as well. Keep this candidate
+  // private until admission and issuance succeed; verification never mints.
+  let binding =
+    route.binding === "options"
+      ? await admission.readBinding(cookies, { mode: "options" })
+      : null;
+  if (ratePolicies.length > 0) {
+    const limiter = await createConfiguredAuthRateLimiter({
+      db: env.DB,
+      request,
+      env,
+      now: dependencies.now,
+    });
+    const bindingForRate =
+      route.binding === "none"
+        ? null
+        : (binding ?? (await admission.readBindingForRate(cookies)));
+    await limiter.enforce(ratePolicies, {
+      address: limiter.address,
+      binding: bindingForRate?.digest ?? null,
+      credential: ceremony?.credentialId ?? null,
+      session: session?.digest ?? null,
+      account: session?.userId ?? null,
+    });
+  }
+
+  if (route.binding === "verify") {
     binding = await admission.readBinding(cookies, { mode: "verify" });
   }
 
@@ -197,6 +229,7 @@ async function dispatch(request, env, dependencies, state) {
     config,
     route,
     body,
+    parsedBody: ceremony,
     context: {
       bindingDigest: binding.digest,
       session,
@@ -219,11 +252,12 @@ async function dispatch(request, env, dependencies, state) {
   return { response: result.response, setCookies };
 }
 
-// #180 internal boundary. It is not imported by the default Worker bridge.
-// #181 must wrap this handler with D1 fixed-window abuse limits and #182 must
-// route session identity into sync before any production registration. Tests
-// exercise it with the real WebAuthn service and D1; a request header or body
-// can never supply `bindingDigest`, `session`, or `csrfVerified`.
+// The #180/#181 endpoint composition. It is not imported by the default Worker
+// bridge. This handler owns exact Origin, cookie/session/CSRF admission, the
+// D1 fixed-window check, and the #179 ceremony handoff. #182 must route this
+// session principal into sync before any route activation. Tests exercise it
+// with the real WebAuthn service and D1; a request header or body can never
+// supply `bindingDigest`, `session`, or `csrfVerified`.
 export async function handleSessionAuthRequest(
   request,
   env,

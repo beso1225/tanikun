@@ -138,18 +138,20 @@ let
     # Keep the bridge's relative imports intact. The WebAuthn verifier and the
     # Phase 5 auth-service entry are bundled into self-contained ESM files so
     # the release artifact has no bare npm import or source-checkout fallback.
-    # The entry now includes the #180 cookie/session/CSRF boundary, but neither
-    # handler is registered in the Worker bridge: #181 must add fixed-window
-    # abuse limits and #182 must integrate session sync before registration.
-    # Include every production module, migration, and a runtime config that does
-    # not depend on the source tree's Moon project. The source config keeps its
-    # build/watch hooks for local development; the packaged copy strips them and
-    # the missing schema path so Wrangler can start inside the Nix output.
+    # The entry includes the #180 cookie/session/CSRF boundary and the #181
+    # fixed-window limiter, but neither auth handler is registered in the
+    # default Worker bridge. #182 still owns session sync integration and route
+    # activation. Include every production module, migration, and a runtime
+    # config that does not depend on the source tree's Moon project. The source
+    # config keeps its build/watch hooks for local development; the packaged
+    # copy strips them and the missing schema path so Wrangler can start inside
+    # the Nix output.
     installPhase = ''
-      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
+      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/rate-limits" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
       cp apps/api/http/auth.mjs apps/api/http/errors.mjs apps/api/http/json.mjs apps/api/http/respond.mjs apps/api/http/sync.mjs "$out/apps/api/http/"
       cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
+      cp apps/api/rate-limits/*.mjs "$out/apps/api/rate-limits/"
       cp apps/api/migrations/*.sql "$out/apps/api/migrations/"
       cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
