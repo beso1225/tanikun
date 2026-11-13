@@ -28,7 +28,7 @@ persistence, not sync.
 | Wire contract       | `packages/sync-contract/contract.mjs`, `docs/contracts/sync-v1.json`                           | `apps/api/test/sync-contract.test.mts`                                                  |
 | Worker HTTP         | `apps/api/http/sync.mjs`, `auth.mjs`, `json.mjs`, `respond.mjs`, `apps/api/bridges/worker.mjs` | `apps/api/test/worker-sync.test.mts`                                                    |
 | D1 storage          | `apps/api/migrations/0001_sync.sql`, `apps/api/repositories/changes.mjs`                       | `apps/api/test/sync-repository.test.mts`                                                |
-| Browser transport   | `apps/web/public/sync-transport.js`                                                            | `tests/integration/sync-transport.test.mjs`                                             |
+| Browser transport   | `apps/web/public/sync-transport.js`, `sync-session.js`                                         | `tests/integration/sync-transport.test.mjs`                                             |
 | Outbox and seen     | `apps/web/public/sync-store.js`                                                                | `tests/integration/sync-coordinator.test.mjs`                                           |
 | Metadata and commit | `apps/web/public/sync-metadata.js`, `sync-coordinator.js`                                      | `tests/integration/sync-coordinator.test.mjs`, `tests/integration/persistence.test.mjs` |
 | Status shell        | `apps/web/public/sync-shell.js`                                                                | `tests/integration/browser-sync-status.test.mjs`                                        |
@@ -62,11 +62,20 @@ persistence, not sync.
   make concurrent leaders safe.
 - Discard removes the planner first, drains pending enqueues, then clears sync
   state and metadata under the same lock.
-- Local development auth resolves an identity only when `DEV_AUTH` is exactly
-  `true`, `APP_ENV` is exactly `local`, the URL is HTTP on `127.0.0.1` or
-  `localhost`, the Origin is exactly `http://127.0.0.1:4300`, and the identity
-  mapping is valid and nonempty. The browser uses `credentials: "omit"`. There
-  is no anonymous fallback.
+- `AUTH_MODE` is exactly `dev_bearer` or `session`; absent, unknown, or
+  conflicting configuration is `404` before auth, Origin, session, or D1.
+  Dev bearer resolves an identity only when `DEV_AUTH` is exactly `true`,
+  `APP_ENV` is exactly `local`, the URL is HTTP on `127.0.0.1` or `localhost`,
+  the Origin is exactly `http://127.0.0.1:4300`, the identity mapping is valid
+  and nonempty, and no session-only configuration is present. The browser uses
+  an explicit dev mode with `credentials: "omit"`. There is no anonymous
+  fallback.
+- Session mode is same-origin `https://localhost:4300`, requires
+  `X-CSRF-Token` for appends, uses `POST` bootstrap, and resolves the owner only
+  from the session. The 120/minute session window is charged before ownership
+  or body work. Foreign and missing documents remain indistinguishable `404`.
+  Session mode rejects `Authorization`; a failed session never falls back to
+  dev bearer or a cookie from another mode.
 - `none` payloads are plaintext Automerge changes. Do not describe the
   transport as end-to-end encrypted, production authenticated, or ready to
   deploy.

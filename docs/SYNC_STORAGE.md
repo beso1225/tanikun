@@ -85,13 +85,25 @@ batch; callers follow ADR-0013's exact-envelope retry policy.
 ## Worker HTTP boundary
 
 `apps/api/bridges/worker.mjs` keeps the existing `/api/health` behavior and
-dispatches `/api/v1` sync requests to `apps/api/http/`. The boundary implements
-ADR-0014's environment, URL, Origin, and bearer checks before it calls the
-repository. Sync routes stay disabled unless `DEV_AUTH` is `true`, `APP_ENV` is
-`local`, the request URL is HTTP on `127.0.0.1` or `localhost`, and the
-identity mapping is valid and nonempty. `just dev-api` supplies the fixture
-identities for local development; the test Wrangler configuration supplies
-them to `SELF`.
+dispatches `/api/v1` requests to `apps/api/http/api.mjs`, which applies the
+explicit `AUTH_MODE` gate before auth or sync routing. An absent, unknown, or
+conflicting mode is `404 not_found` for every auth and sync route.
+
+`AUTH_MODE=dev_bearer` keeps ADR-0014's environment, URL, Origin, bearer, and
+preflight checks. It is enabled only when `DEV_AUTH` is `true`, `APP_ENV` is
+`local`, the request URL is HTTP on `127.0.0.1` or `localhost`, the identity
+mapping is valid and nonempty, and no session-only configuration is present.
+`just dev-api` and the test Wrangler configuration set the mode explicitly.
+
+`AUTH_MODE=session` is local/test only. It resolves the owner from the
+HttpOnly session cookie through `createSessionAdmission.admitSessionSync`,
+requires the exact `https://localhost:4300` Origin, applies the 120/minute
+session sync window, and requires CSRF on session appends. Session bootstrap is
+`POST /api/v1/sync/document`; the old cookie-authenticated GET is not accepted.
+The session owner is the server-resolved `users.id`, and the document is
+provisioned with `ON CONFLICT(owner_id) DO NOTHING` plus a primary read in the
+same batch. Foreign and missing documents remain indistinguishable `404` and
+are never created or rebound by append or pull.
 
 The fixture harness may set `TEST_NEW_DOCUMENT_ID` only to make the
 `bootstrap-new` fixture case deterministic; default, preview, and production
@@ -101,12 +113,13 @@ configurations must omit it.
 duplicate object keys at every depth. The HTTP layer also enforces the ADR
 media type, batch, payload, query, method, and owned-resource rules. It maps
 expected failures to stable status codes and redacted JSON bodies.
-`apps/api/http/respond.mjs` adds `Vary: Origin` to every sync response and the
-exact allow origin only for `http://127.0.0.1:4300`; allowed origins also expose
-`Retry-After` for the browser transport. Gate failures keep their 404 status.
-Error bodies and diagnostics never include SQL, exception messages,
-tokens, or payload bytes; operation bodies carry only the contract-defined
-envelope fields.
+`apps/api/http/respond.mjs` adds `Vary: Origin` to every dev-bearer response
+and the exact allow origin only for `http://127.0.0.1:4300`; allowed origins
+also expose `Retry-After` for the browser transport. Session-mode responses
+carry no CORS or `WWW-Authenticate` headers and clear an invalid presented
+session cookie. Gate failures keep their 404 status. Error bodies and
+diagnostics never include SQL, exception messages, tokens, or payload bytes;
+operation bodies carry only the contract-defined envelope fields.
 
 ## Client sync coordinator
 
