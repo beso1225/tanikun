@@ -137,12 +137,15 @@ async function sign(privateKey, authData, clientData, corrupt) {
   const clientDataHash = await sha256(clientData);
   const raw = new Uint8Array(
     await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
+      privateKey.algorithm.name === "Ed25519"
+        ? { name: "Ed25519" }
+        : { name: "ECDSA", hash: "SHA-256" },
       privateKey,
       isoUint8Array.concat([authData, clientDataHash]),
     ),
   );
   if (corrupt) raw[raw.length - 1] ^= 0xff;
+  if (privateKey.algorithm.name === "Ed25519") return raw;
   const value = new ECDSASigValue({
     r: raw.slice(0, 32).buffer,
     s: raw.slice(32).buffer,

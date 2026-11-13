@@ -1,6 +1,8 @@
 import {
+  cose,
   decodeAttestationObject,
   decodeClientDataJSON,
+  decodeCredentialPublicKey,
 } from "@simplewebauthn/server/helpers";
 
 import {
@@ -35,6 +37,15 @@ const SUPPORTED_ALGORITHM_IDS = [-7];
 
 function fail(code = "authentication_failed") {
   throw new AuthStorageError(code);
+}
+
+function assertSupportedCredentialAlgorithm(publicKey) {
+  try {
+    const key = decodeCredentialPublicKey(publicKey);
+    if (!SUPPORTED_ALGORITHM_IDS.includes(key.get(cose.COSEKEYS.alg))) fail();
+  } catch {
+    fail();
+  }
 }
 
 function challengeCallback(storedDigest) {
@@ -452,6 +463,9 @@ export function createAuthCeremonyService({
     });
     const credential = await auth.findCredential(parsed.credential.id);
     if (!credential) fail();
+    // The assertion verifier supports more algorithms than Phase 5 permits.
+    // Enforce the policy for stored keys as well as new registrations.
+    assertSupportedCredentialAlgorithm(credential.publicKey);
     if (purpose === "step_up" && credential.userId !== activeSession.userId)
       fail();
     if (purpose === "sign_in") {

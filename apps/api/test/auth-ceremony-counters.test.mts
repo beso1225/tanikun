@@ -1,5 +1,9 @@
+import { isoCBOR } from "@simplewebauthn/server/helpers";
+import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { createAuthRepository } from "../repositories/auth.mjs";
+import { verifyAuthenticationResponse } from "../webauthn/verify.mjs";
 import {
   CEREMONY_CONFIG,
   activeSessionCount,
@@ -11,6 +15,7 @@ import {
 } from "./auth-ceremony-helpers.mts";
 import {
   accountId,
+  base64Url,
   bytes,
   expectAuthError,
   fakeClock,
@@ -24,6 +29,97 @@ import {
 } from "./webauthn-ceremony-fixtures.mjs";
 
 beforeEach(resetAuthDatabase);
+
+it("rejects real Ed25519 assertions for stored non-ES256 credentials in sign-in and step-up", async () => {
+  const clock = fakeClock();
+  const service = makeCeremonyService({ clock });
+  const registered = await registerCeremony(service);
+  const session = registered.result.handoff.session;
+  const repository = createAuthRepository(env.DB, { now: clock.now });
+  const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const publicKey = isoCBOR.encode(
+    new Map([
+      [1, 1],
+      [3, -8],
+      [-1, 6],
+      [
+        -2,
+        new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey)),
+      ],
+    ]),
+  );
+  const credential = { credentialId: base64Url(bytes(16, 0xe1)), keyPair };
+  await repository.addCredential({
+    userId: session.userId,
+    sessionDigest: session.digest,
+    credential: {
+      credentialId: credential.credentialId,
+      publicKey,
+      counter: 0,
+      backupEligible: false,
+      backupState: false,
+    },
+  });
+  clock.advance(6 * 60 * 1000);
+  const stale = { ...session, recentAuth: false };
+  for (const [index, purpose] of ["sign_in", "step_up"].entries()) {
+    const binding = bytes(32, 0xe2 + index);
+    const begin =
+      purpose === "sign_in"
+        ? await service.signInOptions({ bindingDigest: binding })
+        : await service.stepUpOptions({
+            bindingDigest: binding,
+            session: stale,
+          });
+    const assertion = await buildAssertionResponse({
+      challenge: begin.publicKey.challenge,
+      rpID: CEREMONY_CONFIG.rpID,
+      origin: CEREMONY_CONFIG.origin,
+      credential,
+      userHandle: registered.options.publicKey.user.id,
+      counter: 1,
+    });
+    const verified = await verifyAuthenticationResponse({
+      response: assertion,
+      expectedChallenge: begin.publicKey.challenge,
+      expectedOrigin: CEREMONY_CONFIG.origin,
+      expectedRPID: CEREMONY_CONFIG.rpID,
+      credential: { id: credential.credentialId, publicKey, counter: 0 },
+      requireUserVerification: true,
+    });
+    expect(verified.verified).toBe(true);
+    const input = {
+      bindingDigest: binding,
+      body: verificationBody(begin.challenge_id, assertion),
+    };
+    await expectAuthError(
+      () =>
+        purpose === "sign_in"
+          ? service.verifySignIn({ ...input, presentedSession: stale })
+          : service.verifyStepUp({ ...input, session: stale }),
+      { code: "authentication_failed" },
+    );
+    expect(await credentialRow(credential.credentialId)).toMatchObject({
+      counter: 0,
+    });
+    expect(await activeSessionCount(session.userId)).toBe(1);
+    expect(
+      await queryFirst(
+        "SELECT recent_auth_at, revoked_at FROM sessions WHERE digest = ?1",
+        session.digest,
+      ),
+    ).toEqual({ recent_auth_at: session.createdAt, revoked_at: null });
+    expect(
+      await queryFirst(
+        "SELECT consumed_at FROM challenges WHERE id = ?1",
+        begin.challenge_id,
+      ),
+    ).toEqual({ consumed_at: clock.current() });
+  }
+});
 
 async function serviceWithCredential({ backupEligible, backupState, counter }) {
   const clock = fakeClock();
