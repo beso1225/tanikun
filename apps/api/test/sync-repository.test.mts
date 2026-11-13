@@ -49,6 +49,7 @@ it("migrates an empty D1 database and records a repeatable schema version", asyn
   expect(versions.results.map((row) => row.name)).toEqual([
     "0001_sync.sql",
     "0002_auth_storage.sql",
+    "0003_auth_rate_limits.sql",
   ]);
 });
 
