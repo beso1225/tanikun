@@ -375,7 +375,7 @@ The #183 implementation and its lifecycle fixes were verified on macOS arm64:
 - `just test`: 174 JavaScript tests passed (24 export/document tests and 150
   runtime tests), plus 294 MoonBit tests.
 - `just test-d1`: 305 passed.
-- `just test-browser`: 53 browser tests and 1 allocation test passed.
+- `just test-browser`: 56 browser tests and 1 allocation test passed.
 - `just test-sync` from source: 53 passed and 4 packaged-only tests skipped.
 - `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 57 passed,
   including all nine session account journeys.

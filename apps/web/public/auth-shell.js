@@ -935,12 +935,16 @@ async function logout() {
       if (error?.code === "csrf_forbidden") {
         const refreshed = await statusClient.read();
         await checkCeremonyScope(expected);
-        if (
-          refreshed.kind === SESSION_STATUS_KINDS.ACTIVE &&
-          refreshed.session.account.handle === expected.accountHandle
-        )
+        if (refreshed.kind === SESSION_STATUS_KINDS.ACTIVE) {
+          if (refreshed.session.account.handle !== expected.accountHandle)
+            throw Object.assign(new Error("account_changed"), {
+              code: "account_changed",
+            });
           await authClient.logout({ csrfToken: statusClient.csrfToken });
-        else if (refreshed.kind !== SESSION_STATUS_KINDS.SIGNED_OUT)
+        } else if (
+          refreshed.kind !== SESSION_STATUS_KINDS.SIGNED_OUT &&
+          refreshed.kind !== SESSION_STATUS_KINDS.REAUTH_REQUIRED
+        )
           throw error;
       } else if (error?.code !== "unauthorized" && error?.code !== "expired") {
         throw error;
@@ -1196,6 +1200,7 @@ async function refresh() {
     state.messageKind = "status";
     renderAccountButton();
     try {
+      await globalThis.tanikunAuthReady;
       state.auth = await authState.read();
       expected = scopeOf(state.auth);
     } catch {

@@ -152,3 +152,56 @@ for (const ordering of ["committed", "refresh-first", "expiry-first"]) {
     );
   });
 }
+
+test("initial session refresh waits for the first auth-state commit", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((close) => server.close(close)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    globalThis["__TANIKUN_SYNC_CONFIG__"] = { mode: "session", maxRetry: 0 };
+    const request = navigator.locks.request.bind(navigator.locks);
+    let first = true;
+    navigator.locks.request = (name, options, operation) =>
+      request(name, options, async (lock) => {
+        if (name === "tanikun-auth-v1" && first) {
+          first = false;
+          await new Promise((release) => {
+            globalThis.releaseInitialAuthLock = release;
+          });
+        }
+        return operation(lock);
+      });
+  });
+  await page.route(`${origin}/sync-shell.js`, (route) =>
+    route.fulfill({ contentType: "text/javascript", body: "export {};" }),
+  );
+  await page.route(`${origin}/api/v1/auth/session`, (route) =>
+    route.fulfill(json(200, active())),
+  );
+  await page.goto(origin);
+  await page.waitForFunction(
+    () => globalThis.tanikunAuthController && globalThis.releaseInitialAuthLock,
+  );
+  assert.equal(
+    await page.evaluate(
+      () => globalThis.tanikunAuthController.state.sessionState,
+    ),
+    "loading",
+  );
+  await page.evaluate(() => globalThis.releaseInitialAuthLock());
+  await page.evaluate(() => globalThis.tanikunAuthController.ready);
+  assert.equal(
+    await page.evaluate(
+      () => globalThis.tanikunAuthController.state.sessionState,
+    ),
+    "active",
+  );
+  assert.equal(
+    await page.evaluate(
+      async () => (await globalThis.tanikunAuthState.read()).accountHandle,
+    ),
+    handle,
+  );
+});
