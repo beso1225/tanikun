@@ -23,7 +23,10 @@ Chromium; it does not start a Worker, D1, or the fixed sync origin. The
 unconfigured page shows `同期未設定`, which is not HTTP sync evidence.
 Configured sync status, outbox, network, convergence, and fault verification
 route to the sibling `tanikun-sync-change` skill at
-`../../tanikun-sync-change/SKILL.md` and `just test-sync`.
+`../../tanikun-sync-change/SKILL.md` and `just test-sync`. Session registration,
+sign-in, account switch, copy consent, and reauthentication also belong to that
+skill. The static driver does not start the fixed HTTPS origin, a Worker, D1, or
+a virtual authenticator, so it does not prove the account dialogs.
 
 All journeys start from the deterministic `sample_state()` data. Selectors are
 the production ids and roles in `apps/web/cmd/browser/view_*.mbt`; do not replace

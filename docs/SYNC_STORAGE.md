@@ -291,10 +291,62 @@ empty local database, repeats it as a no-op, and reads the recorded filename.
 This establishes local D1 and local Worker behavior, not production deployment,
 production identity, cryptographic protection, or browser synchronization.
 
-### Session browser activation gate
+### Session account isolation
 
-The session transport and status client are available, but the planner shell
-keeps session sync paused until #183 supplies account-scoped storage, generation
-fencing, and explicit consent for importing an unbound plan. A valid session
-alone does not authorize uploading the offline `planner` record. The Phase 4
-dev-bearer shell remains available with its explicit mode.
+[#183](https://github.com/beso1225/tanikun/issues/183) activates session sync
+behind [ADR-0015](adr/0015-passkey-session-account-boundary.md) and the local
+state contract in [PHASE_5.md](PHASE_5.md). The unbound `planner` record is
+never uploaded by authentication alone.
+
+The browser keeps the following local layout:
+
+| Data            | Session mode                                                       | Dev bearer mode                                  |
+| --------------- | ------------------------------------------------------------------ | ------------------------------------------------ |
+| Unbound plan    | `planner`                                                          | `planner`                                        |
+| Account plan    | `account:<handle>:planner`                                         | not used                                         |
+| Auth state      | `auth:state` with version, 128-bit generation, handle, local state | not used                                         |
+| Metadata        | `sync:` + `JSON.stringify([handle, apiOrigin, documentId])`        | `sync:` + `JSON.stringify([origin, documentId])` |
+| Outbox and seen | `<handle>\|<apiOrigin>\|<documentId>`                              | `<apiOrigin>:<documentId>`                       |
+| Sync Web Lock   | `tanikun-sync:<handle>:<apiOrigin>:<documentId>`                   | `tanikun-sync:<apiOrigin>:<documentId>`          |
+| Auth Web Lock   | `tanikun-auth-v1`                                                  | not used                                         |
+
+`auth:state` contains no session token, CSRF token, challenge, or planner
+payload. The additional `auth:upload:<handle>` marker records an explicitly
+copied unbound plan that has not received first-upload consent yet.
+`auth:copy:<handle>` records an explicit decline so a reload does not repeat
+the copy prompt.
+
+A success registration or sign-in writes the active state under the auth Web
+Lock, increments the generation, and announces the change on the
+`tanikun-auth-v1` broadcast channel. Sign-out and account switch do the same.
+Saves compare the generation and handle with `auth:state` in the same IndexedDB
+transaction as the planner write. A mismatch aborts with `stale_account` and
+retains the attempted text in memory for copy or export. Sync checks the
+generation and handle before bootstrap, after bootstrap before binding, before
+each pull, and before applying or acknowledging a page. Session status is read
+before bootstrap and at the start of each sync, so a server handle mismatch
+stops with `account_changed` or `reauth_required` without writing planner bytes.
+
+The browser offers an explicit local copy only when the account has no account
+plan and an unbound plan exists. The copy leaves `planner` untouched and sets
+the pending-upload marker. The first upload requires a second confirmation.
+Declining the copy keeps the account on its own local and server state; the
+unbound plan remains available while signed out. Unrelated Automerge roots stop
+with `history_mismatch` and preserve both plans, outbox entries, seen hashes,
+and cursors; the browser never merges them automatically.
+
+A session `401`, expiry, or signed-out response moves the local state to
+`reauth_required` without changing the generation, so the current account plan
+stays editable while sync pauses. A successful reauthentication increments the
+generation and reloads the account scope. Logout hides account data rather than
+deleting or encrypting it. The account dialog states that authentication does
+not provide a Phase 6 document key and that losing every passkey has no
+recovery bypass.
+
+The real harness can run in `session` mode. It serves the app at
+`https://localhost:4300` with a disposable loopback certificate, proxies `/api`
+to the ephemeral Wrangler origin, and drives a Chromium virtual authenticator.
+The journeys use the real Worker, D1 migrations, cookies, CSRF, and Web Locks;
+the passkey and TLS material are synthetic test fixtures. This does not prove a
+physical authenticator, public deployment, or the Linux CI matrix owned by
+issue #185.

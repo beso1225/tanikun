@@ -12,7 +12,10 @@ network API, or internal setters.
 Configured sync status, outbox, network, convergence, and fault verification
 belong to the sibling `tanikun-sync-change` skill at
 `../tanikun-sync-change/SKILL.md`. The static page can show `同期未設定`; that
-does not prove HTTP sync.
+does not prove HTTP sync. The session account button is hidden without a
+session configuration. Registration, discoverable sign-in, copy consent,
+account switch, reauthentication, and the account settings disclosure are
+covered by the session journeys in that skill, not by this static driver.
 
 ## Launch
 
