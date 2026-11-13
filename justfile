@@ -42,7 +42,7 @@ test: build
         -p beso1225/tanikun-web/app \
         -p beso1225/tanikun-web/cmd/browser
     node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs tests/integration/deployment-config.test.mjs
-    node --test tests/integration/planner-record-reader.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs
+    node --test tests/integration/planner-record-reader.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/auth-client.test.mjs tests/integration/auth-state.test.mjs tests/integration/auth-persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs tests/integration/sync-account-fence.test.mjs
 
 # Apply versioned sync migrations to the local D1 database only.
 migrate-local:
@@ -109,7 +109,7 @@ test-sync:
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/session-account-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build

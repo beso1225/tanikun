@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import {
   access,
@@ -14,7 +14,8 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { extname, join, relative, resolve, sep } from "node:path";
@@ -31,6 +32,10 @@ export const SYNC_WRANGLER_BIN = join(
 const wranglerBin = SYNC_WRANGLER_BIN;
 
 export const SYNC_WEB_ORIGIN = "http://127.0.0.1:4300";
+// Session mode uses the exact Phase 5 same-origin HTTPS topology. The
+// disposable certificate is trusted only by the harness browser context.
+
+export const SYNC_SESSION_ORIGIN = "https://localhost:4300";
 export const SYNC_EVIDENCE_ROOT = join(repositoryRoot, ".cache/verify/sync");
 export const SYNC_IDENTITIES = Object.freeze([
   Object.freeze({
@@ -665,8 +670,45 @@ function harnessClosedError(action) {
   return new Error(`sync harness closed during ${action}`);
 }
 
-function startWebServer(root) {
-  const server = createServer(async (request, response) => {
+function proxyToApi(request, response, apiOrigin) {
+  let target;
+  try {
+    target = new URL(request.url ?? "/", apiOrigin);
+  } catch {
+    response.writeHead(502).end();
+    return;
+  }
+  const headers = { ...request.headers };
+  delete headers.host;
+  const upstream = httpRequest(
+    {
+      hostname: target.hostname,
+      port: target.port,
+      path: `${target.pathname}${target.search}`,
+      method: request.method,
+      headers,
+    },
+    (upstreamResponse) => {
+      response.writeHead(
+        upstreamResponse.statusCode ?? 502,
+        upstreamResponse.headers,
+      );
+      upstreamResponse.pipe(response);
+    },
+  );
+  upstream.on("error", () => {
+    if (!response.headersSent) response.writeHead(502);
+    response.end();
+  });
+  request.pipe(upstream);
+}
+
+function startWebServer(root, { tls, apiOrigin, origin } = {}) {
+  const handler = async (request, response) => {
+    if (apiOrigin && (request.url ?? "").startsWith("/api/")) {
+      proxyToApi(request, response, apiOrigin);
+      return;
+    }
     let pathname;
     try {
       pathname = decodeURIComponent(
@@ -698,14 +740,18 @@ function startWebServer(root) {
     } catch {
       response.writeHead(404).end();
     }
-  });
+  };
+
+  const server = tls
+    ? createHttpsServer({ key: tls.key, cert: tls.cert }, handler)
+    : createServer(handler);
 
   return new Promise((resolvePromise, reject) => {
     server.once("error", (error) => {
       if (error.code === "EADDRINUSE") {
         reject(
           new Error(
-            `sync harness requires ${SYNC_WEB_ORIGIN} because the Worker allows exactly that Origin; the port is already in use. Stop the existing listener and retry.`,
+            `sync harness requires ${origin ?? SYNC_WEB_ORIGIN} because the Worker allows exactly that origin; the port is already in use. Stop the existing listener and retry.`,
             { cause: error },
           ),
         );
@@ -756,6 +802,11 @@ export class SyncHarness {
     const apiRoot = resolve(
       options.apiRoot ?? process.env.TANIKUN_API_DIST ?? repositoryRoot,
     );
+    const mode = options.mode ?? "dev_bearer";
+    if (mode !== "dev_bearer" && mode !== "session")
+      throw new Error("sync harness mode must be dev_bearer or session");
+    this.mode = mode;
+    this.session = mode === "session";
     this.options = {
       webDist: resolve(
         options.webDist ??
@@ -768,11 +819,13 @@ export class SyncHarness {
       readinessTimeoutMs: options.readinessTimeoutMs ?? 60_000,
       migrationTimeoutMs: options.migrationTimeoutMs ?? 60_000,
       closeGraceMs: options.closeGraceMs ?? 5_000,
+      mode,
     };
     this.evidenceDir = null;
     this.tempDir = null;
     this.apiOrigin = null;
-    this.webOrigin = SYNC_WEB_ORIGIN;
+    this.webOrigin = this.session ? SYNC_SESSION_ORIGIN : SYNC_WEB_ORIGIN;
+    this.tls = null;
     this.artifact = null;
     this.server = null;
     this.wrangler = null;
@@ -846,29 +899,7 @@ export class SyncHarness {
       this.#assertOpen("startup");
     }
 
-    if (this.options.serveWeb) {
-      await requireFile(join(this.options.webDist, "index.html"), "web index");
-      for (const file of [
-        "index.js",
-        "styles.css",
-        "automerge.js",
-        "planner-document.js",
-        "persistence.js",
-        "sync-contract.mjs",
-        "sync-shell.js",
-      ]) {
-        await requireFile(
-          join(this.options.webDist, file),
-          `web asset ${file}`,
-        );
-      }
-      this.#assertOpen("startup");
-      const server = await startWebServer(this.options.webDist);
-      this.server = server;
-      this.#assertOpen("startup");
-      await this.#appendEvidence("harness.log", `web server listening\n`);
-      this.#assertOpen("startup");
-    }
+    if (this.options.serveWeb && !this.session) await this.#startWeb();
 
     let configPath = paths.configPath;
     if (!configPath) {
@@ -900,7 +931,87 @@ export class SyncHarness {
     this.#assertOpen("startup");
     await this.#startWrangler(configPath, paths.cwd);
     this.#assertOpen("startup");
+    if (this.options.serveWeb && this.session) {
+      await this.#generateTls();
+      this.#assertOpen("startup");
+      await this.#startWeb();
+      this.#assertOpen("startup");
+    }
     this.started = true;
+  }
+
+  async #startWeb() {
+    await requireFile(join(this.options.webDist, "index.html"), "web index");
+    for (const file of [
+      "index.js",
+      "styles.css",
+      "automerge.js",
+      "planner-document.js",
+      "persistence-transactions.js",
+      "persistence.js",
+      "auth-state.js",
+      "auth-client.js",
+      "auth-shell.js",
+      "sync-store.js",
+      "sync-metadata.js",
+      "sync-coordinator.js",
+      "sync-transport.js",
+      "sync-contract.mjs",
+      "sync-shell.js",
+    ]) {
+      await requireFile(join(this.options.webDist, file), `web asset ${file}`);
+    }
+    this.#assertOpen("startup");
+    const server = await startWebServer(this.options.webDist, {
+      tls: this.tls,
+      apiOrigin: this.session ? this.apiOrigin : undefined,
+      origin: this.webOrigin,
+    });
+    this.server = server;
+    this.#assertOpen("startup");
+    await this.#appendEvidence(
+      "harness.log",
+      `web server listening at ${this.webOrigin}\n`,
+    );
+  }
+
+  async #generateTls() {
+    const directory = join(this.tempDir, "tls");
+    await mkdir(directory, { recursive: true });
+    const keyPath = join(directory, "key.pem");
+    const certPath = join(directory, "cert.pem");
+    const result = spawnSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-keyout",
+        keyPath,
+        "-out",
+        certPath,
+        "-days",
+        "1",
+        "-subj",
+        "/CN=localhost",
+        "-addext",
+        "subjectAltName=DNS:localhost",
+      ],
+      { encoding: "utf8" },
+    );
+    if (result.error || result.status !== 0) {
+      throw new Error(
+        `cannot create the loopback TLS test certificate: ${
+          result.error?.message ?? result.stderr?.trim() ?? result.status
+        }`,
+      );
+    }
+    this.tls = {
+      key: await readFile(keyPath),
+      cert: await readFile(certPath),
+    };
   }
 
   async #readArtifact() {
@@ -1093,6 +1204,29 @@ export class SyncHarness {
     const mapping = Object.fromEntries(
       SYNC_IDENTITIES.map(({ token, ownerId }) => [token, ownerId]),
     );
+    const modeArguments = this.session
+      ? [
+          "--var",
+          "AUTH_MODE:session",
+          "--var",
+          "APP_ENV:test",
+          "--var",
+          "AUTH_ORIGIN:https://localhost:4300",
+          "--var",
+          "RP_ID:localhost",
+          "--var",
+          `AUTH_RATE_LIMIT_KEY:${"A".repeat(43)}`,
+        ]
+      : [
+          "--var",
+          "AUTH_MODE:dev_bearer",
+          "--var",
+          "APP_ENV:local",
+          "--var",
+          "DEV_AUTH:true",
+          "--var",
+          `DEV_AUTH_IDENTITIES:${JSON.stringify(mapping)}`,
+        ];
     const args = [
       wranglerBin,
       "dev",
@@ -1110,14 +1244,7 @@ export class SyncHarness {
       "--log-level",
       "info",
       "--show-interactive-dev-session=false",
-      "--var",
-      "AUTH_MODE:dev_bearer",
-      "--var",
-      "APP_ENV:local",
-      "--var",
-      "DEV_AUTH:true",
-      "--var",
-      `DEV_AUTH_IDENTITIES:${JSON.stringify(mapping)}`,
+      ...modeArguments,
     ];
     const child = spawn(process.execPath, args, {
       cwd,
@@ -1410,7 +1537,7 @@ export class SyncHarness {
   async #newPage(
     identityName,
     viewport,
-    { traceName, attachFailureState = false, beforeGoto } = {},
+    { traceName, attachFailureState = false, beforeGoto, session = false } = {},
   ) {
     this.#assertStarted();
     const identity = identityFor(identityName);
@@ -1427,7 +1554,9 @@ export class SyncHarness {
       "browser context creation",
       () =>
         browser.newContext({
+          acceptDownloads: true,
           viewport: viewport ?? { width: 1280, height: 900 },
+          ...(session ? { ignoreHTTPSErrors: true } : {}),
         }),
       {
         register: (created) => this.contexts.add(created),
@@ -1473,22 +1602,33 @@ export class SyncHarness {
           at: Date.now(),
         });
       });
-      await page.addInitScript(
-        ({ apiOrigin, token }) => {
+      let authenticator = null;
+      if (session) {
+        authenticator = await this.#addVirtualAuthenticator(context, page);
+        await page.addInitScript(() => {
           globalThis["__TANIKUN_SYNC_CONFIG__"] = {
-            mode: "dev_bearer",
-            apiOrigin,
-            token,
+            mode: "session",
             maxRetry: 0,
           };
-        },
-        { apiOrigin: this.apiOrigin, token: identity.token },
-      );
+        });
+      } else {
+        await page.addInitScript(
+          ({ apiOrigin, token }) => {
+            globalThis["__TANIKUN_SYNC_CONFIG__"] = {
+              mode: "dev_bearer",
+              apiOrigin,
+              token,
+              maxRetry: 0,
+            };
+          },
+          { apiOrigin: this.apiOrigin, token: identity.token },
+        );
+      }
       if (beforeGoto) await beforeGoto(page, context);
       this.#assertOpen("page navigation");
       await page.goto(this.webOrigin);
       this.#assertOpen("page navigation");
-      return { context, page, errors, faults };
+      return { context, page, errors, faults, authenticator };
     } catch (error) {
       if (attachFailureState) {
         if (error && typeof error === "object") {
@@ -1510,7 +1650,40 @@ export class SyncHarness {
     return this.#newPage(identityName, viewport);
   }
 
-  async runJourney(name, identityName, drive, { viewport } = {}) {
+  async openSessionPage({ viewport } = {}) {
+    this.#assertWebServer();
+    if (!this.session)
+      throw new Error("openSessionPage requires mode: 'session'");
+    return this.#newPage("alice", viewport, { session: true });
+  }
+
+  async openSessionTab(context) {
+    this.#assertStarted();
+    this.#assertWebServer();
+    if (!this.session)
+      throw new Error("openSessionTab requires mode: 'session'");
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    await page.addInitScript(() => {
+      globalThis["__TANIKUN_SYNC_CONFIG__"] = {
+        mode: "session",
+        maxRetry: 0,
+      };
+    });
+    await page.goto(this.webOrigin);
+    return { page, errors };
+  }
+
+  async runJourney(
+    name,
+    identityName,
+    drive,
+    { viewport, session = false, expectedFaults = [] } = {},
+  ) {
     this.#assertStarted();
     this.#assertWebServer();
     let context = null;
@@ -1518,11 +1691,12 @@ export class SyncHarness {
     try {
       let page;
       let errors;
+      let faults;
       try {
-        ({ context, page, errors } = await this.#newPage(
+        ({ context, page, errors, faults } = await this.#newPage(
           identityName,
           viewport,
-          { traceName: name, attachFailureState: true },
+          { traceName: name, attachFailureState: true, session },
         ));
       } catch (error) {
         failureState = error.syncHarnessFailureState ?? {
@@ -1538,8 +1712,14 @@ export class SyncHarness {
       }
       try {
         await drive(page, errors);
-        if (errors.length > 0)
+        if (expectedFaults.length > 0) {
+          acceptBrowserFaults(
+            { label: name, errors, faults: faults ?? [] },
+            expectedFaults,
+          );
+        } else if (errors.length > 0) {
           throw new Error(`browser errors: ${errors.join("; ")}`);
+        }
         await this.#stopSafeTrace(context, name, "trace");
       } catch (error) {
         await this.#writeJourneyFailure(
@@ -1560,6 +1740,14 @@ export class SyncHarness {
   // Run several isolated browser contexts in one named journey. Each page gets
   // its own trace, screenshot, and failure log so a two-browser failure keeps
   // evidence for both sides.
+  async runSessionJourney(name, drive, { viewport, expectedFaults } = {}) {
+    return this.runJourney(name, "alice", drive, {
+      viewport,
+      session: true,
+      expectedFaults,
+    });
+  }
+
   async runJourneyGroup(name, specs, drive) {
     this.#assertStarted();
     this.#assertWebServer();
@@ -1571,6 +1759,7 @@ export class SyncHarness {
             traceName: `${name}-${spec.label}`,
             attachFailureState: true,
             beforeGoto: spec.beforeGoto,
+            session: spec.session ?? false,
           });
           states.push({ ...created, label: spec.label });
         } catch (error) {
@@ -1664,6 +1853,42 @@ export class SyncHarness {
             ),
           );
       }
+    }
+  }
+
+  async #addVirtualAuthenticator(context, page) {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    const { authenticatorId } = await cdp.send(
+      "WebAuthn.addVirtualAuthenticator",
+      {
+        options: {
+          protocol: "ctap2",
+          transport: "internal",
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      },
+    );
+    return { cdp, authenticatorId };
+  }
+
+  async exportCredentials(authenticator) {
+    const { credentials } = await authenticator.cdp.send(
+      "WebAuthn.getCredentials",
+      { authenticatorId: authenticator.authenticatorId },
+    );
+    return credentials;
+  }
+
+  async importCredentials(authenticator, credentials) {
+    for (const credential of credentials) {
+      await authenticator.cdp.send("WebAuthn.addCredential", {
+        authenticatorId: authenticator.authenticatorId,
+        credential,
+      });
     }
   }
 
@@ -1910,6 +2135,18 @@ export class SyncHarness {
       await rm(this.tempDir, { recursive: true, force: true });
     }
     this.started = false;
+  }
+
+  async readEvidence() {
+    if (!this.evidenceDir) return "";
+    let text = "";
+    for (const entry of await readdir(this.evidenceDir, {
+      withFileTypes: true,
+    })) {
+      if (!entry.isFile() || !entry.name.endsWith(".log")) continue;
+      text += await readFile(join(this.evidenceDir, entry.name), "utf8");
+    }
+    return text;
   }
 
   async #writeEvidence(name, text) {
