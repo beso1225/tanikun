@@ -23,7 +23,6 @@ export async function readBodyBytes(request, maxBytes) {
   if (contentLength !== null) {
     if (!/^\d+$/.test(contentLength) || Number(contentLength) > maxBytes)
       throw new ApiError("request_too_large");
-    if (contentLength === "0") return new Uint8Array();
   }
   if (request.body === null) return new Uint8Array();
   const reader = request.body.getReader();

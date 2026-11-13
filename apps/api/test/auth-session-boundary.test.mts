@@ -5,6 +5,7 @@ import worker from "../bridges/worker.mjs";
 import { handleSessionAuthRequest } from "../http/session-auth.mjs";
 import { createAuthRepository } from "../repositories/auth.mjs";
 import { createSessionAdmission } from "../session/admission.mjs";
+import { parseCookieHeader } from "../session/cookies.mjs";
 import {
   createSessionMaterial,
   decodeSessionToken,
@@ -250,6 +251,46 @@ async function createSecondSession(account, fill) {
 }
 
 describe("session boundary", () => {
+  it("never mints a browser binding during verification when its cookie is absent", async () => {
+    const newBinding = vi.fn<() => Uint8Array>(() => bytes(32, 0x77));
+    const admission = createSessionAdmission({ db: env.DB, newBinding });
+    const cookies = parseCookieHeader(request("/api/v1/auth/register/verify"));
+    await expect(
+      admission.readBinding(cookies, { mode: "verify" }),
+    ).rejects.toMatchObject({ code: "authentication_failed" });
+    expect(newBinding).not.toHaveBeenCalled();
+  });
+
+  it("checks actual logout body bytes even when Content-Length claims zero", async () => {
+    const account = await registerAccount();
+    const headers = {
+      Cookie: `${SESSION}=${account.session}`,
+      "X-CSRF-Token": account.csrf,
+      "Content-Length": "0",
+    };
+    const malformed = await handleSessionAuthRequest(
+      request("/api/v1/auth/logout", {
+        body: { extra: true },
+        headers,
+      }),
+      account.env,
+      account.deps,
+    );
+    expect(malformed.status).toBe(400);
+    expect((await malformed.json()).error.code).toBe("malformed_request");
+    const oversized = await handleSessionAuthRequest(
+      request("/api/v1/auth/logout", {
+        body: "x".repeat(33 * 1024),
+        headers,
+      }),
+      account.env,
+      account.deps,
+    );
+    expect(oversized.status).toBe(413);
+    expect((await oversized.json()).error.code).toBe("request_too_large");
+    expect((await sessionStatus(account)).status).toBe(200);
+  });
+
   it("mints and reuses the binding cookie, then sets an exact HttpOnly session cookie", async () => {
     const clock = fakeClock();
     const account = await registerAccount({ clock });

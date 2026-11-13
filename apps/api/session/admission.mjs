@@ -143,6 +143,7 @@ export function createSessionAdmission({
       }
     }
 
+    if (mode === "verify") throw bindingError(mode);
     const bytes = newBinding();
     if (!(bytes instanceof Uint8Array) || bytes.length !== 32)
       throw new AuthStorageError("temporarily_unavailable");
