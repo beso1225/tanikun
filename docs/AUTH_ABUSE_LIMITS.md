@@ -12,8 +12,10 @@ normalization, concurrency, and failure behavior behind that table.
 The work is local and test only. #182 activates session-mode sync and the
 session auth routes on the Worker bridge through the explicit `AUTH_MODE`
 gate; the default, preview, and production configurations still fail closed.
-Issue #184 still owns credential list and removal. No production deployment,
-Durable Object, new service, or new framework is added here.
+Credential list and removal reuse the session boundary and the
+credential-account budget; removal also requires recent auth and revokes every
+account session. No production deployment, Durable Object, new service, or new
+framework is added here.
 
 ## Enforcement store
 
@@ -157,16 +159,18 @@ The route mappings are:
 | Session status      | session                                                |
 | Sync request        | session, used by #182 session sync                     |
 
-Credential list and removal are not implemented here. The policy table already
-maps credential removal to the account limit so #184 can reuse the limiter
-without inventing a second policy.
+Credential list and removal are implemented by the session auth boundary. The
+policy table maps credential removal to the account limit so both credential
+addition and removal share one fixed-window budget; listing is an authenticated
+read with no additional fixed-window budget.
 
 The Worker bridge now dispatches the session auth boundary and the
 session-to-sync principal through one explicit mode gate. Session mode is
 available only to local and test configuration with the exact origin, RP ID,
 and rate key; default, preview, and production configuration returns `404`.
-Issue #184 still adds credential management. Tests call the real bridge and D1,
-and there is no test-only environment bypass or anonymous fallback.
+Credential management uses the same boundary and D1 limits. Tests call the real
+bridge and D1, and there is no test-only environment bypass or anonymous
+fallback.
 
 ## Failure behavior and diagnostics
 
