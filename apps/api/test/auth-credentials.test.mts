@@ -201,7 +201,6 @@ it("does not create rows without a consumed, unexpired, correctly bound registra
     challengeDigest: expiredChallenge,
     bindingDigest: expiredBinding,
     purpose: "register",
-    accountHandle: expired.accountHandle,
   });
   clock.advance(300001);
   await expectAuthError(
@@ -234,7 +233,6 @@ it("does not create rows without a consumed, unexpired, correctly bound registra
     challengeDigest: bytes(32, 0x98),
     bindingDigest: wrongBinding,
     purpose: "register",
-    accountHandle: wrong.accountHandle,
   });
   await expectAuthError(
     () =>
@@ -281,7 +279,6 @@ it.each(["documents", "sessions"])(
       challengeDigest,
       bindingDigest,
       purpose: "register",
-      accountHandle: issued.accountHandle,
     });
     const credentialValue = credential({ idFill: 6 });
     const session = sessionSecrets(0xa3);

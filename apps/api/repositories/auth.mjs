@@ -369,7 +369,6 @@ export function createAuthRepository(
       challengeDigest,
       bindingDigest,
       purpose,
-      accountHandle,
       userId,
       sessionDigest,
     }) {
@@ -397,10 +396,9 @@ export function createAuthRepository(
         current,
       ];
       if (checkedPurpose === "register") {
-        conditions += " AND account_handle = ?6";
-        bindings.push(
-          requireAccountHandle(accountHandle, "authentication_failed"),
-        );
+        // The pending account belongs to this server-owned challenge row.
+        // Registration's verify body does not send an account handle.
+        conditions += " AND account_handle IS NOT NULL";
       } else if (checkedPurpose === "sign_in") {
         conditions += " AND account_handle IS NULL";
       } else {

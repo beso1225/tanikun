@@ -138,7 +138,6 @@ export async function beginRegistration({
     challengeDigest,
     bindingDigest,
     purpose: "register",
-    accountHandle: issued.accountHandle,
   });
   return {
     repo,

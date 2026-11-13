@@ -91,6 +91,34 @@ it("expires challenges before cleanup and frees the binding cap", async () => {
   expect(await countRows("challenges")).toBe(1);
 });
 
+it("consumes registration using its stored account handle", async () => {
+  const clock = fakeClock();
+  const repository = repositoryFor(clock);
+  const bindingDigest = bytes(32, 0x31);
+  const challengeDigest = bytes(32, 0x41);
+  const issued = await repository.issueRegistrationChallenge({
+    challengeDigest,
+    bindingDigest,
+    displayName: "Stored account",
+  });
+  const input = {
+    challengeId: issued.challengeId,
+    challengeDigest,
+    bindingDigest,
+    purpose: "register",
+  };
+  const consumed = await repository.consumeChallenge(input);
+  expect(consumed).toMatchObject({
+    accountHandle: issued.accountHandle,
+    displayName: "Stored account",
+    purpose: "register",
+    consumedAt: clock.current(),
+  });
+  await expectAuthError(() => repository.consumeChallenge(input), {
+    code: "authentication_failed",
+  });
+});
+
 it("allows exactly one concurrent consumer of a challenge", async () => {
   const clock = fakeClock();
   const repository = repositoryFor(clock);
@@ -142,7 +170,7 @@ it("allows exactly one concurrent consumer of a challenge", async () => {
   );
 });
 
-it("rejects the wrong digest, purpose, binding, or account without burning the real challenge", async () => {
+it("rejects the wrong digest, purpose, or binding without burning the real challenge", async () => {
   const clock = fakeClock();
   const repository = repositoryFor(clock);
   const binding = bytes(32, 0x31);
@@ -158,13 +186,11 @@ it("rejects the wrong digest, purpose, binding, or account without burning the r
       challengeDigest: bytes(32, 0x99),
       bindingDigest: binding,
       purpose: "register",
-      accountHandle: issued.accountHandle,
     },
     {
       challengeDigest,
       bindingDigest: bytes(32, 0x99),
       purpose: "register",
-      accountHandle: issued.accountHandle,
     },
     {
       challengeDigest,
@@ -172,16 +198,9 @@ it("rejects the wrong digest, purpose, binding, or account without burning the r
       purpose: "sign_in",
     },
     {
-      challengeDigest,
-      bindingDigest: binding,
-      purpose: "register",
-      accountHandle: accountHandle(0x99),
-    },
-    {
       challengeDigest: bytes(31, 0x41),
       bindingDigest: binding,
       purpose: "register",
-      accountHandle: issued.accountHandle,
     },
   ]) {
     await expectAuthError(
@@ -204,7 +223,6 @@ it("rejects the wrong digest, purpose, binding, or account without burning the r
     challengeDigest,
     bindingDigest: binding,
     purpose: "register",
-    accountHandle: issued.accountHandle,
   });
 });
 
