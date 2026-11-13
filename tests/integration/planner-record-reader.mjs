@@ -154,13 +154,28 @@ export function installPlannerRecordReader() {
     return decodeDocument(new Uint8Array(stored.bytes)).source;
   }
 
-  async function readPlannerState({ apiOrigin, documentId } = {}) {
+  async function readPlannerState({
+    apiOrigin,
+    documentId,
+    accountHandle,
+  } = {}) {
+    const selectedPlannerKey =
+      typeof accountHandle === "string"
+        ? `account:${accountHandle}:planner`
+        : plannerKey;
     const metadataKey =
       typeof apiOrigin === "string" && typeof documentId === "string"
-        ? "sync:" + JSON.stringify([new URL(apiOrigin).origin, documentId])
+        ? "sync:" +
+          JSON.stringify(
+            typeof accountHandle === "string"
+              ? [accountHandle, new URL(apiOrigin).origin, documentId]
+              : [new URL(apiOrigin).origin, documentId],
+          )
         : null;
     const [record, metadata] = await readRecords(
-      metadataKey === null ? [plannerKey] : [plannerKey, metadataKey],
+      metadataKey === null
+        ? [selectedPlannerKey]
+        : [selectedPlannerKey, metadataKey],
       {
         createStore: "if-missing",
         openErrorFallback: "planner open failed",

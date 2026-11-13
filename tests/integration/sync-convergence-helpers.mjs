@@ -52,19 +52,33 @@ export function canonicalSource(source) {
   return JSON.stringify(normalize(source));
 }
 
+/** Session scopes use the account handle; dev bearer keeps its Phase 4 scope. */
+export function syncScopeFor({ apiOrigin, documentId, accountHandle }) {
+  const origin = new URL(apiOrigin).origin;
+  return typeof accountHandle === "string"
+    ? `${accountHandle}|${origin}|${documentId}`
+    : `${origin}:${documentId}`;
+}
+
 /** Read the committed planner source, Automerge heads, and sync metadata. */
-export async function readPlannerState(page, { apiOrigin, documentId } = {}) {
+export async function readPlannerState(
+  page,
+  { apiOrigin, documentId, accountHandle } = {},
+) {
   await ensurePlannerRecordReader(page);
   return page.evaluate(
     (options) =>
       globalThis.tanikunPlannerRecordReader.readPlannerState(options),
-    { apiOrigin, documentId },
+    { apiOrigin, documentId, accountHandle },
   );
 }
 
 /** Read local-only sync state without reading or changing the planner. */
-export async function readSyncState(page, { apiOrigin, documentId }) {
-  const syncScope = `${new URL(apiOrigin).origin}:${documentId}`;
+export async function readSyncState(
+  page,
+  { apiOrigin, documentId, accountHandle },
+) {
+  const syncScope = syncScopeFor({ apiOrigin, documentId, accountHandle });
   return page.evaluate(async (scope) => {
     const store = globalThis.tanikunSyncStore.createSyncStore({
       indexedDB: globalThis.indexedDB,
@@ -74,6 +88,27 @@ export async function readSyncState(page, { apiOrigin, documentId }) {
         outbox: (await store.listOutbox(scope)).map((entry) => entry.change_id),
         seen: [...(await store.seenHashes(scope))].toSorted(),
       };
+    } finally {
+      store.close();
+    }
+  }, syncScope);
+}
+
+/** Read queued session envelopes for duplicate/response-loss proof. */
+export async function readOutboxEntries(
+  page,
+  { apiOrigin, documentId, accountHandle },
+) {
+  const syncScope = syncScopeFor({ apiOrigin, documentId, accountHandle });
+  return page.evaluate(async (scope) => {
+    const store = globalThis.tanikunSyncStore.createSyncStore({
+      indexedDB: globalThis.indexedDB,
+    });
+    try {
+      return (await store.listOutbox(scope)).map((entry) => ({
+        change_id: entry.change_id,
+        envelope: entry.envelope,
+      }));
     } finally {
       store.close();
     }
