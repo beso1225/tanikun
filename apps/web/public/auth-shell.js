@@ -59,6 +59,7 @@ let authClient = null;
 let controller = null;
 let opening = false;
 let credentialsPromise = null;
+let logoutPending = false;
 
 function element(tag, properties = {}, ...children) {
   const node = document.createElement(tag);
@@ -1209,7 +1210,13 @@ async function handleCredentialFailure(
 }
 
 async function loadCredentials({ expected } = {}) {
-  if (!authClient || !authState || state.sessionState !== "active") return;
+  if (
+    !authClient ||
+    !authState ||
+    logoutPending ||
+    state.sessionState !== "active"
+  )
+    return;
   if (credentialsPromise) return credentialsPromise;
   const scope = expected ?? state.decisionScope ?? scopeOf(state.auth);
   if (!scope?.accountHandle) return;
@@ -1639,12 +1646,16 @@ async function logout() {
     setMessage(errorMessage(error), "alert");
     return;
   }
+  logoutPending = true;
   state.busy = true;
   state.message = null;
   renderDialog();
   abortCeremony("auth_change");
   await pauseSync();
   try {
+    // Finish account reads before invalidating the cookie they use.
+    await credentialsPromise;
+    await checkCeremonyScope(expected);
     const verified = await statusClient.read();
     await checkCeremonyScope(expected);
     if (
@@ -1719,6 +1730,8 @@ async function logout() {
       renderNotice();
     }
     setMessage(errorMessage(error), "alert");
+  } finally {
+    logoutPending = false;
   }
 }
 

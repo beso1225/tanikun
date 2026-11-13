@@ -413,3 +413,53 @@ test("credential lists are not adopted after a server-only account switch", asyn
   );
   assert.deepEqual(errors, []);
 });
+
+test("logout drains an in-flight credential list before revoking its session", async (t) => {
+  let releaseList;
+  let listStarted;
+  const started = new Promise((resolveStarted) => {
+    listStarted = resolveStarted;
+  });
+  const pending = new Promise((resolveList) => {
+    releaseList = resolveList;
+  });
+  t.after(() => releaseList());
+  let logoutCalls = 0;
+  const { page, errors } = await openPage(t, {
+    async beforeGoto(targetPage, origin) {
+      await installRoutes(targetPage, origin, {
+        onSession: () => (logoutCalls > 0 ? { session: null } : active()),
+      });
+      await targetPage.route(`${origin}/sync-shell.js`, (route) =>
+        route.fulfill({ contentType: "text/javascript", body: "export {};" }),
+      );
+      await targetPage.route(
+        `${origin}/api/v1/auth/credentials`,
+        async (route) => {
+          listStarted();
+          await pending;
+          await route.fulfill(json(200, { credentials: [credential] }));
+        },
+      );
+      await targetPage.route(`${origin}/api/v1/auth/logout`, async (route) => {
+        logoutCalls += 1;
+        await route.fulfill({ status: 204, body: "" });
+      });
+    },
+  });
+  await page.locator("#account-button-mobile").click();
+  await started;
+  await page.locator('[data-action="logout"]').click();
+  // Keep the list pending long enough for an incorrectly concurrent logout
+  // to reach the mock server. No request may revoke its session yet.
+  await page.waitForTimeout(150);
+  assert.equal(logoutCalls, 0);
+  releaseList();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#account-button-mobile")?.textContent ===
+      "サインイン",
+  );
+  assert.equal(logoutCalls, 1);
+  assert.deepEqual(errors, []);
+});
