@@ -889,6 +889,9 @@ test(
       let calls = 0;
       const { page, errors } = await openPage(t, undefined, {
         mode: "session",
+        // This case intentionally holds the initial status read. Planner load
+        // now waits for it, so exercise the account switch before persistence.
+        waitForReady: false,
         beforeGoto: async (targetPage, origin) => {
           await targetPage.route(
             `${origin}/api/v1/auth/session`,
@@ -903,6 +906,7 @@ test(
         },
       });
       await hit;
+      await page.evaluate(() => globalThis.tanikunAuthReady);
       await writeOtherAuthState(page, bobHandle);
       await page.waitForFunction(
         async (handle) =>
@@ -910,7 +914,7 @@ test(
         bobHandle,
       );
       releaseResolve();
-      await page.waitForTimeout(300);
+      await page.evaluate(() => globalThis.tanikunAuthController.ready);
       const observed = await page.evaluate(async () => ({
         auth: await globalThis.tanikunAuthState.read(),
         controller: globalThis.tanikunAuthController?.state,

@@ -448,13 +448,10 @@ function checkFence(scope, authState) {
     authState && globalThis["__TANIKUN_SYNC_CONFIG__"]?.mode === "session"
       ? async () => {
           await globalThis.tanikunAuthReady;
-          // Do not block local planning for the full session timeout. If the
-          // status read is slow or offline, the unbound plan stays usable and
-          // a later account adoption fences this tab instead of overwriting.
-          await Promise.race([
-            globalThis.tanikunAuthBootstrap,
-            new Promise((resolve) => setTimeout(resolve, 2_000)),
-          ]);
+          // Select the initial account before fixing the planner's scope.
+          // The session client's bounded timeout provides the offline fallback;
+          // a second, shorter timer can select a scope that bootstrap replaces.
+          await globalThis.tanikunAuthBootstrap;
           return authState.currentScope();
         }
       : undefined;

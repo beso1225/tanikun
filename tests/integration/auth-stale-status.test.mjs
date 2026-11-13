@@ -205,3 +205,40 @@ test("initial session refresh waits for the first auth-state commit", async (t) 
     handle,
   );
 });
+
+test("a slow initial session status selects the account planner before loading", async (t) => {
+  const { server, origin } = await startStaticServer(dist);
+  t.after(() => new Promise((close) => server.close(close)));
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    globalThis["__TANIKUN_SYNC_CONFIG__"] = { mode: "session", maxRetry: 0 };
+  });
+  let first = true;
+  await page.route(`${origin}/api/v1/**`, async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/v1/auth/session") {
+      if (first) {
+        first = false;
+        await new Promise((release) => setTimeout(release, 2_500));
+      }
+      await route.fulfill(json(200, active()));
+      return;
+    }
+    await route.fulfill(json(404, { error: { code: "not_found" } }));
+  });
+  await page.goto(origin);
+  await page.evaluate(() => globalThis.tanikunAuthController.ready);
+  await page.waitForFunction(() => globalThis.tanikunStorage.scope() !== null);
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunStorage.scope().plannerKey),
+    `account:${handle}:planner`,
+  );
+  await waitForPersistence(page);
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunAuthController.state.stale),
+    false,
+  );
+  await page.evaluate(() => globalThis.tanikunStorage.load());
+  assert.equal(await page.locator("#planner-error").count(), 0);
+});
