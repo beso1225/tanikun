@@ -637,3 +637,26 @@ test("late session verification failure is fenced before notifying the new accou
   assert.equal((await context.auth.read()).accountHandle, bobHandle);
   assert.equal((await context.auth.read()).sessionState, "active");
 });
+
+test("failed bootstrap cannot notify expiry after switching accounts", async () => {
+  const context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+  });
+  context.transport.bootstrap = async () => {
+    await context.auth.write({
+      accountHandle: bobHandle,
+      sessionState: "active",
+    });
+    return { kind: "unauthorized", code: "unauthorized", retryable: false };
+  };
+  const result = await context.coordinator.sync();
+  assert.equal(result.code, "stale_account");
+  assert.equal(context.coordinator.documentId(), undefined);
+  assert.equal(
+    context.statuses.some((status) => status.code === "unauthorized"),
+    false,
+  );
+  assert.equal((await context.auth.read()).accountHandle, bobHandle);
+});

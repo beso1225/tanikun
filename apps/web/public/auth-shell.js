@@ -164,6 +164,7 @@ function scopeOf(auth) {
   return {
     generation: auth.generation,
     accountHandle: auth.accountHandle,
+    sessionState: auth.sessionState,
   };
 }
 
@@ -172,7 +173,8 @@ function sameScope(left, right) {
     left !== null &&
     right !== null &&
     left.generation === right.generation &&
-    left.accountHandle === right.accountHandle
+    left.accountHandle === right.accountHandle &&
+    left.sessionState === right.sessionState
   );
 }
 
@@ -791,6 +793,7 @@ async function register() {
     finishCeremony(ceremony);
     await afterSignIn(session, expected);
   } catch (error) {
+    if (error?.code === "rate_limited") setRetryCooldown(error.retryAfter);
     const reason = state.ceremonyReason;
     const aborted = ceremony.signal.aborted;
     finishCeremony(ceremony);
@@ -847,6 +850,7 @@ async function signIn() {
     finishCeremony(ceremony);
     await afterSignIn(session, expected);
   } catch (error) {
+    if (error?.code === "rate_limited") setRetryCooldown(error.retryAfter);
     const reason = state.ceremonyReason;
     const aborted = ceremony.signal.aborted;
     finishCeremony(ceremony);
@@ -894,8 +898,11 @@ async function logout() {
   if (state.busy || !authState) return;
   let expected;
   try {
-    expected = await currentScope();
+    expected = state.decisionScope ?? scopeOf(state.auth);
+    await checkCeremonyScope(expected);
   } catch (error) {
+    state.stale = error?.code === "stale_account";
+    renderNotice();
     setMessage(errorMessage(error), "alert");
     return;
   }
@@ -905,13 +912,32 @@ async function logout() {
   abortCeremony("auth_change");
   await pauseSync();
   try {
+    const verified = await statusClient.read();
+    await checkCeremonyScope(expected);
+    if (
+      verified.kind === SESSION_STATUS_KINDS.ACTIVE &&
+      verified.session.account.handle !== expected.accountHandle
+    )
+      throw Object.assign(new Error("account_changed"), {
+        code: "account_changed",
+      });
+    if (
+      verified.kind !== SESSION_STATUS_KINDS.ACTIVE &&
+      verified.kind !== SESSION_STATUS_KINDS.SIGNED_OUT &&
+      verified.kind !== SESSION_STATUS_KINDS.REAUTH_REQUIRED
+    )
+      throw new AuthClientError("temporarily_unavailable");
     const csrf = statusClient?.csrfToken ?? undefined;
     try {
       await authClient.logout({ csrfToken: csrf });
     } catch (error) {
       if (error?.code === "csrf_forbidden") {
         const refreshed = await statusClient.read();
-        if (refreshed.kind === SESSION_STATUS_KINDS.ACTIVE)
+        await checkCeremonyScope(expected);
+        if (
+          refreshed.kind === SESSION_STATUS_KINDS.ACTIVE &&
+          refreshed.session.account.handle === expected.accountHandle
+        )
           await authClient.logout({ csrfToken: statusClient.csrfToken });
         else if (refreshed.kind !== SESSION_STATUS_KINDS.SIGNED_OUT)
           throw error;
@@ -1199,7 +1225,14 @@ async function refresh() {
       return state.auth;
     }
 
-    if (status.kind === SESSION_STATUS_KINDS.ACTIVE) {
+    if (
+      status.kind === SESSION_STATUS_KINDS.ACTIVE &&
+      current.sessionState === "reauth_required"
+    ) {
+      // A status GET cannot substitute for an explicit new sign-in ceremony.
+      state.session = null;
+      state.sessionState = "reauth_required";
+    } else if (status.kind === SESSION_STATUS_KINDS.ACTIVE) {
       const session = status.session;
       if (
         current.accountHandle !== null &&

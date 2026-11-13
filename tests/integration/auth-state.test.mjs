@@ -513,3 +513,23 @@ test("a delayed active adoption cannot overwrite a newer lifecycle", async () =>
   );
   assert.deepEqual(await store.read(), bob);
 });
+
+test("an active status snapshot cannot overwrite expiry in the same generation", async () => {
+  const { store } = createStore();
+  await store.initialize({ mode: "session" });
+  const active = await store.write({
+    accountHandle: HANDLE_ALICE,
+    sessionState: "active",
+  });
+  const expired = await store.setSessionState("reauth_required", active);
+  assert.equal(expired.generation, active.generation);
+  await assert.rejects(
+    store.write({
+      accountHandle: HANDLE_ALICE,
+      sessionState: "active",
+      expected: active,
+    }),
+    { code: "stale_account" },
+  );
+  assert.deepEqual(await store.read(), expired);
+});

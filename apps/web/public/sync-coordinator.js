@@ -239,14 +239,19 @@ const retryable = (result) =>
       if (documentId) return;
       await verifyBoundSession();
       await checkFence();
-      const result = await retry(() =>
-        transport.bootstrap({ signal: controller.signal }),
-      );
+      let result;
+      try {
+        result = await retry(() =>
+          transport.bootstrap({ signal: controller.signal }),
+        );
+      } catch (error) {
+        await checkFence();
+        throw error;
+      }
+      // Failures also belong to the initiating account, never a newer one.
+      await checkFence();
       if (result.kind !== "bootstrapped")
         throw new SyncCoordinatorError(result.code ?? result.kind, result);
-      // Never bind a document from a response that arrives after an account
-      // change or reauthentication.
-      await checkFence();
       documentId = result.document_id;
       await metadataStore.observe(metadataKey(), result.cursor, fenceOptions());
     };

@@ -75,6 +75,9 @@
     return {
       generation: value.generation,
       accountHandle: value.accountHandle,
+      ...(value.sessionState === undefined
+        ? {}
+        : { sessionState: value.sessionState }),
     };
   }
 
@@ -319,7 +322,9 @@
                   checkedExpected &&
                   (!previous ||
                     previous.generation !== checkedExpected.generation ||
-                    previous.accountHandle !== checkedExpected.accountHandle)
+                    previous.accountHandle !== checkedExpected.accountHandle ||
+                    (checkedExpected.sessionState !== undefined &&
+                      previous.sessionState !== checkedExpected.sessionState))
                 )
                   throw new AuthStateError("stale_account");
                 next = {
