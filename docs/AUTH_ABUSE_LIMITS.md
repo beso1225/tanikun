@@ -175,11 +175,13 @@ admission keeps its cookie on a storage failure; a commit-time session
 rejection still clears the cookie as documented for the session boundary.
 
 The limiter emits no request logs. HTTP error bodies contain only the bounded
-error code. Tests cover synthetic canaries in credential IDs, addresses,
-cookies, and SQL trigger messages and assert that they do not appear in the
-response, console output, or stored bucket keys. No raw session token, CSRF
-token, challenge, assertion, PRF output, planner payload, or credential
-response is written to the counter table or diagnostic output.
+error code. HTTP tests check that credential and SQL canary text is absent from
+responses and console output; the storage-failure response also excludes the
+presented session token. Separate table checks cover addresses, account IDs,
+binding digests, the deployment key, and credential canary text in stored bucket
+keys. No raw session token, CSRF token, challenge, assertion, PRF output, planner
+payload, or credential response is written to the counter table or diagnostic
+output.
 
 ## Verification
 
