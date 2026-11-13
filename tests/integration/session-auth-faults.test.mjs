@@ -12,7 +12,6 @@ import test from "node:test";
 import { waitForPersistence } from "./planner-harness.mjs";
 import {
   AUTH_ORIGIN,
-  BINDING_COOKIE,
   SESSION_COOKIE,
   activeSession,
   assertEvidenceSanitized,
@@ -86,6 +85,36 @@ test(
         const captured = await captureNextRequest(
           page,
           "**/api/v1/auth/register/verify",
+          async (request) => {
+            // This challenge is still unused and the browser has signed it.
+            // Reject the wrong binding, then let the identical request succeed
+            // with its original binding to isolate the binding check.
+            const { binding } = await sessionCookies(states[0].context);
+            assert.ok(binding);
+            const beforeWrongBinding = await d1Counts(harness);
+            await restoreCookie(states[0].context, {
+              ...binding,
+              value: "B".repeat(43),
+            });
+            try {
+              const wrongBinding = await postFromBrowserContext(
+                states[0].context,
+                "/api/v1/auth/register/verify",
+                { body: JSON.parse(request.body) },
+              );
+              assert.equal(wrongBinding.status, 401);
+              assert.deepEqual(wrongBinding.json, {
+                error: { code: "authentication_failed" },
+              });
+              assert.deepEqual(await d1Counts(harness), beforeWrongBinding);
+              assert.equal(
+                (await sessionCookies(states[0].context)).session,
+                null,
+              );
+            } finally {
+              await restoreCookie(states[0].context, binding);
+            }
+          },
         );
         await registerAndSync(page, "Alice Auth Faults");
         await captured.stop();
@@ -195,28 +224,6 @@ test(
         });
         assert.deepEqual(await d1Counts(harness), replayBefore);
 
-        await states[0].context.addCookies([
-          {
-            name: BINDING_COOKIE,
-            value: "B".repeat(43),
-            domain: "localhost",
-            path: "/",
-            secure: true,
-            httpOnly: true,
-            sameSite: "Lax",
-          },
-        ]);
-        const wrongBinding = await postJsonFromPage(
-          page,
-          "/api/v1/auth/register/verify",
-          { body: registrationBody },
-        );
-        assert.equal(wrongBinding.status, 401);
-        assert.deepEqual(wrongBinding.json, {
-          error: { code: "authentication_failed" },
-        });
-        assert.deepEqual(await d1Counts(harness), replayBefore);
-        await restoreCookie(states[0].context, cookies.binding);
         await restoreCookie(states[0].context, cookies.session);
 
         const logoutSession = (await sessionCookies(states[0].context)).session;
@@ -307,9 +314,9 @@ test(
           {
             kind: "console",
             text: /Failed to load resource: the server responded with a status of 401/u,
-            count: 5,
+            count: 4,
             reason:
-              "the real Worker rejected replay, tamper, wrong binding, revoked, and expired sessions",
+              "the real Worker rejected replay, tamper, revoked, and expired sessions",
           },
         ]);
       },
@@ -342,6 +349,5 @@ test(
     ]);
     await assertHarnessCleaned(harness);
     assert.equal(SESSION_COOKIE.startsWith("__Host-"), true);
-    assert.equal(BINDING_COOKIE.startsWith("__Host-"), true);
   },
 );

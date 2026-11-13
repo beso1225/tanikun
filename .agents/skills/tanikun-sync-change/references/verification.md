@@ -215,3 +215,7 @@ Report the commands you ran, their results, and whether the run was source or
 packaged. Say which layers were not run. Do not claim that a health case proves
 sync auth, that the fake API status suite proves convergence, or that Chromium
 proves screen-reader behavior.
+
+CI uploads only retained `*.log` files and sanitized `*trace.zip` archives on
+failure. Screenshots remain local: their pixels can include planner contents,
+so they are excluded from the upload allowlist.

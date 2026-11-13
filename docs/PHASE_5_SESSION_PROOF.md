@@ -81,10 +81,13 @@ unchanged, and the outbox drains after the pull cursor advances.
 ### Authentication and authorization faults
 
 `session-auth-faults.test.mjs` replays the captured registration verification
-body after its one-time challenge was consumed. It also submits a tampered
-challenge ID and a wrong binding cookie. Each request returns the generic `401
-authentication_failed`, sets no session, and leaves user, credential, session,
-document, and change counts unchanged.
+body after its one-time challenge was consumed and submits a tampered challenge
+ID. It tests a wrong binding separately, before the original signed registration
+request is sent: the unused challenge is rejected under a different binding,
+then the identical signed request succeeds after restoring the original cookie.
+Each rejected request returns the generic `401 authentication_failed`, sets no
+session, and leaves user, credential, session, document, and change counts
+unchanged.
 
 The test inspects Chromium's cookie jar for both `__Host-` cookies. The session
 cookie is `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, host-only, and has no
@@ -124,7 +127,9 @@ the deleted temporary directory.
 Cleanup assertions require the Worker process group to be gone, the temporary
 persistence directory to be removed, the web server to be null, no context to
 remain, the 4300 listener to be closed, and `cleanup.log` to report no problems.
-CI uploads `.cache/verify/sync` only on failure.
+CI uploads only logs and sanitized `*trace.zip` archives from
+`.cache/verify/sync` on failure. Screenshots stay local because their pixels
+can contain planner text; they are excluded from CI uploads.
 
 ## Virtual authenticator properties
 

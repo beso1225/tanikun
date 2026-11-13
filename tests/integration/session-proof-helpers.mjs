@@ -248,7 +248,7 @@ export async function postJsonFromPage(
 }
 
 /** Capture one request body in memory without writing it to evidence. */
-export async function captureNextRequest(page, glob) {
+export async function captureNextRequest(page, glob, beforeContinue) {
   let captured = null;
   const handler = async (route) => {
     if (!captured) {
@@ -258,6 +258,7 @@ export async function captureNextRequest(page, glob) {
         headers: request.headers(),
         body: request.postData(),
       };
+      await beforeContinue?.(captured);
     }
     await route.continue();
   };
