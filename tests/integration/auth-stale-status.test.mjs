@@ -27,8 +27,9 @@ const active = () => ({
   },
 });
 
-for (const queued of [false, true]) {
-  test(`a delayed active status cannot revive reauth_required (queued: ${queued})`, async (t) => {
+for (const ordering of ["committed", "refresh-first", "expiry-first"]) {
+  const queued = ordering !== "committed";
+  test(`a delayed active status preserves reauthentication (${ordering})`, async (t) => {
     const { server, origin } = await startStaticServer(dist);
     t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
     const browser = await chromium.launch();
@@ -88,17 +89,21 @@ for (const queued of [false, true]) {
       );
     // Hold a status response while injecting the state transition made by a 401.
     holdNextStatus = true;
+    if (ordering === "expiry-first")
+      await page.evaluate(() =>
+        globalThis.tanikunAuthController.onSyncStatus({ code: "unauthorized" }),
+      );
     const refresh = page.evaluate(() =>
       globalThis.tanikunAuthController.refresh(),
     );
     await page.waitForFunction(
       () => globalThis.tanikunAuthController?.state?.sessionState === "loading",
     );
-    if (queued) {
+    if (ordering === "refresh-first") {
       await page.evaluate(() =>
         globalThis.tanikunAuthController.onSyncStatus({ code: "unauthorized" }),
       );
-    } else {
+    } else if (!queued) {
       await page.evaluate(async () => {
         const expected = await globalThis.tanikunAuthState.read();
         await globalThis.tanikunAuthState.setSessionState(
@@ -112,7 +117,9 @@ for (const queued of [false, true]) {
       state: globalThis.tanikunAuthController?.state,
     }));
     releaseStatus();
-    if (queued) {
+    if (ordering === "expiry-first")
+      await page.evaluate(() => globalThis.releaseAuthLock());
+    if (ordering === "refresh-first") {
       await refresh;
       assert.equal(
         await page.evaluate(
@@ -135,6 +142,9 @@ for (const queued of [false, true]) {
     assert.equal(after.auth.sessionState, "reauth_required");
     assert.equal(after.auth.generation, before.auth.generation);
     assert.equal(after.state.sessionState, "reauth_required");
+    assert.equal(after.state.stale, false);
+    await page.locator("#account-button").click();
+    assert.match(await page.locator("#auth-dialog").innerText(), /再認証する/u);
     await page.evaluate(() => globalThis.tanikunAuthController.refresh());
     assert.deepEqual(
       await page.evaluate(() => globalThis.tanikunAuthState.read()),

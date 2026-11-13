@@ -1189,12 +1189,12 @@ async function refresh() {
   if (Date.now() < state.retryNotBefore) return state.auth;
   if (refreshPromise) return refreshPromise;
   const expectedEpoch = lifecycleEpoch;
+  let expected;
   refreshPromise = (async () => {
     state.sessionState = "loading";
     state.message = null;
     state.messageKind = "status";
     renderAccountButton();
-    let expected;
     try {
       state.auth = await authState.read();
       expected = scopeOf(state.auth);
@@ -1213,21 +1213,10 @@ async function refresh() {
     state.reason = status.reason;
     const current = await authState.read();
     state.auth = current;
-    if (!sameScope(current, expected)) {
-      state.stale = true;
-      state.sessionState =
-        current.sessionState === "signed_out"
-          ? "signed_out"
-          : current.sessionState;
-      state.message =
-        "別のアカウントに切り替わりました。この画面の編集内容は残っています。";
-      state.messageKind = "alert";
-      setRetryCooldown(0);
-      renderAccountButton();
-      renderNotice();
-      renderDialog();
-      return state.auth;
-    }
+    if (!sameScope(current, expected))
+      throw Object.assign(new Error("stale_account"), {
+        code: "stale_account",
+      });
 
     if (
       status.kind === SESSION_STATUS_KINDS.ACTIVE &&
@@ -1324,14 +1313,35 @@ async function refresh() {
   })()
     .catch(async (error) => {
       if (error?.code === "stale_account") {
-        state.stale = true;
+        let current;
         try {
-          state.auth = await authState.read();
+          current = await authState.read();
+          state.auth = current;
         } catch {
-          // The recovery surface uses the last readable state.
+          // An unreadable scope still requires explicit stale recovery.
         }
-        state.message = errorMessage(error);
-        state.messageKind = "alert";
+        if (
+          expected &&
+          current &&
+          current.generation === expected.generation &&
+          current.accountHandle === expected.accountHandle &&
+          current.sessionState === "reauth_required"
+        ) {
+          // Expiry preserves the account and generation; offer reauthentication.
+          state.stale = false;
+          state.session = null;
+          state.sessionState = "reauth_required";
+          state.message = null;
+          state.messageKind = "status";
+          statusClient.clear();
+        } else {
+          state.stale = true;
+          state.session = null;
+          state.sessionState = current?.sessionState ?? "offline";
+          statusClient.clear();
+          state.message = errorMessage(error);
+          state.messageKind = "alert";
+        }
         renderAccountButton();
         renderNotice();
       } else {

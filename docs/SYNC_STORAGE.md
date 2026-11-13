@@ -370,12 +370,12 @@ issue #185.
 
 ### Account isolation evidence
 
-The #183 implementation was verified on macOS arm64 at the merge base plus
-these commits:
+The #183 implementation and its lifecycle fixes were verified on macOS arm64:
 
-- `just test`: 144 JavaScript tests passed, plus the MoonBit suites.
+- `just test`: 174 JavaScript tests passed (24 export/document tests and 150
+  runtime tests), plus 294 MoonBit tests.
 - `just test-d1`: 305 passed.
-- `just test-browser`: 47 passed.
+- `just test-browser`: 53 browser tests and 1 allocation test passed.
 - `just test-sync` from source: 53 passed and 4 packaged-only tests skipped.
 - `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 57 passed,
   including all nine session account journeys.
@@ -389,7 +389,9 @@ Bob, a late expiry after logout, a delayed active or expired status response,
 copy and first-upload consent from an old generation, a pending native ceremony
 canceled by a switch or dialog close, a switch at the acknowledge and
 mark-remote mutation boundaries, nested settings to account focus ownership,
-and account-dialog Retry-After cooldown.
+and account-dialog Retry-After cooldown. Both lock orderings for expiry and
+active status adoption preserve the same account generation and expose the
+reauthentication action rather than account-switch recovery.
 
 The session journeys use a disposable loopback certificate and a Chromium
 virtual authenticator. They do not prove a physical provider, screen-reader
