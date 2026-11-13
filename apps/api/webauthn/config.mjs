@@ -13,6 +13,10 @@ export function readSessionAuthConfig(env) {
   if (env.APP_ENV !== "local" && env.APP_ENV !== "test") return null;
   if (env.DEV_AUTH !== undefined && env.DEV_AUTH !== "false") return null;
   if (env.DEV_AUTH_IDENTITIES !== undefined) return null;
+  // The deterministic test-document hook is dev-bearer only. Session owners
+  // always receive a server-generated document from registration or the
+  // idempotent provisioning path.
+  if (env.TEST_NEW_DOCUMENT_ID !== undefined) return null;
   if (env.AUTH_ORIGIN !== SESSION_AUTH_ORIGIN) return null;
   if (env.RP_ID !== SESSION_RP_ID) return null;
   try {

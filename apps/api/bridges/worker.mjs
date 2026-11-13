@@ -1,5 +1,5 @@
 import { health_body } from "../../../_build/js/release/build/beso1225/tanikun-api/tanikun-api.js";
-import { handleSyncRequest } from "../http/sync.mjs";
+import { handleApiRequest } from "../http/api.mjs";
 
 export default {
   fetch(request, env) {
@@ -16,7 +16,7 @@ export default {
       });
     }
     if (pathname === "/api/v1" || pathname.startsWith("/api/v1/"))
-      return handleSyncRequest(request, env);
+      return handleApiRequest(request, env);
     return new Response("Not Found", { status: 404 });
   },
 };

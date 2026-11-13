@@ -208,6 +208,7 @@ it.each(serverCases)(
       testCase.name === "bootstrap-new"
         ? await worker.fetch(request, {
             DB: env.DB,
+            AUTH_MODE: "dev_bearer",
             APP_ENV: "local",
             DEV_AUTH: "true",
             DEV_AUTH_IDENTITIES: JSON.stringify(

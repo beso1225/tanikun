@@ -71,6 +71,25 @@ export async function readJsonBody(request, maxBytes) {
   }
 }
 
+// Session bootstrap and logout-style routes accept no body. Read the actual
+// stream instead of trusting Content-Length alone; an empty Content-Length: 0
+// request is valid, while any body byte is a malformed request.
+export async function assertEmptyBody(request) {
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength !== null && !/^0+$/.test(contentLength))
+    throw new ApiError("malformed_request");
+  if (request.body === null) return;
+  let bytes;
+  try {
+    bytes = await readBodyBytes(request, 1);
+  } catch (error) {
+    if (error?.code === "request_too_large")
+      throw new ApiError("malformed_request");
+    throw error;
+  }
+  if (bytes.byteLength !== 0) throw new ApiError("malformed_request");
+}
+
 const decimal = /^(0|[1-9][0-9]*)$/;
 
 export function parsePagination(url) {

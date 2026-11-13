@@ -1214,8 +1214,10 @@ describe("session boundary", () => {
     expect(cookies.some((value) => value.startsWith(`${BINDING}=`))).toBe(true);
   });
 
-  it("keeps the session boundary unregistered and fails closed without an exact session config", async () => {
-    const clock = fakeClock();
+  it("activates the session boundary on the Worker bridge and fails closed without exact config", async () => {
+    // The Worker path does not receive test dependencies, so issue this
+    // session at the live clock instead of the fixed test epoch.
+    const clock = fakeClock(Date.now());
     const account = await registerAccount({ clock });
     const status = await worker.fetch(
       new Request(`${ORIGIN}/api/v1/auth/session`, {
@@ -1223,8 +1225,24 @@ describe("session boundary", () => {
       }),
       account.env,
     );
-    expect(status.status).toBe(404);
+    expect(status.status).toBe(200);
+    expect(status.headers.get("Cache-Control")).toBe("no-store");
     expect(status.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(await status.json()).toMatchObject({
+      session: { account: { handle: account.handle } },
+    });
+
+    const defaultGate = await worker.fetch(
+      new Request(`${ORIGIN}/api/v1/auth/session`, {
+        headers: { Cookie: `${SESSION}=${account.session}` },
+      }),
+      { DB: env.DB },
+    );
+    expect(defaultGate.status).toBe(404);
+    expect(defaultGate.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(await defaultGate.json()).toEqual({
+      error: { code: "not_found" },
+    });
 
     for (const override of [
       { AUTH_MODE: undefined },
