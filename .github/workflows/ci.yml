@@ -106,7 +106,7 @@ jobs:
         run: |
           nix build path:.#web --out-link result-web
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" \
-            just test-browser
+            just test-browser-built
       - name: Exercise the real sync harness with packaged web and Worker
         timeout-minutes: 20
         run: |

@@ -95,6 +95,10 @@ build-web: build-css build-automerge
 test-browser: build-web
     moon run scripts/build-allocation-fixture.mbtx
     node --test tests/integration/browser-allocations.test.mjs
+    just test-browser-built
+
+# Test existing browser assets without requiring the source build tools.
+test-browser-built:
     node --test --test-timeout=60000 tests/integration/browser-display.test.mjs tests/integration/browser.test.mjs tests/integration/browser-phase2.test.mjs tests/integration/browser-persistence.test.mjs tests/integration/browser-persistence-convergence.test.mjs tests/integration/browser-sync-status.test.mjs tests/integration/auth-stale-status.test.mjs tests/integration/auth-rate-status.test.mjs tests/integration/auth-stale-logout.test.mjs
 
 # Run sync convergence and fault suites against a real local Worker and D1.
