@@ -625,6 +625,9 @@ test(
         await waitForSyncText(page, "オフライン");
         await page.reload();
         await waitForPersistence(page);
+        // Persistence can finish before the reloaded session checks. Keep the
+        // fault active until the shell has observed the offline state.
+        await waitForSyncText(page, "オフライン");
         assert.equal(
           hasEnrollment(await readPlannerText(page, accountKey), "phy302-s"),
           true,
