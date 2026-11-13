@@ -4,6 +4,7 @@
   "compatibility_date": "2026-10-12",
   "send_metrics": false,
   "vars": {
+    "AUTH_MODE": "dev_bearer",
     "APP_ENV": "local",
     "DEV_AUTH": "true",
     "DEV_AUTH_IDENTITIES": "{\"local-fixture-token-alice\":\"dev-alice\",\"local-fixture-token-bob\":\"dev-bob\"}",

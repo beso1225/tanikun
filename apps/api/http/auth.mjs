@@ -26,9 +26,18 @@ function parseIdentities(value) {
 
 // ADR-0014: the environment and URL gate runs before Origin, routes, or auth.
 // A disabled or malformed local configuration is indistinguishable from an
-// unknown route.
+// unknown route. Phase 5 makes the mode explicit; DEV_AUTH alone is never a
+// mode switch and no unknown or conflicting mode can reach dev bearer.
 export function readDevEnvironment(request, env) {
+  if (env?.AUTH_MODE !== "dev_bearer") return null;
   if (env?.DEV_AUTH !== "true" || env?.APP_ENV !== "local") return null;
+  // Session-only configuration belongs to the other mutually exclusive mode.
+  if (
+    env.AUTH_ORIGIN !== undefined ||
+    env.RP_ID !== undefined ||
+    env.AUTH_RATE_LIMIT_KEY !== undefined
+  )
+    return null;
   let url;
   try {
     url = new URL(request.url);

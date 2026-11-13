@@ -81,6 +81,35 @@ export function createChangeRepository(
 
     findOwnedDocument: owned,
 
+    // Session-mode provisioning. The user row already exists from verified
+    // registration; never create an unauthenticated user here. A missing
+    // document for an existing session owner is completed idempotently, and
+    // the winner is read on the primary in the same batch. The caller's owner
+    // is always the server-resolved session user, never a request field.
+    async provisionSessionDocument(ownerId) {
+      requireOwner(ownerId);
+      const documentId = newDocumentId();
+      requireDocumentId(documentId);
+      const createdAt = now();
+      try {
+        const results = await db.batch([
+          db
+            .prepare(
+              "INSERT INTO documents (id, owner_id, last_seq, created_at) SELECT ?1, u.id, 0, ?2 FROM users u WHERE u.id = ?3 ON CONFLICT(owner_id) DO NOTHING",
+            )
+            .bind(documentId, createdAt, ownerId),
+          db
+            .prepare("SELECT id, last_seq FROM documents WHERE owner_id = ?1")
+            .bind(ownerId),
+        ]);
+        const document = results[1].results[0];
+        if (!document) throw new SyncError("temporarily_unavailable");
+        return { document_id: document.id, cursor: document.last_seq };
+      } catch (error) {
+        throw databaseError(error);
+      }
+    },
+
     async append(ownerId, documentId, changes) {
       await owned(ownerId, documentId);
       const validated = validateAppend(changes, documentId);

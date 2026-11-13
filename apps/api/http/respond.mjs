@@ -4,6 +4,7 @@ const statusByCode = Object.freeze({
   malformed_request: 400,
   unauthorized: 401,
   origin_forbidden: 403,
+  csrf_forbidden: 403,
   not_found: 404,
   method_not_allowed: 405,
   change_conflict: 409,
@@ -11,6 +12,7 @@ const statusByCode = Object.freeze({
   log_gap: 409,
   request_too_large: 413,
   unsupported_media_type: 415,
+  rate_limited: 429,
   temporarily_unavailable: 503,
   sequence_exhausted: 503,
 });
@@ -33,7 +35,7 @@ export function emptyResponse(status, headers = {}) {
   });
 }
 
-export function errorResponse(error) {
+function syncError(error, { bearer }) {
   const code =
     typeof error?.code === "string" && Object.hasOwn(statusByCode, error.code)
       ? error.code
@@ -45,10 +47,23 @@ export function errorResponse(error) {
   )
     body.cursor = error.cursor;
   const headers = {};
-  if (code === "unauthorized") headers["WWW-Authenticate"] = "Bearer";
+  if (bearer && code === "unauthorized") headers["WWW-Authenticate"] = "Bearer";
   if (code === "method_not_allowed" && typeof error?.allow === "string")
     headers.Allow = error.allow;
+  if (code === "rate_limited" && Number.isSafeInteger(error?.retryAfter))
+    headers["Retry-After"] = String(error.retryAfter);
   return jsonResponse(statusByCode[code], body, headers);
+}
+
+export function errorResponse(error) {
+  return syncError(error, { bearer: true });
+}
+
+// Session-mode sync errors keep ADR-0013's protocol body and cursor shape but
+// add no CORS and no WWW-Authenticate header. A browser session is not a
+// bearer challenge, and the same-origin topology has no preflight path.
+export function sessionErrorResponse(error) {
+  return syncError(error, { bearer: false });
 }
 
 // Apply the exact-Origin CORS result after every response, including gate and

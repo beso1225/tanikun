@@ -19,6 +19,7 @@ let
       ../apps/web/public/planner-document.js
       ../apps/web/public/sync-coordinator.js
       ../apps/web/public/sync-metadata.js
+      ../apps/web/public/sync-session.js
       ../apps/web/public/sync-shell.js
       ../apps/web/public/sync-store.js
       ../apps/web/public/sync-transport.js
@@ -133,25 +134,26 @@ let
       moon fmt --check
       moon check --frozen --target js --deny-warn
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-api
-      node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs
+      node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs tests/integration/deployment-config.test.mjs
     '';
     # Keep the bridge's relative imports intact. The WebAuthn verifier and the
-    # Phase 5 auth-service entry are bundled into self-contained ESM files so
-    # the release artifact has no bare npm import or source-checkout fallback.
-    # The entry includes the #180 cookie/session/CSRF boundary and the #181
-    # fixed-window limiter, but neither auth handler is registered in the
-    # default Worker bridge. #182 still owns session sync integration and route
-    # activation. Include every production module, migration, and a runtime
-    # config that does not depend on the source tree's Moon project. The source
-    # config keeps its build/watch hooks for local development; the packaged
-    # copy strips them and the missing schema path so Wrangler can start inside
-    # the Nix output.
+    # Phase 5 API entry are bundled into self-contained ESM files so the release
+    # artifact has no bare npm import or source-checkout fallback. The API entry
+    # bundles the mode gate, #179 ceremony service, #180 cookie/session/CSRF
+    # boundary, #181 fixed-window limiter, and #182 session-to-sync principal.
+    # The packaged api.mjs is a shim over that bundle; the bridge's only runtime
+    # imports are the shim and the MoonBit health module. Include every
+    # production module, migration, and a runtime config that does not depend
+    # on the source tree's Moon project. The source config keeps its
+    # build/watch hooks for local development; the packaged copy strips them
+    # and the missing schema path so Wrangler can start inside the Nix output.
     installPhase = ''
-      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/rate-limits" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
+      mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/rate-limits" "$out/apps/api/migrations" "$out/apps/api/session" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
-      cp apps/api/http/auth.mjs apps/api/http/errors.mjs apps/api/http/json.mjs apps/api/http/respond.mjs apps/api/http/sync.mjs "$out/apps/api/http/"
+      cp apps/api/http/auth.mjs apps/api/http/auth-routes.mjs apps/api/http/errors.mjs apps/api/http/json.mjs apps/api/http/respond.mjs apps/api/http/session-auth.mjs apps/api/http/sync.mjs apps/api/http/webauthn.mjs "$out/apps/api/http/"
       cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
       cp apps/api/rate-limits/*.mjs "$out/apps/api/rate-limits/"
+      cp apps/api/session/*.mjs "$out/apps/api/session/"
       cp apps/api/migrations/*.sql "$out/apps/api/migrations/"
       cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
       cp _build/js/release/build/beso1225/tanikun-api/tanikun-api.js "$out/_build/js/release/build/beso1225/tanikun-api/"
@@ -167,8 +169,16 @@ let
         --platform=browser \
         --target=es2022 \
         --outfile="$out/apps/api/webauthn/auth.js"
+      pnpm exec esbuild apps/api/http/api.mjs \
+        --bundle \
+        --format=esm \
+        --platform=browser \
+        --target=es2022 \
+        --outfile="$out/apps/api/http/api.js"
       printf 'export { handleSessionAuthRequest, handleWebAuthnRequest } from "../webauthn/auth.js";\n' \
         > "$out/apps/api/http/webauthn.mjs"
+      printf 'export { handleApiRequest } from "./api.js";\n' \
+        > "$out/apps/api/http/api.mjs"
       node --input-type=module <<'NODE'
       import { readFileSync, writeFileSync } from "node:fs";
       import { parseJsonc } from "./scripts/parse-jsonc.mjs";

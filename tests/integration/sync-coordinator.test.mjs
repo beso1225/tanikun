@@ -1228,3 +1228,78 @@ test("fails closed when a fresh seed follows an interrupted discard", async () =
     "fresh-seed",
   );
 });
+
+test("rate limits retry bootstrap, pull, and identical push envelopes after Retry-After", async () => {
+  for (const operation of ["bootstrap", "pull", "push"]) {
+    const context = await setup();
+    const original = context.transport[operation].bind(context.transport);
+    let attempts = 0;
+    const requests = [];
+    context.transport[operation] = async (...args) => {
+      attempts += 1;
+      requests.push(structuredClone(args));
+      return attempts === 1
+        ? {
+            kind: "rate_limited",
+            code: "rate_limited",
+            retryable: true,
+            retry_after: 2,
+          }
+        : original(...args);
+    };
+    const delays = [];
+    const coordinator = createSyncCoordinator({
+      storage: context.storage,
+      transport: context.transport,
+      ...(operation === "bootstrap" ? {} : { documentId }),
+      apiOrigin,
+      syncStore: context.syncStore,
+      metadataStore: context.metadataStore,
+      sleep: async (ms) => delays.push(ms),
+      random: () => 0,
+      locks: null,
+    });
+    assert.equal((await coordinator.sync()).kind, "synced");
+    assert.equal(attempts, 2);
+    assert.deepEqual(requests[0], requests[1]);
+    assert.deepEqual(delays, [2000]);
+  }
+});
+
+test("rate-limit retry exhaustion preserves the outbox and cooldown metadata", async () => {
+  const context = await setup();
+  let attempts = 0;
+  context.transport.push = async () => {
+    attempts += 1;
+    return {
+      kind: "rate_limited",
+      code: "rate_limited",
+      retryable: true,
+      retry_after: 2,
+    };
+  };
+  const delays = [];
+  const statuses = [];
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    documentId,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    maxRetry: 2,
+    sleep: async (ms) => delays.push(ms),
+    random: () => 0,
+    locks: null,
+    onStatus: (status) => statuses.push(status),
+  });
+  assert.deepEqual(await coordinator.sync(), {
+    kind: "error",
+    code: "rate_limited",
+    retry_after: 2,
+  });
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [2000, 2000]);
+  assert.equal(statuses.at(-1).retry_after, 2);
+  assert.equal((await context.syncStore.listOutbox(syncScope)).length, 2);
+});

@@ -913,7 +913,7 @@ describe("account and session fixed windows", () => {
     expect(other.status).toBe(200);
   });
 
-  it("exposes a reusable session-sync guard without registering sync auth", async () => {
+  it("exposes a reusable session-sync guard and wires the bridge mode gate", async () => {
     const clock = alignedClock(60_000);
     const account = await registerAccount({ clock });
     const admission = createSessionAdmission({ db: env.DB, now: clock.now });
@@ -996,7 +996,32 @@ describe("account and session fixed windows", () => {
       }),
       account.env,
     );
-    expect(bridge.status).toBe(404);
+    // #182 activates the session sync boundary on the Worker bridge. A
+    // missing Origin now fails at the session Origin gate, not as an
+    // unregistered route, and a default config still fails closed.
+    expect(bridge.status).toBe(403);
+    expect(await bridge.json()).toEqual({
+      error: { code: "origin_forbidden" },
+    });
+    const noCookie = await worker.fetch(
+      new Request(`${ORIGIN}/api/v1/sync/document`, {
+        method: "POST",
+        headers: { Origin: ORIGIN },
+      }),
+      account.env,
+    );
+    expect(noCookie.status).toBe(401);
+    expect(await noCookie.json()).toEqual({
+      error: { code: "unauthorized" },
+    });
+    const defaultGate = await worker.fetch(
+      new Request(`${ORIGIN}/api/v1/sync/document`, {
+        method: "POST",
+        headers: { Origin: ORIGIN },
+      }),
+      { DB: env.DB },
+    );
+    expect(defaultGate.status).toBe(404);
   });
 });
 

@@ -1111,6 +1111,8 @@ export class SyncHarness {
       "info",
       "--show-interactive-dev-session=false",
       "--var",
+      "AUTH_MODE:dev_bearer",
+      "--var",
       "APP_ENV:local",
       "--var",
       "DEV_AUTH:true",
@@ -1474,6 +1476,7 @@ export class SyncHarness {
       await page.addInitScript(
         ({ apiOrigin, token }) => {
           globalThis["__TANIKUN_SYNC_CONFIG__"] = {
+            mode: "dev_bearer",
             apiOrigin,
             token,
             maxRetry: 0,

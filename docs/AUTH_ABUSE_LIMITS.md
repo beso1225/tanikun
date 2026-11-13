@@ -9,10 +9,11 @@ table, error envelope, and rejection order. The production policy owner is
 `apps/api/rate-limits/policy.mjs`; this page records the storage, trust,
 normalization, concurrency, and failure behavior behind that table.
 
-The work is local and test only. Session mode is not enabled in the default
-Worker bridge. #182 still owns session-to-sync authorization and route
-activation, and #184 still owns credential list and removal. No production
-deployment, Durable Object, new service, or new framework is added here.
+The work is local and test only. #182 activates session-mode sync and the
+session auth routes on the Worker bridge through the explicit `AUTH_MODE`
+gate; the default, preview, and production configurations still fail closed.
+Issue #184 still owns credential list and removal. No production deployment,
+Durable Object, new service, or new framework is added here.
 
 ## Enforcement store
 
@@ -154,17 +155,18 @@ The route mappings are:
 | Credential add      | account, plus challenge issuance on options            |
 | Logout-all          | account                                                |
 | Session status      | session                                                |
-| Sync request        | session, prepared for #182                             |
+| Sync request        | session, used by #182 session sync                     |
 
 Credential list and removal are not implemented here. The policy table already
 maps credential removal to the account limit so #184 can reuse the limiter
 without inventing a second policy.
 
-The default Worker bridge still has no auth or session route. Session mode is
+The Worker bridge now dispatches the session auth boundary and the
+session-to-sync principal through one explicit mode gate. Session mode is
 available only to local and test configuration with the exact origin, RP ID,
-and rate key. #182 must route the session principal into sync, and #184 must add
-credential management. Tests can call the composition directly, but there is no
-test-only environment bypass or anonymous fallback.
+and rate key; default, preview, and production configuration returns `404`.
+Issue #184 still adds credential management. Tests call the real bridge and D1,
+and there is no test-only environment bypass or anonymous fallback.
 
 ## Failure behavior and diagnostics
 

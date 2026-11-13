@@ -97,22 +97,42 @@ page.
 
 ## Local development auth
 
-`apps/api/http/auth.mjs` owns the gate. Identity resolves only when all of
-these are true:
+`apps/api/http/auth.mjs` owns the dev-bearer gate. Identity resolves only when
+all of these are true:
 
+- `AUTH_MODE` is exactly `dev_bearer`.
 - `DEV_AUTH` is exactly `true`.
 - `APP_ENV` is exactly `local`.
 - The request URL is `http` on `127.0.0.1` or `localhost`.
 - The Origin is exactly `http://127.0.0.1:4300`.
 - `DEV_AUTH_IDENTITIES` is a valid, nonempty mapping with nonempty tokens and
   IDs.
+- No session-only `AUTH_ORIGIN`, `RP_ID`, or `AUTH_RATE_LIMIT_KEY` is present.
 
-A failed environment, URL, or mapping gate returns `404 not_found`. A missing,
-malformed, or unknown bearer returns `401 unauthorized` with
+A failed environment, URL, mode, or mapping gate returns `404 not_found`. A
+missing, malformed, or unknown bearer returns `401 unauthorized` with
 `WWW-Authenticate: Bearer`.
-There is no anonymous fallback. The browser transport uses
-`credentials: "omit"`. `just dev-api` supplies the local variables. Default,
-preview, and production configurations must omit them.
+There is no anonymous fallback. The browser transport uses an explicit
+`mode: "dev_bearer"` with `credentials: "omit"`. `just dev-api` supplies the
+local variables. Default, preview, and production configurations must omit
+them.
+
+## Session sync
+
+`AUTH_MODE=session` resolves the principal only from the HttpOnly cookie through
+the shared session admission and rate-limit guards. The exact
+`https://localhost:4300` Origin is required, session appends require
+`X-CSRF-Token`, and the 120/minute session fixed window is charged after
+ownership and request validation. Bootstrap is
+`POST /api/v1/sync/document`; `GET` returns `405 Allow: POST`. The owner is the
+server-resolved user ID. Foreign and missing documents are indistinguishable
+`404`, and append/pull never create or rebind a document. Provisioning accepts no
+caller owner. Session errors have no CORS or `WWW-Authenticate` header and clear an invalid presented
+session cookie.
+
+A `401` is not a dev fallback: session mode rejects any `Authorization` header
+with `400 malformed_request`, and an absent or invalid cookie returns `401`.
+The Phase 4 dev-bearer harness remains a separate explicit mode.
 
 - Do not add a query, cookie, body, or user-ID header as an identity source.
 - Do not log tokens, identities, envelopes, payloads, or raw SQL errors.

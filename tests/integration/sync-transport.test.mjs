@@ -28,12 +28,19 @@ copyFileSync(
   join(root, "apps/web/public/sync-transport.js"),
   join(artifactDir, "sync-transport.js"),
 );
+copyFileSync(
+  join(root, "apps/web/public/sync-session.js"),
+  join(artifactDir, "sync-session.js"),
+);
 buildSyncContract(join(artifactDir, "sync-contract.mjs"));
 const {
   createSyncTransport,
   SYNC_TRANSPORT_KINDS: K,
   SYNC_LIMITS,
 } = await import(pathToFileURL(join(artifactDir, "sync-transport.js")).href);
+const { createSessionStatusClient, SESSION_STATUS_KINDS: S } = await import(
+  pathToFileURL(join(artifactDir, "sync-session.js")).href
+);
 
 const caseByName = (name) => {
   const found = fixture.cases.find((entry) => entry.name === name);
@@ -67,6 +74,7 @@ function scriptedFetch(respond) {
 function transportFor(fetch, options = {}) {
   return createSyncTransport({
     fetch,
+    mode: "dev_bearer",
     baseUrl,
     token,
     timeoutMs: 1_000,
@@ -107,6 +115,7 @@ test("rejects a base URL with a path, query, or fragment", () => {
       () =>
         createSyncTransport({
           fetch: async () => {},
+          mode: "dev_bearer",
           baseUrl: invalid,
           token,
         }),
@@ -157,6 +166,175 @@ test("bootstrap parses the exact ADR fixture response", async () => {
   assert.equal(calls[0].init.credentials, "omit");
   assert.equal(calls[0].init.cache, "no-store");
   assert.equal(calls[0].init.body, undefined);
+});
+
+const unexpectedFetch = async () => assert.fail("unexpected fetch");
+
+test("requires an explicit transport mode and forbids cross-mode credentials", () => {
+  const fetch = unexpectedFetch;
+  for (const mode of [undefined, "", "devbearer", "cookie"]) {
+    assert.throws(
+      () => createSyncTransport({ fetch, mode, baseUrl, token }),
+      /mode must be exactly dev_bearer or session/,
+    );
+  }
+  assert.throws(
+    () =>
+      createSyncTransport({
+        fetch,
+        mode: "session",
+        baseUrl,
+        token,
+        getCsrfToken: () => "A".repeat(43),
+      }),
+    /session mode must not carry a runtime token/,
+  );
+  assert.throws(
+    () => createSyncTransport({ fetch, mode: "session", baseUrl }),
+    /session mode requires getCsrfToken/,
+  );
+  assert.throws(
+    () =>
+      createSyncTransport({
+        fetch,
+        mode: "dev_bearer",
+        baseUrl,
+        token,
+        getCsrfToken: () => "A".repeat(43),
+      }),
+    /dev_bearer must not use a CSRF token/,
+  );
+});
+
+test("session bootstrap is a same-origin POST with CSRF and no bearer", async () => {
+  const row = caseByName("bootstrap-new");
+  const { calls, fetch } = scriptedFetch(() => responseFrom(row));
+  const csrf = "C".repeat(43);
+  const transport = createSyncTransport({
+    fetch,
+    mode: "session",
+    baseUrl,
+    getCsrfToken: () => csrf,
+    timeoutMs: 1_000,
+  });
+  const result = await transport.bootstrap();
+  assert.deepEqual(result, { kind: K.BOOTSTRAPPED, ...row.response.body });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${baseUrl}/api/v1/sync/document`);
+  assert.equal(new URL(calls[0].url).search, "");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.body, undefined);
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(calls[0].init.headers.Authorization, undefined);
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], csrf);
+});
+
+test("session push reads the CSRF token per write and pull stays a safe GET", async () => {
+  const append = caseByName("append");
+  const pullRow = caseByName("pull");
+  const { calls, fetch } = scriptedFetch((index) =>
+    index === 0 ? responseFrom(append) : responseFrom(pullRow),
+  );
+  let csrf = "D".repeat(43);
+  const transport = createSyncTransport({
+    fetch,
+    mode: "session",
+    baseUrl,
+    getCsrfToken: () => csrf,
+    timeoutMs: 1_000,
+  });
+  const pushed = await transport.push(
+    documentId,
+    structuredClone(append.request.body.changes),
+  );
+  assert.equal(pushed.kind, K.PUSHED);
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], csrf);
+  assert.equal(calls[0].init.headers.Authorization, undefined);
+  assert.equal(calls[0].init.credentials, "same-origin");
+  csrf = "E".repeat(43);
+  const pulled = await transport.pull(documentId, { after: 0, limit: 100 });
+  assert.equal(pulled.kind, K.PULLED);
+  assert.equal(calls[1].init.method, "GET");
+  assert.equal(calls[1].init.headers["X-CSRF-Token"], undefined);
+  assert.equal(calls[1].init.headers.Authorization, undefined);
+  assert.equal(calls[1].init.credentials, "same-origin");
+});
+
+test("session mode fails closed to the caller when the in-memory CSRF is absent", async () => {
+  const { calls, fetch } = scriptedFetch(() => assert.fail("unexpected fetch"));
+  const transport = createSyncTransport({
+    fetch,
+    mode: "session",
+    baseUrl,
+    getCsrfToken: () => "",
+    timeoutMs: 1_000,
+  });
+  assert.deepEqual(await transport.bootstrap(), {
+    kind: K.UNAUTHORIZED,
+    retryable: false,
+  });
+  assert.equal(calls.length, 0);
+});
+
+test("session status reads the HttpOnly cookie status without exposing it", async () => {
+  const handle = "H".repeat(43);
+  const csrf = "F".repeat(43);
+  const { calls, fetch } = scriptedFetch(() =>
+    jsonResponse({
+      session: {
+        account: { handle, display_name: "Alice Session" },
+        expires_at: 1_760_000_000_000,
+        idle_expires_at: 1_760_001_800_000,
+        recent_auth: true,
+        recent_auth_expires_at: 1_760_000_300_000,
+        csrf_token: csrf,
+      },
+    }),
+  );
+  const client = createSessionStatusClient({
+    fetch,
+    baseUrl,
+    timeoutMs: 1_000,
+  });
+  const status = await client.read();
+  assert.equal(status.kind, S.ACTIVE);
+  assert.equal(status.session.account.handle, handle);
+  assert.equal(Object.hasOwn(status.session, "csrf_token"), false);
+  assert.equal(client.csrfToken, csrf);
+  assert.equal(calls[0].url, `${baseUrl}/api/v1/auth/session`);
+  assert.equal(calls[0].init.method, "GET");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(calls[0].init.headers.Authorization, undefined);
+  client.clear();
+  assert.equal(client.csrfToken, null);
+  assert.equal(client.account, null);
+});
+
+test("session status distinguishes signed-out, reauthentication, and failure", async () => {
+  for (const [response, kind] of [
+    [jsonResponse({ session: null }), S.SIGNED_OUT],
+    [
+      jsonResponse({ error: { code: "unauthorized" } }, { status: 401 }),
+      S.REAUTH_REQUIRED,
+    ],
+    [
+      jsonResponse(
+        { error: { code: "temporarily_unavailable" } },
+        { status: 503 },
+      ),
+      S.UNAVAILABLE,
+    ],
+    [jsonResponse({ session: { account: {} } }), S.MALFORMED],
+  ]) {
+    const client = createSessionStatusClient({
+      fetch: async () => response,
+      baseUrl,
+      timeoutMs: 1_000,
+    });
+    const status = await client.read();
+    assert.equal(status.kind, kind);
+    if (kind !== S.ACTIVE) assert.equal(client.csrfToken, null);
+  }
 });
 
 test("push sends the fixture envelope batch and parses acceptance", async () => {
@@ -427,6 +605,7 @@ test("network failure, timeout, and caller abort are distinct", async () => {
   const timeoutFetch = hangingFetch();
   const timeoutResult = await createSyncTransport({
     fetch: timeoutFetch.fetch,
+    mode: "dev_bearer",
     baseUrl,
     token,
     timeoutMs: 5,
@@ -436,6 +615,7 @@ test("network failure, timeout, and caller abort are distinct", async () => {
   const controller = new AbortController();
   const pending = createSyncTransport({
     fetch: abortFetch.fetch,
+    mode: "dev_bearer",
     baseUrl,
     token,
     timeoutMs: 1_000,
@@ -497,6 +677,7 @@ test("network failure, timeout, and caller abort are distinct", async () => {
   assert.deepEqual(
     await createSyncTransport({
       fetch: preAbortedFetch.fetch,
+      mode: "dev_bearer",
       baseUrl,
       token,
       timeoutMs: 1_000,
@@ -739,4 +920,110 @@ test("transport does not read local state or log request bytes", async () => {
     }
   }
   assert.deepEqual(output, []);
+});
+
+test("session sync 429 retains Retry-After for every operation", async () => {
+  for (const operation of ["bootstrap", "push", "pull"]) {
+    const transport = createSyncTransport({
+      fetch: async () =>
+        jsonResponse(
+          { error: { code: "rate_limited" } },
+          {
+            status: 429,
+            headers: { "Retry-After": "7" },
+          },
+        ),
+      mode: "session",
+      baseUrl,
+      getCsrfToken: () => "C".repeat(43),
+    });
+    const result =
+      operation === "bootstrap"
+        ? await transport.bootstrap()
+        : operation === "pull"
+          ? await transport.pull(documentId)
+          : await transport.push(
+              documentId,
+              structuredClone(caseByName("append").request.body.changes),
+            );
+    assert.deepEqual(result, {
+      kind: "rate_limited",
+      status: 429,
+      code: "rate_limited",
+      retryable: true,
+      retry_after: 7,
+    });
+  }
+});
+
+test("session status 429 preserves retry metadata and recovers", async () => {
+  let calls = 0;
+  const client = createSessionStatusClient({
+    fetch: async () => {
+      calls += 1;
+      return calls === 1
+        ? jsonResponse(
+            { error: { code: "rate_limited" } },
+            {
+              status: 429,
+              headers: { "Retry-After": "2" },
+            },
+          )
+        : jsonResponse({ session: null });
+    },
+    baseUrl,
+  });
+  assert.deepEqual(await client.read(), {
+    kind: "rate_limited",
+    retryable: true,
+    retry_after: 2,
+  });
+  assert.equal((await client.read()).kind, S.SIGNED_OUT);
+});
+
+test("session status retries body stream failures and timeouts after 200 headers", async () => {
+  for (const failure of ["stream", "timeout"]) {
+    let attempts = 0;
+    const client = createSessionStatusClient({
+      baseUrl,
+      timeoutMs: 5,
+      fetch: async (_url, { signal }) => {
+        attempts += 1;
+        if (attempts > 1) return jsonResponse({ session: null });
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              if (failure === "stream")
+                controller.error(new TypeError("connection lost"));
+              else
+                signal.addEventListener(
+                  "abort",
+                  () =>
+                    controller.error(new DOMException("aborted", "AbortError")),
+                  { once: true },
+                );
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+    assert.deepEqual(await client.read(), {
+      kind: S.UNAVAILABLE,
+      retryable: true,
+    });
+    assert.equal((await client.read()).kind, S.SIGNED_OUT);
+    assert.equal(attempts, 2);
+  }
+});
+
+test("session status keeps fully read invalid JSON terminal", async () => {
+  const client = createSessionStatusClient({
+    baseUrl,
+    fetch: async () => new Response("{", { status: 200 }),
+  });
+  assert.deepEqual(await client.read(), {
+    kind: S.MALFORMED,
+    retryable: false,
+  });
 });

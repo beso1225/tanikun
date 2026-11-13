@@ -15,6 +15,7 @@ const url = "http://127.0.0.1:8787/api/v1/sync/document";
 const origin = "http://127.0.0.1:4300";
 const identities = JSON.stringify({ token: "dev-alice" });
 const env = {
+  AUTH_MODE: "dev_bearer",
   DEV_AUTH: "true",
   APP_ENV: "local",
   DEV_AUTH_IDENTITIES: identities,
@@ -180,14 +181,22 @@ it("parses and bounds cursor pagination parameters", () => {
   }
 });
 
-it("gates local development on environment, URL, and a valid identity map", () => {
+it("gates local development on explicit mode, environment, URL, and mapping", () => {
   expect(readDevEnvironment(authorized(), env)).not.toBeNull();
-  expect(
-    readDevEnvironment(authorized(), { ...env, DEV_AUTH: "false" }),
-  ).toBeNull();
-  expect(
-    readDevEnvironment(authorized(), { ...env, APP_ENV: "production" }),
-  ).toBeNull();
+  for (const conflict of [
+    { AUTH_MODE: undefined },
+    { AUTH_MODE: "session" },
+    { AUTH_MODE: "devbearer" },
+    { AUTH_ORIGIN: "https://localhost:4300" },
+    { RP_ID: "localhost" },
+    { AUTH_RATE_LIMIT_KEY: "A".repeat(43) },
+    { DEV_AUTH: "false" },
+    { APP_ENV: "production" },
+  ]) {
+    expect(
+      readDevEnvironment(authorized(), { ...env, ...conflict }),
+    ).toBeNull();
+  }
   expect(
     readDevEnvironment(
       new Request("https://example.test/api/v1/sync/document", {

@@ -610,7 +610,7 @@ it("returns one document for concurrent bootstrap calls", async () => {
   );
 });
 
-it("hides every sync route when the local gate is disabled or malformed", async () => {
+it("hides every sync route when the local dev gate is disabled or malformed", async () => {
   const gateRequests = [
     () =>
       new Request(`${apiOrigin}/api/v1/sync/document`, {
@@ -629,6 +629,7 @@ it("hides every sync route when the local gate is disabled or malformed", async 
   ];
   const configurations = [
     {
+      AUTH_MODE: "dev_bearer",
       DEV_AUTH: "false",
       APP_ENV: "local",
       DEV_AUTH_IDENTITIES: JSON.stringify({
@@ -636,6 +637,7 @@ it("hides every sync route when the local gate is disabled or malformed", async 
       }),
     },
     {
+      AUTH_MODE: "dev_bearer",
       DEV_AUTH: "true",
       APP_ENV: "production",
       DEV_AUTH_IDENTITIES: JSON.stringify({
@@ -643,14 +645,25 @@ it("hides every sync route when the local gate is disabled or malformed", async 
       }),
     },
     {
+      AUTH_MODE: "dev_bearer",
       DEV_AUTH: "true",
       APP_ENV: "local",
       DEV_AUTH_IDENTITIES: "not-json",
     },
     {
+      AUTH_MODE: "dev_bearer",
       DEV_AUTH: "true",
       APP_ENV: "local",
       DEV_AUTH_IDENTITIES: "{}",
+    },
+    {
+      AUTH_MODE: "dev_bearer",
+      DEV_AUTH: "true",
+      APP_ENV: "local",
+      DEV_AUTH_IDENTITIES: JSON.stringify({
+        "local-fixture-token-alice": "dev-alice",
+      }),
+      AUTH_ORIGIN: "https://localhost:4300",
     },
   ];
   for (const configuration of configurations) {
@@ -663,4 +676,47 @@ it("hides every sync route when the local gate is disabled or malformed", async 
       expect(await response.json()).toEqual({ error: { code: "not_found" } });
     }
   }
+});
+
+it("fails closed without an explicit mode, before Origin, auth, or D1", async () => {
+  const configurations = [
+    {},
+    { AUTH_MODE: "" },
+    { AUTH_MODE: "devbearer" },
+    { AUTH_MODE: "production" },
+    {
+      AUTH_MODE: "session",
+      APP_ENV: "production",
+      AUTH_ORIGIN: "https://example.test",
+      RP_ID: "example.test",
+      AUTH_RATE_LIMIT_KEY: "A".repeat(43),
+    },
+    {
+      AUTH_MODE: "session",
+      APP_ENV: "test",
+      AUTH_ORIGIN: "https://localhost:4300",
+      RP_ID: "localhost",
+      AUTH_RATE_LIMIT_KEY: undefined,
+      DEV_AUTH: "true",
+    },
+  ];
+  for (const configuration of configurations) {
+    for (const path of [
+      "/api/v1/sync/document",
+      `/api/v1/sync/documents/${fixture.document_id}/changes`,
+    ]) {
+      const response = await worker.fetch(
+        new Request(`${apiOrigin}${path}`, { headers: headers() }),
+        { ...configuration, DB: env.DB },
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+      expect(response.headers.get("WWW-Authenticate")).toBeNull();
+      expect(await response.json()).toEqual({ error: { code: "not_found" } });
+    }
+  }
+  const documents = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM documents",
+  ).first();
+  expect(documents.count).toBe(0);
 });

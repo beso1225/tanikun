@@ -17,6 +17,7 @@ lint: check
     editorconfig-checker
     markdownlint-cli2 "**/*.md"
     node scripts/check-message-catalog.mjs
+    node scripts/check-deployment-config.mjs
     stylelint "apps/web/styles/**/*.css"
     actionlint
     zizmor .
@@ -40,7 +41,7 @@ test: build
         -p beso1225/tanikun-requirements \
         -p beso1225/tanikun-web/app \
         -p beso1225/tanikun-web/cmd/browser
-    node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs
+    node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs tests/integration/deployment-config.test.mjs
     node --test tests/integration/planner-record-reader.test.mjs tests/integration/planner-document.test.mjs tests/integration/persistence.test.mjs tests/integration/sync-transport.test.mjs tests/integration/sync-coordinator.test.mjs
 
 # Apply versioned sync migrations to the local D1 database only.
@@ -50,7 +51,7 @@ migrate-local:
 # Serve the API with local workerd; Wrangler rebuilds MoonBit on changes.
 dev-api:
     WRANGLER_LOG_PATH=.wrangler/logs pnpm exec wrangler dev --local --config wrangler.jsonc \
-        --var APP_ENV:local --var DEV_AUTH:true \
+        --var AUTH_MODE:dev_bearer --var APP_ENV:local --var DEV_AUTH:true \
         --var 'DEV_AUTH_IDENTITIES:{"local-fixture-token-alice":"dev-alice","local-fixture-token-bob":"dev-bob"}'
 
 # Exercise HTTP against Wrangler's local Workers runtime.
@@ -108,7 +109,7 @@ test-sync:
         echo "TANIKUN_WEB_DIST and TANIKUN_API_DIST must be set together" >&2; \
         exit 2; \
     fi
-    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
+    node --test --test-concurrency=1 --test-timeout=180000 tests/integration/sync-harness.test.mjs tests/integration/sync-harness-lifecycle.test.mjs tests/integration/packaged-api.test.mjs tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/justfile.test.mjs tests/integration/sync-api-faults.test.mjs tests/integration/sync-journey.test.mjs tests/integration/sync-convergence.test.mjs tests/integration/sync-browser-faults.test.mjs
 
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
