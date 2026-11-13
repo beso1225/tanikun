@@ -40,6 +40,11 @@ for (const sharedStateChanges of [true, false]) {
     await page.addInitScript(() => {
       globalThis["__TANIKUN_SYNC_CONFIG__"] = { mode: "session", maxRetry: 0 };
     });
+    // Isolate the logout decision from background sync session polling. The
+    // real account journeys separately exercise auth and sync together.
+    await page.route(`${origin}/sync-shell.js`, (route) =>
+      route.fulfill({ contentType: "text/javascript", body: "export {};" }),
+    );
     let serverSession = "alice";
     const logoutCalls = [];
     await page.route(`${origin}/api/v1/**`, async (route) => {
@@ -76,6 +81,11 @@ for (const sharedStateChanges of [true, false]) {
     });
     await page.goto(origin);
     await waitForPersistence(page);
+    await page.evaluate(() => globalThis.tanikunAuthController.ready);
+    assert.equal(
+      await page.evaluate(() => globalThis.tanikunSyncShell),
+      undefined,
+    );
     await page.locator("#account-button").waitFor({ state: "visible" });
     await page.waitForFunction(
       () => document.querySelector("#account-button")?.textContent === "Alice",
@@ -96,7 +106,6 @@ for (const sharedStateChanges of [true, false]) {
         },
         { handle: bob },
       );
-    await page.waitForTimeout(300);
     assert.equal(await page.locator("#account-button").innerText(), "Alice");
     await page.locator("#account-button").click();
     assert.match(
@@ -104,7 +113,9 @@ for (const sharedStateChanges of [true, false]) {
       /サインイン中: Alice/u,
     );
     await page.locator('[data-action="logout"]').click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(
+      () => globalThis.tanikunAuthController.state.stale === true,
+    );
     assert.deepEqual(logoutCalls, []);
     const auth = await page.evaluate(() => globalThis.tanikunAuthState.read());
     assert.equal(auth.sessionState, "active");
