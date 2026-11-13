@@ -34,16 +34,22 @@ beforeEach(async () => {
 
 it("migrates an empty D1 database and records a repeatable schema version", async () => {
   const tables = await env.DB.prepare(
-    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('users', 'documents', 'changes') ORDER BY name",
+    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('users', 'documents', 'changes', 'credentials', 'challenges', 'sessions') ORDER BY name",
   ).all();
   expect(tables.results.map((row) => row.name)).toEqual([
+    "challenges",
     "changes",
+    "credentials",
     "documents",
+    "sessions",
     "users",
   ]);
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
   const versions = await env.DB.prepare("SELECT name FROM d1_migrations").all();
-  expect(versions.results.map((row) => row.name)).toEqual(["0001_sync.sql"]);
+  expect(versions.results.map((row) => row.name)).toEqual([
+    "0001_sync.sql",
+    "0002_auth_storage.sql",
+  ]);
 });
 
 it("bootstraps one server-generated document per owner, including concurrent calls", async () => {
