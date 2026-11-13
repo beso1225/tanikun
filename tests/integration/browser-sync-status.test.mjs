@@ -734,3 +734,40 @@ test(
     }
   },
 );
+
+test(
+  "a session status rate limit after account bootstrap retains retry cooldown",
+  { timeout: 60_000 },
+  async (t) => {
+    let attempts = 0;
+    const { page, errors } = await openPage(t, undefined, {
+      mode: "session",
+      beforeGoto: async (targetPage, origin) => {
+        await targetPage.route(
+          `${origin}/api/v1/auth/session`,
+          async (route) => {
+            attempts += 1;
+            if (attempts !== 2) return route.fallback();
+            return route.fulfill({
+              ...syncJson(429, { error: { code: "rate_limited" } }),
+              headers: { "Retry-After": "1" },
+            });
+          },
+        );
+      },
+    });
+    await waitForSync(page, "同期エラー");
+    const status = await page.evaluate(
+      () => globalThis.tanikunSyncShell.status,
+    );
+    assert.equal(status.state, "error");
+    assert.equal(status.code, "rate_limited");
+    assert.equal(await page.locator("#sync-retry").isVisible(), true);
+    assert.equal(await page.locator("#sync-retry").isDisabled(), true);
+    await page.evaluate(() => globalThis.tanikunSyncShell.sync());
+    assert.equal(attempts, 2);
+    await page.locator("#sync-retry").click();
+    await waitForSync(page, "同期済み");
+    assert.deepEqual(errors, []);
+  },
+);

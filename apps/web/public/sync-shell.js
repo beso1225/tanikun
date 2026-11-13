@@ -445,6 +445,7 @@ async function startOnce() {
         return;
       }
       setStatus(
+        status.reason === "offline" ? "offline" : "error",
         status.retryable
           ? status.kind === "rate_limited"
             ? "rate_limited"
