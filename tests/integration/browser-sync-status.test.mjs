@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { join, resolve } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 import { startStaticServer, waitForPersistence } from "./planner-harness.mjs";
 
-const dist = resolve(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
+const dist = resolvePath(process.env.TANIKUN_WEB_DIST ?? "apps/web/dist");
 const core = process.env.PLAYWRIGHT_CORE;
 assert.ok(core, "run this test in `nix develop` so PLAYWRIGHT_CORE is set");
 const { chromium } = await import(pathToFileURL(join(core, "index.mjs")).href);
@@ -18,6 +18,42 @@ const syncJson = (status, body) => ({
   contentType: "application/json",
   body: JSON.stringify(body),
 });
+
+const SESSION_OPTIONS = () => ({
+  challenge_id: "AQEBAQEBAQEBAQEBAQEBAQ",
+  publicKey: {
+    rp: { id: "localhost", name: "Tanikun" },
+    user: {
+      id: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+      name: "Pending",
+      displayName: "Pending",
+    },
+    challenge: "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    timeout: 120_000,
+    excludeCredentials: [],
+    authenticatorSelection: {
+      residentKey: "required",
+      requireResidentKey: true,
+      userVerification: "required",
+    },
+    attestation: "none",
+  },
+});
+
+async function writeOtherAuthState(page, accountHandle) {
+  await page.evaluate(async (handle) => {
+    const other = globalThis.tanikunAuthStateModule.createAuthStateStore({
+      indexedDB: globalThis.indexedDB,
+      locks: null,
+    });
+    await other.write({
+      accountHandle: handle,
+      sessionState: "active",
+    });
+    other.close();
+  }, accountHandle);
+}
 
 async function openPage(
   t,
@@ -645,11 +681,51 @@ test(
         failure === "network" ? "オフライン" : "同期エラー",
       );
       assert.equal(await page.locator("#sync-retry").isVisible(), true);
+      await addOffering(page);
       await page.locator("#sync-retry").click();
-      await waitForSync(page, "同期済み");
+      await waitForSync(page, "アカウントが切り替わりました");
       assert.equal(attempts >= 2, true);
+      assert.equal(api.bootstrapCalls.length, 0);
+      assert.equal(api.pushBodies.length, 0);
+      const unboundBeforeReload = await page.evaluate(async () => {
+        const opening = indexedDB.open("tanikun-planner", 1);
+        const database = await new Promise((resolve, reject) => {
+          opening.onsuccess = () => resolve(opening.result);
+          opening.onerror = () => reject(opening.error);
+        });
+        const transaction = database.transaction("documents", "readonly");
+        const record = await new Promise((resolve, reject) => {
+          const request = transaction.objectStore("documents").get("planner");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        return globalThis.tanikunDocument.text(
+          globalThis.Automerge.load(record.bytes),
+        );
+      });
+      assert.match(unboundBeforeReload, /phy302-s/u);
+      await page.reload();
+      await waitForPersistence(page);
+      await waitForSync(page, "同期済み");
       assert.equal(api.bootstrapCalls.length, 1);
       assert.equal(api.pushBodies.length >= 1, true);
+      const unboundAfterReload = await page.evaluate(async () => {
+        const opening = indexedDB.open("tanikun-planner", 1);
+        const database = await new Promise((resolve, reject) => {
+          opening.onsuccess = () => resolve(opening.result);
+          opening.onerror = () => reject(opening.error);
+        });
+        const transaction = database.transaction("documents", "readonly");
+        const record = await new Promise((resolve, reject) => {
+          const request = transaction.objectStore("documents").get("planner");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        return globalThis.tanikunDocument.text(
+          globalThis.Automerge.load(record.bytes),
+        );
+      });
+      assert.match(unboundAfterReload, /phy302-s/u);
       assert.deepEqual(errors, []);
     }
   },
@@ -681,9 +757,14 @@ test(
     assert.equal(await page.locator("#sync-retry").isDisabled(), true);
     await page.evaluate(() => globalThis.tanikunSyncShell.sync());
     assert.equal(attempts, 1);
+    await addOffering(page);
     await page.locator("#sync-retry").click();
-    await waitForSync(page, "同期済み");
+    await waitForSync(page, "アカウントが切り替わりました");
     assert.equal(attempts >= 2, true);
+    assert.equal(api.bootstrapCalls.length, 0);
+    await page.reload();
+    await waitForPersistence(page);
+    await waitForSync(page, "同期済み");
     assert.equal(api.bootstrapCalls.length, 1);
     assert.equal(api.pushBodies.length >= 1, true);
     assert.deepEqual(errors, []);
@@ -768,6 +849,334 @@ test(
     assert.equal(attempts, 2);
     await page.locator("#sync-retry").click();
     await waitForSync(page, "同期済み");
+    assert.deepEqual(errors, []);
+  },
+);
+test(
+  "a delayed session status cannot adopt or expire a newer local lifecycle",
+  { timeout: 60_000 },
+  async (t) => {
+    const bobHandle = "B".repeat(43);
+    for (const response of [
+      {
+        label: "200-active",
+        body: {
+          session: {
+            account: { handle: "S".repeat(43), display_name: "Old Alice" },
+            expires_at: Date.now() + 43_200_000,
+            idle_expires_at: Date.now() + 1_800_000,
+            recent_auth: true,
+            recent_auth_expires_at: Date.now() + 300_000,
+            csrf_token: "C".repeat(43),
+          },
+        },
+        status: 200,
+      },
+      {
+        label: "401-expired",
+        body: { error: { code: "unauthorized" } },
+        status: 401,
+      },
+    ]) {
+      let hitResolve;
+      const hit = new Promise((resolve) => {
+        hitResolve = resolve;
+      });
+      let releaseResolve;
+      const release = new Promise((resolve) => {
+        releaseResolve = resolve;
+      });
+      let calls = 0;
+      const { page, errors } = await openPage(t, undefined, {
+        mode: "session",
+        beforeGoto: async (targetPage, origin) => {
+          await targetPage.route(
+            `${origin}/api/v1/auth/session`,
+            async (route) => {
+              calls += 1;
+              if (calls !== 1) return route.fallback();
+              hitResolve();
+              await release;
+              return route.fulfill(syncJson(response.status, response.body));
+            },
+          );
+        },
+      });
+      await hit;
+      await writeOtherAuthState(page, bobHandle);
+      await page.waitForFunction(
+        async (handle) =>
+          (await globalThis.tanikunAuthState.read()).accountHandle === handle,
+        bobHandle,
+      );
+      releaseResolve();
+      await page.waitForTimeout(300);
+      const observed = await page.evaluate(async () => ({
+        auth: await globalThis.tanikunAuthState.read(),
+        controller: globalThis.tanikunAuthController?.state,
+      }));
+      assert.equal(observed.auth.accountHandle, bobHandle);
+      assert.equal(observed.auth.sessionState, "active");
+      assert.equal(observed.controller.auth.accountHandle, bobHandle);
+      assert.equal(observed.controller.stale, true);
+      assert.equal(
+        observed.controller.sessionState === "reauth_required",
+        false,
+      );
+      assert.notEqual(observed.controller.displayName, "Old Alice");
+      assert.deepEqual(errors, []);
+      void response.label;
+    }
+  },
+);
+
+test(
+  "a pending native ceremony is canceled before verify on an account switch",
+  { timeout: 60_000 },
+  async (t) => {
+    let verifyCalls = 0;
+    const { page, errors } = await openPage(t, undefined, {
+      mode: "session",
+      beforeGoto: async (targetPage, origin) => {
+        await targetPage.route(`${origin}/api/v1/auth/session`, (route) =>
+          route.fulfill(syncJson(200, { session: null })),
+        );
+        await targetPage.route(
+          `${origin}/api/v1/auth/register/options`,
+          (route) => route.fulfill(syncJson(200, SESSION_OPTIONS())),
+        );
+        await targetPage.route(
+          `${origin}/api/v1/auth/register/verify`,
+          (route) => {
+            verifyCalls += 1;
+            return route.fulfill(
+              syncJson(200, {
+                session: {
+                  account: {
+                    handle: "S".repeat(43),
+                    display_name: "Pending",
+                  },
+                  expires_at: Date.now() + 43_200_000,
+                  idle_expires_at: Date.now() + 1_800_000,
+                  recent_auth: true,
+                  recent_auth_expires_at: Date.now() + 300_000,
+                  csrf_token: "C".repeat(43),
+                },
+              }),
+            );
+          },
+        );
+      },
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.credentials, "create", {
+        configurable: true,
+        value: (options) =>
+          new Promise((_resolve, reject) => {
+            globalThis["__nativeCeremonyPending"] = true;
+            globalThis["__nativeCeremonyAborted"] = false;
+            options.signal?.addEventListener(
+              "abort",
+              () => {
+                globalThis["__nativeCeremonyAborted"] = true;
+                reject(new DOMException("aborted", "AbortError"));
+              },
+              { once: true },
+            );
+          }),
+      });
+    });
+    await page.locator("#account-button").click();
+    await page.locator('[data-action="register-start"]').click();
+    await page.locator("#auth-display-name").fill("Pending Alice");
+    await page.locator('[data-action="register-submit"]').click();
+    await page.waitForFunction(
+      () => globalThis["__nativeCeremonyPending"] === true,
+    );
+    await writeOtherAuthState(page, "B".repeat(43));
+    await page.waitForFunction(
+      () => globalThis["__nativeCeremonyAborted"] === true,
+    );
+    await page.waitForTimeout(300);
+    assert.equal(verifyCalls, 0);
+    const observed = await page.evaluate(async () => ({
+      auth: await globalThis.tanikunAuthState.read(),
+      controller: globalThis.tanikunAuthController?.state,
+    }));
+    assert.equal(observed.auth.accountHandle, "B".repeat(43));
+    assert.equal(observed.auth.sessionState, "active");
+    assert.equal(observed.controller.auth.accountHandle, "B".repeat(43));
+    assert.equal(observed.controller.stale, true);
+    assert.match(
+      await page.locator("#auth-dialog-status").innerText(),
+      /切り替わり/u,
+    );
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "opening the account dialog from settings closes settings and keeps focus",
+  { timeout: 60_000 },
+  async (t) => {
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      const { page, errors } = await openPage(t, viewport, {
+        mode: "session",
+        beforeGoto: async (targetPage, origin) => {
+          await targetPage.route(`${origin}/api/v1/auth/session`, (route) =>
+            route.fulfill(syncJson(200, { session: null })),
+          );
+        },
+      });
+      await page.locator("#open-settings").click();
+      await page.locator("#settings").waitFor({ state: "visible" });
+      await page.locator("#open-account-settings").click();
+      await page.locator("#auth-dialog").waitFor({ state: "visible" });
+      await page.locator("#settings").waitFor({ state: "detached" });
+      assert.equal(
+        await page.locator('[role="dialog"][aria-modal="true"]').count(),
+        1,
+      );
+      assert.equal(
+        await page.evaluate(
+          () => document.activeElement?.closest("#auth-dialog") !== null,
+        ),
+        true,
+      );
+      for (let index = 0; index < 4; index += 1) {
+        await page.keyboard.press("Tab");
+        assert.equal(
+          await page.evaluate(
+            () => document.activeElement?.closest("#auth-dialog") !== null,
+          ),
+          true,
+        );
+      }
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(
+        await page.evaluate(
+          () => document.activeElement?.closest("#auth-dialog") !== null,
+        ),
+        true,
+      );
+      await page.keyboard.press("Escape");
+      await page.locator("#auth-dialog").waitFor({ state: "detached" });
+      const expectedFocus =
+        viewport.width < 768 ? "account-button-mobile" : "account-button";
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.id),
+        expectedFocus,
+      );
+      assert.deepEqual(errors, []);
+    }
+  },
+);
+
+test(
+  "the account dialog respects a session status Retry-After before retrying",
+  { timeout: 60_000 },
+  async (t) => {
+    const { page, errors } = await openPage(t, undefined, {
+      mode: "session",
+      beforeGoto: async (targetPage, origin) => {
+        let calls = 0;
+        await targetPage.route(
+          `${origin}/api/v1/auth/session`,
+          async (route) => {
+            calls += 1;
+            if (calls !== 1) return route.fallback();
+            return route.fulfill({
+              ...syncJson(429, { error: { code: "rate_limited" } }),
+              headers: { "Retry-After": "1" },
+            });
+          },
+        );
+      },
+    });
+    await waitForSync(page, "同期エラー");
+    await page.locator("#account-button").click();
+    await page.locator('[data-action="retry"]').waitFor({ state: "visible" });
+    assert.equal(
+      await page.locator('[data-action="retry"]').isDisabled(),
+      true,
+    );
+    assert.equal(
+      await page.locator('[data-action="sign-in"]').isDisabled(),
+      true,
+    );
+    await page.waitForTimeout(1_200);
+    assert.equal(
+      await page.locator('[data-action="retry"]').isDisabled(),
+      false,
+    );
+    assert.equal(
+      await page.locator('[data-action="sign-in"]').isDisabled(),
+      false,
+    );
+    await page.locator("#auth-close").click();
+    assert.deepEqual(errors, []);
+  },
+);
+test(
+  "closing the account dialog cancels a pending native ceremony before verify",
+  { timeout: 60_000 },
+  async (t) => {
+    let verifyCalls = 0;
+    const { page, errors } = await openPage(t, undefined, {
+      mode: "session",
+      beforeGoto: async (targetPage, origin) => {
+        await targetPage.route(`${origin}/api/v1/auth/session`, (route) =>
+          route.fulfill(syncJson(200, { session: null })),
+        );
+        await targetPage.route(
+          `${origin}/api/v1/auth/register/options`,
+          (route) => route.fulfill(syncJson(200, SESSION_OPTIONS())),
+        );
+        await targetPage.route(
+          `${origin}/api/v1/auth/register/verify`,
+          (route) => {
+            verifyCalls += 1;
+            return route.fulfill(syncJson(200, { session: null }));
+          },
+        );
+      },
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.credentials, "create", {
+        configurable: true,
+        value: (options) =>
+          new Promise((_resolve, reject) => {
+            globalThis["__dialogCeremonyAborted"] = false;
+            options.signal?.addEventListener(
+              "abort",
+              () => {
+                globalThis["__dialogCeremonyAborted"] = true;
+                reject(new DOMException("aborted", "AbortError"));
+              },
+              { once: true },
+            );
+          }),
+      });
+    });
+    await page.locator("#account-button").click();
+    await page.locator('[data-action="register-start"]').click();
+    await page.locator("#auth-display-name").fill("Cancel Alice");
+    await page.locator('[data-action="register-submit"]').click();
+    await page.waitForFunction(
+      () => typeof globalThis["__dialogCeremonyAborted"] === "boolean",
+    );
+    await page.locator("#auth-close").click();
+    await page.waitForFunction(
+      () => globalThis["__dialogCeremonyAborted"] === true,
+    );
+    await page.waitForTimeout(200);
+    assert.equal(verifyCalls, 0);
+    const auth = await page.evaluate(() => globalThis.tanikunAuthState.read());
+    assert.equal(auth.sessionState, "signed_out");
+    assert.equal(auth.accountHandle, null);
     assert.deepEqual(errors, []);
   },
 );

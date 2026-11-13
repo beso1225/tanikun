@@ -38,6 +38,11 @@ const state = {
   stale: false,
   historyMismatch: false,
   retryAfter: undefined,
+  retryNotBefore: 0,
+  retryTimer: null,
+  ceremony: null,
+  ceremonyReason: null,
+  decisionScope: null,
   open: false,
 };
 
@@ -47,6 +52,7 @@ let refreshPromise = null;
 let statusClient = null;
 let authClient = null;
 let controller = null;
+let opening = false;
 
 function element(tag, properties = {}, ...children) {
   const node = document.createElement(tag);
@@ -117,6 +123,8 @@ function errorMessage(error) {
       return "セッションの有効期限が切れました。サインインし直してください。";
     case "account_changed":
       return "別のアカウントのセッションに変わりました。サインインし直してください。";
+    case "stale_account":
+      return "別のアカウントに切り替わりました。この画面の編集内容は残っています。";
     case "not_found":
       return "この環境ではアカウント機能を利用できません。";
     case "temporarily_unavailable":
@@ -150,6 +158,57 @@ async function pauseSync() {
     // A missing or already stopped shell does not block a local state change.
   }
 }
+
+function scopeOf(auth) {
+  if (!auth) return null;
+  return {
+    generation: auth.generation,
+    accountHandle: auth.accountHandle,
+  };
+}
+
+function sameScope(left, right) {
+  return (
+    left !== null &&
+    right !== null &&
+    left.generation === right.generation &&
+    left.accountHandle === right.accountHandle
+  );
+}
+
+async function currentScope() {
+  const current = await authState.read();
+  state.auth = current;
+  return scopeOf(current);
+}
+
+function abortCeremony(reason) {
+  if (!state.ceremony) return;
+  state.ceremonyReason = reason;
+  state.ceremony.abort();
+  state.ceremony = null;
+}
+
+function setRetryCooldown(seconds) {
+  clearTimeout(state.retryTimer);
+  const wait =
+    Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
+  state.retryAfter = wait;
+  state.retryNotBefore = wait === undefined ? 0 : Date.now() + wait * 1000;
+  if (state.retryNotBefore > Date.now())
+    state.retryTimer = setTimeout(() => {
+      state.retryNotBefore = 0;
+      state.retryTimer = null;
+      renderDialog();
+    }, state.retryNotBefore - Date.now());
+}
+
+const AUTH_COOLDOWN_ACTIONS = new Set([
+  "register-start",
+  "register-submit",
+  "sign-in",
+  "retry",
+]);
 
 function refreshAccountButton() {
   const buttons = ["#account-button", "#account-button-mobile"]
@@ -190,7 +249,7 @@ function openSettingsSection() {
   const button = section.querySelector("#open-account-settings");
   if (!button || button.dataset.bound === "true") return;
   button.dataset.bound = "true";
-  button.addEventListener("click", () => openDialog());
+  button.addEventListener("click", () => void openDialog());
 }
 
 function createNotice() {
@@ -277,7 +336,7 @@ function renderNotice() {
   notice.querySelectorAll("[data-notice-action]").forEach((button) => {
     button.addEventListener("click", () => {
       const actionName = button.dataset.noticeAction;
-      if (actionName === "open") openDialog();
+      if (actionName === "open") void openDialog();
       else if (actionName === "reload") globalThis.location.reload();
       else if (actionName === "copy-edited") void copyEditedPlan();
       else if (actionName === "download-local") downloadPlan();
@@ -293,7 +352,7 @@ function disclosure() {
       "パスキーをすべて失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる迂回はありません。",
     ),
     paragraph(
-      "サインアウトしても、この端末のローカルデータは削除されません。また暗号化もされません。認証はPhase 6の文書鍵を提供しません。",
+      "サインアウトしても、この端末のローカルデータは削除されません。サインインしてもローカルデータは暗号化されず、失われた暗号化鍵を復旧することもできません。",
     ),
   );
 }
@@ -506,8 +565,11 @@ function renderDialog() {
     state.messageKind === "alert"
       ? "mt-3 min-h-5 text-sm text-danger-text"
       : "mt-3 min-h-5 text-sm text-muted";
+  const cooldown = Date.now() < state.retryNotBefore;
   for (const button of dialog.body.querySelectorAll("button")) {
-    button.disabled = state.busy;
+    const action = button.getAttribute("data-action");
+    button.disabled =
+      state.busy || (cooldown && AUTH_COOLDOWN_ACTIONS.has(action));
   }
   const input = dialog.body.querySelector("#auth-display-name");
   if (input) input.disabled = state.busy;
@@ -520,73 +582,95 @@ function renderDialog() {
     focusTarget.focus({ preventScroll: true });
 }
 
-function openDialog() {
-  if (!SESSION_MODE || !root) return;
-  if (state.open) return;
-  state.open = true;
-  const panel = element("div", {
-    id: "auth-dialog",
-    role: "dialog",
-    "aria-modal": "true",
-    "aria-labelledby": "auth-dialog-title",
-    class:
-      "max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-xl border border-rule bg-paper p-4 shadow-xl sm:p-5",
+function waitForDisconnect(node, timeout = 500) {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeout;
+    const check = () => {
+      if (!node.isConnected || Date.now() >= deadline) resolve();
+      else setTimeout(check, 10);
+    };
+    check();
   });
-  const close = element(
-    "button",
-    {
-      type: "button",
-      id: "auth-close",
-      "data-dialog-close": "true",
-      "aria-label": "アカウント画面を閉じる",
+}
+
+async function openDialog() {
+  if (!SESSION_MODE || !root || state.open || opening) return;
+  opening = true;
+  try {
+    const other = document.querySelector('[role="dialog"][aria-modal="true"]');
+    if (other) {
+      other.querySelector("[data-dialog-close]")?.click();
+      await waitForDisconnect(other);
+      if (other.isConnected) return;
+    }
+    state.open = true;
+    const panel = element("div", {
+      id: "auth-dialog",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "auth-dialog-title",
       class:
-        "min-h-9 min-w-9 rounded-md border border-rule px-2 text-sm text-muted hover:bg-canvas",
-    },
-    "×",
-  );
-  const bodyNode = element("div", { class: "mt-3 space-y-3" });
-  const status = element("p", {
-    id: "auth-dialog-status",
-    role: "status",
-    "aria-live": "polite",
-    class: "mt-3 min-h-5 text-sm text-muted",
-  });
-  const backdrop = element(
-    "div",
-    {
-      id: "auth-backdrop",
-      class:
-        "fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center",
-    },
-    element("div", { class: "flex max-h-full flex-col" }, panel),
-  );
-  panel.append(
-    element(
+        "max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-xl border border-rule bg-paper p-4 shadow-xl sm:p-5",
+    });
+    const close = element(
+      "button",
+      {
+        type: "button",
+        id: "auth-close",
+        "data-dialog-close": "true",
+        "aria-label": "アカウント画面を閉じる",
+        class:
+          "min-h-9 min-w-9 rounded-md border border-rule px-2 text-sm text-muted hover:bg-canvas",
+      },
+      "×",
+    );
+    const bodyNode = element("div", { class: "mt-3 space-y-3" });
+    const status = element("p", {
+      id: "auth-dialog-status",
+      role: "status",
+      "aria-live": "polite",
+      class: "mt-3 min-h-5 text-sm text-muted",
+    });
+    const backdrop = element(
       "div",
-      { class: "flex items-center justify-between gap-3" },
+      {
+        id: "auth-backdrop",
+        class:
+          "fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center",
+      },
+      element("div", { class: "flex max-h-full flex-col" }, panel),
+    );
+    panel.append(
       element(
-        "h2",
-        { id: "auth-dialog-title", class: "text-base font-semibold" },
-        "アカウント",
+        "div",
+        { class: "flex items-center justify-between gap-3" },
+        element(
+          "h2",
+          { id: "auth-dialog-title", class: "text-base font-semibold" },
+          "アカウント",
+        ),
+        close,
       ),
-      close,
-    ),
-    bodyNode,
-    status,
-  );
-  backdrop.addEventListener("click", (event) => {
-    if (event.target === backdrop) closeDialog();
-  });
-  close.addEventListener("click", closeDialog);
-  root.append(backdrop);
-  dialog = { backdrop, panel, body: bodyNode, status, bound: false };
-  bindDialogActions();
-  renderDialog();
-  panel.querySelector("[data-autofocus]")?.focus({ preventScroll: true });
+      bodyNode,
+      status,
+    );
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) closeDialog();
+    });
+    close.addEventListener("click", closeDialog);
+    root.append(backdrop);
+    dialog = { backdrop, panel, body: bodyNode, status, bound: false };
+    bindDialogActions();
+    renderDialog();
+    panel.querySelector("[data-autofocus]")?.focus({ preventScroll: true });
+  } finally {
+    opening = false;
+  }
 }
 
 function closeDialog() {
   if (!dialog) return;
+  abortCeremony("dialog");
   dialog.backdrop.remove();
   dialog = null;
   state.open = false;
@@ -609,13 +693,23 @@ async function copyNeeded(handle) {
   return authState.planExists("planner");
 }
 
-async function adoptActiveSession(session) {
+async function startCeremony() {
+  const expected = await currentScope();
+  const ceremony = new AbortController();
+  state.ceremony = ceremony;
+  state.ceremonyReason = null;
+  return { expected, ceremony };
+}
+
+async function adoptActiveSession(session, expected) {
   await pauseSync();
-  await authState.write({
+  const written = await authState.write({
     accountHandle: session.account.handle,
     sessionState: "active",
+    expected,
   });
-  state.auth = await authState.read();
+  state.auth = written;
+  state.decisionScope = scopeOf(written);
   state.displayName = session.account.display_name;
   state.session = session;
   state.sessionState = "active";
@@ -626,8 +720,8 @@ async function adoptActiveSession(session) {
   }
 }
 
-async function afterSignIn(session) {
-  await adoptActiveSession(session);
+async function afterSignIn(session, expected) {
+  await adoptActiveSession(session, expected);
   const needsCopy = await copyNeeded(session.account.handle);
   state.pendingUpload = await authState.isPendingUpload(session.account.handle);
   state.pendingCopy = needsCopy;
@@ -643,56 +737,137 @@ async function afterSignIn(session) {
   globalThis.location.reload();
 }
 
-async function recoverCeremony() {
+async function recoverCeremony(expected, ceremony) {
   try {
+    if (ceremony.signal.aborted) return false;
     const status = await statusClient.read();
-    if (status.kind !== SESSION_STATUS_KINDS.ACTIVE) return false;
-    await afterSignIn(status.session);
+    if (status.kind !== SESSION_STATUS_KINDS.ACTIVE || ceremony.signal.aborted)
+      return false;
+    await afterSignIn(status.session, expected);
     return true;
-  } catch {
+  } catch (error) {
+    if (error?.code === "stale_account") throw error;
     return false;
   }
 }
 
+function finishCeremony(ceremony) {
+  if (state.ceremony === ceremony) state.ceremony = null;
+}
+
 async function register() {
   if (state.busy || !authClient) return;
-  const handle = state.auth?.accountHandle;
-  if (handle) {
+  if (state.auth?.accountHandle) {
     setMessage("すでにサインインしています。", "alert");
     return;
   }
   const input = dialog?.body.querySelector("#auth-display-name");
   const displayName = input?.value.trim() ?? "";
+  let started;
+  try {
+    started = await startCeremony();
+  } catch (error) {
+    setMessage(errorMessage(error), "alert");
+    return;
+  }
+  const { expected, ceremony } = started;
   state.busy = true;
   state.message = null;
   renderDialog();
   try {
     const session = await authClient.register({
       displayName: displayName.length > 0 ? displayName : undefined,
+      signal: ceremony.signal,
     });
-    await afterSignIn(session);
+    if (ceremony.signal.aborted || state.ceremony !== ceremony)
+      throw new AuthClientError("canceled");
+    finishCeremony(ceremony);
+    await afterSignIn(session, expected);
   } catch (error) {
-    if (error?.code === "offline" || error?.code === "timeout") {
-      if (await recoverCeremony()) return;
-    }
+    const reason = state.ceremonyReason;
+    const aborted = ceremony.signal.aborted;
+    finishCeremony(ceremony);
     state.busy = false;
+    if (aborted) {
+      if (reason === "auth_change") {
+        state.stale = true;
+        setMessage(errorMessage({ code: "stale_account" }), "alert");
+      } else {
+        setMessage(errorMessage({ code: "canceled" }), "alert");
+      }
+      return;
+    }
+    if (error?.code === "offline" || error?.code === "timeout") {
+      try {
+        if (await recoverCeremony(expected, ceremony)) return;
+      } catch (recovered) {
+        if (recovered?.code === "stale_account") {
+          state.stale = true;
+          void pauseSync();
+          setMessage(errorMessage(recovered), "alert");
+          return;
+        }
+      }
+    }
+    if (error?.code === "stale_account") {
+      state.stale = true;
+      void pauseSync();
+    }
     setMessage(errorMessage(error), "alert");
   }
 }
 
 async function signIn() {
   if (state.busy || !authClient) return;
+  let started;
+  try {
+    started = await startCeremony();
+  } catch (error) {
+    setMessage(errorMessage(error), "alert");
+    return;
+  }
+  const { expected, ceremony } = started;
   state.busy = true;
   state.message = null;
   renderDialog();
   try {
-    const session = await authClient.signIn();
-    await afterSignIn(session);
+    const session = await authClient.signIn({ signal: ceremony.signal });
+    if (ceremony.signal.aborted || state.ceremony !== ceremony)
+      throw new AuthClientError("canceled");
+    finishCeremony(ceremony);
+    await afterSignIn(session, expected);
   } catch (error) {
-    if (error?.code === "offline" || error?.code === "timeout") {
-      if (await recoverCeremony()) return;
-    }
+    const reason = state.ceremonyReason;
+    const aborted = ceremony.signal.aborted;
+    finishCeremony(ceremony);
     state.busy = false;
+    if (aborted) {
+      if (reason === "auth_change") {
+        state.stale = true;
+        setMessage(errorMessage({ code: "stale_account" }), "alert");
+      } else {
+        setMessage(errorMessage({ code: "canceled" }), "alert");
+      }
+      return;
+    }
+    if (error?.code === "offline" || error?.code === "timeout") {
+      try {
+        if (await recoverCeremony(expected, ceremony)) return;
+      } catch (recovered) {
+        if (recovered?.code === "stale_account") {
+          state.stale = true;
+          void pauseSync();
+          setMessage(errorMessage(recovered), "alert");
+          return;
+        }
+      }
+    }
+    if (error?.code === "stale_account") {
+      state.stale = true;
+      void pauseSync();
+      setMessage(errorMessage(error), "alert");
+      return;
+    }
     if (error?.code === "expired") {
       state.message =
         "認証の有効期限が切れたか、確認できませんでした。もう一度お試しください。";
@@ -707,12 +882,20 @@ async function signIn() {
 
 async function logout() {
   if (state.busy || !authState) return;
+  let expected;
+  try {
+    expected = await currentScope();
+  } catch (error) {
+    setMessage(errorMessage(error), "alert");
+    return;
+  }
   state.busy = true;
   state.message = null;
   renderDialog();
+  abortCeremony("auth_change");
   await pauseSync();
   try {
-    let csrf = statusClient?.csrfToken ?? undefined;
+    const csrf = statusClient?.csrfToken ?? undefined;
     try {
       await authClient.logout({ csrfToken: csrf });
     } catch (error) {
@@ -726,7 +909,12 @@ async function logout() {
         throw error;
       }
     }
-    await authState.write({ accountHandle: null, sessionState: "signed_out" });
+    const written = await authState.write({
+      accountHandle: null,
+      sessionState: "signed_out",
+      expected,
+    });
+    state.auth = written;
     statusClient.clear();
     state.busy = false;
     state.session = null;
@@ -737,48 +925,72 @@ async function logout() {
     globalThis.location.reload();
   } catch (error) {
     state.busy = false;
+    if (error?.code === "stale_account") {
+      state.stale = true;
+      try {
+        state.auth = await authState.read();
+      } catch {
+        // The recovery surface uses the last readable state.
+      }
+      renderAccountButton();
+      renderNotice();
+    }
     setMessage(errorMessage(error), "alert");
   }
 }
 
 async function copyPlan() {
   if (state.busy || !authState) return;
-  const handle = state.auth?.accountHandle;
-  if (!handle) return;
+  const expected = state.decisionScope;
+  if (!expected?.accountHandle) return;
   state.busy = true;
   state.message = null;
   renderDialog();
   try {
-    await authState.copyUnboundToAccount(handle);
+    await authState.copyUnboundToAccount(expected.accountHandle, expected);
     state.busy = false;
     closeDialog();
     globalThis.location.reload();
   } catch (error) {
     state.busy = false;
+    if (error?.code === "stale_account") {
+      state.stale = true;
+      void pauseSync();
+      renderAccountButton();
+      renderNotice();
+    }
     setMessage(errorMessage(error), "alert");
   }
 }
 
 async function declineCopy() {
   if (state.busy || !authState) return;
-  const handle = state.auth?.accountHandle;
-  if (!handle) return;
+  const expected = state.decisionScope;
+  if (!expected?.accountHandle) return;
   state.busy = true;
   try {
-    await authState.setCopyDeclined(handle, true);
+    await authState.setCopyDeclined(expected.accountHandle, true, expected);
     closeDialog();
     globalThis.location.reload();
   } catch (error) {
     state.busy = false;
+    if (error?.code === "stale_account") {
+      state.stale = true;
+      void pauseSync();
+      renderAccountButton();
+      renderNotice();
+    }
     setMessage(errorMessage(error), "alert");
   }
 }
 
 async function consentUpload() {
-  if (state.busy || !authState || !state.auth?.accountHandle) return;
+  if (state.busy || !authState) return;
+  const expected = state.decisionScope;
+  if (!expected?.accountHandle) return;
   state.busy = true;
   try {
-    await authState.setPendingUpload(state.auth.accountHandle, false);
+    await authState.setPendingUpload(expected.accountHandle, false, expected);
     state.pendingUpload = false;
     state.busy = false;
     closeDialog();
@@ -787,6 +999,12 @@ async function consentUpload() {
     await globalThis.tanikunSyncShell?.refresh?.();
   } catch (error) {
     state.busy = false;
+    if (error?.code === "stale_account") {
+      state.stale = true;
+      void pauseSync();
+      renderAccountButton();
+      renderNotice();
+    }
     setMessage(errorMessage(error), "alert");
   }
 }
@@ -866,6 +1084,8 @@ function downloadPlan() {
 }
 
 async function onAction(action) {
+  if (AUTH_COOLDOWN_ACTIONS.has(action) && Date.now() < state.retryNotBefore)
+    return;
   switch (action) {
     case "register-start":
       state.mode = "register";
@@ -928,14 +1148,17 @@ function bindDialogActions() {
 
 async function refresh() {
   if (!SESSION_MODE || !authState || !statusClient) return null;
+  if (Date.now() < state.retryNotBefore) return state.auth;
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     state.sessionState = "loading";
     state.message = null;
     state.messageKind = "status";
     renderAccountButton();
+    let expected;
     try {
       state.auth = await authState.read();
+      expected = scopeOf(state.auth);
     } catch {
       state.sessionState = "offline";
       state.message = "ローカルのアカウント状態を読み込めませんでした。";
@@ -948,14 +1171,32 @@ async function refresh() {
     const status = await statusClient.read();
     state.kind = status.kind;
     state.reason = status.reason;
+    const current = await authState.read();
+    state.auth = current;
+    if (!sameScope(current, expected)) {
+      state.stale = true;
+      state.sessionState =
+        current.sessionState === "signed_out"
+          ? "signed_out"
+          : current.sessionState;
+      state.message =
+        "別のアカウントに切り替わりました。この画面の編集内容は残っています。";
+      state.messageKind = "alert";
+      setRetryCooldown(0);
+      renderAccountButton();
+      renderNotice();
+      renderDialog();
+      return state.auth;
+    }
+
     if (status.kind === SESSION_STATUS_KINDS.ACTIVE) {
       const session = status.session;
       if (
-        state.auth.accountHandle !== null &&
-        state.auth.accountHandle !== session.account.handle
+        current.accountHandle !== null &&
+        current.accountHandle !== session.account.handle
       ) {
         state.sessionState =
-          state.auth.sessionState === "reauth_required"
+          current.sessionState === "reauth_required"
             ? "reauth_required"
             : "active";
         state.message =
@@ -963,17 +1204,20 @@ async function refresh() {
         state.messageKind = "alert";
         state.displayName = null;
       } else {
+        let adopted = current;
         if (
-          state.auth.sessionState !== "active" ||
-          state.auth.accountHandle !== session.account.handle
+          current.sessionState !== "active" ||
+          current.accountHandle !== session.account.handle
         ) {
           await pauseSync();
-          await authState.write({
+          adopted = await authState.write({
             accountHandle: session.account.handle,
             sessionState: "active",
+            expected,
           });
-          state.auth = await authState.read();
         }
+        state.auth = adopted;
+        state.decisionScope = scopeOf(adopted);
         state.session = session;
         state.displayName = session.account.display_name;
         state.sessionState = "active";
@@ -987,9 +1231,12 @@ async function refresh() {
       status.kind === SESSION_STATUS_KINDS.SIGNED_OUT ||
       status.kind === SESSION_STATUS_KINDS.REAUTH_REQUIRED
     ) {
-      if (state.auth.sessionState === "active") {
+      if (current.sessionState === "active") {
         await pauseSync();
-        state.auth = await authState.setSessionState("reauth_required");
+        state.auth = await authState.setSessionState(
+          "reauth_required",
+          expected,
+        );
       }
       state.session = null;
       state.sessionState =
@@ -1007,32 +1254,65 @@ async function refresh() {
         state.auth.sessionState === "reauth_required"
           ? "reauth_required"
           : "offline";
-      state.retryAfter = status.retry_after;
       state.message = descriptionForStatus(status);
       state.messageKind = "status";
     }
+    if (status.kind === SESSION_STATUS_KINDS.RATE_LIMITED)
+      setRetryCooldown(status.retry_after);
+    else setRetryCooldown(0);
     state.busy = false;
     renderAccountButton();
     renderNotice();
     openSettingsSection();
     renderDialog();
     return state.auth;
-  })().finally(() => {
-    refreshPromise = null;
-  });
+  })()
+    .catch(async (error) => {
+      if (error?.code === "stale_account") {
+        state.stale = true;
+        try {
+          state.auth = await authState.read();
+        } catch {
+          // The recovery surface uses the last readable state.
+        }
+        state.message = errorMessage(error);
+        state.messageKind = "alert";
+        renderAccountButton();
+        renderNotice();
+      } else {
+        state.sessionState = "offline";
+        state.message = errorMessage(error);
+        state.messageKind = "alert";
+        renderAccountButton();
+        renderNotice();
+      }
+      state.busy = false;
+      renderDialog();
+      return state.auth;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
   return refreshPromise;
 }
 
 function handleSyncStatus(status = {}) {
   if (status.code === "reauth_required" || status.code === "unauthorized") {
     state.sessionState = "reauth_required";
-    if (state.auth?.sessionState === "active") {
+    const expected = scopeOf(state.auth);
+    if (expected && state.auth?.sessionState === "active") {
       void authState
-        .setSessionState("reauth_required")
+        .setSessionState("reauth_required", expected)
         .then((next) => {
           state.auth = next;
         })
-        .catch(() => {});
+        .catch((error) => {
+          if (error?.code === "stale_account") {
+            state.stale = true;
+            renderAccountButton();
+            renderNotice();
+          }
+        });
     }
     renderAccountButton();
   } else if (status.code === "stale_account") {
@@ -1082,6 +1362,7 @@ function boot() {
       next.generation !== current.generation ||
       next.accountHandle !== current.accountHandle
     ) {
+      abortCeremony("auth_change");
       state.auth = next;
       state.stale = true;
       state.sessionState =
@@ -1106,12 +1387,12 @@ function boot() {
       target.closest("#account-button-mobile")
     ) {
       event.preventDefault();
-      openDialog();
+      void openDialog();
       return;
     }
     if (target.closest("#open-account-settings")) {
       event.preventDefault();
-      openDialog();
+      void openDialog();
     }
   });
   globalThis.tanikunStorage?.onStaleAccount?.(() => {

@@ -155,6 +155,20 @@ function hasEnrollment(text, offeringId) {
   }
 }
 
+async function switchLocalAccount(page, accountHandle) {
+  await page.evaluate(async (handle) => {
+    const other = globalThis.tanikunAuthStateModule.createAuthStateStore({
+      indexedDB: globalThis.indexedDB,
+      locks: null,
+    });
+    await other.write({
+      accountHandle: handle,
+      sessionState: "active",
+    });
+    other.close();
+  }, accountHandle);
+}
+
 async function readPlannerText(page, key) {
   return page.evaluate(async (plannerKey) => {
     const opening = indexedDB.open("tanikun-planner", 1);
@@ -273,7 +287,7 @@ test(
     await page.locator('[data-action="register-start"]').click();
     const disclosure = await page.locator('[role="dialog"]').innerText();
     assert.match(disclosure, /パスキーをすべて失うと/);
-    assert.match(disclosure, /Phase 6の文書鍵を提供しません/);
+    assert.match(disclosure, /失われた暗号化鍵を復旧することもできません/);
     await page.locator("#auth-display-name").fill("Alice Fictional");
     await page.locator('[data-action="register-submit"]').click();
     await page
@@ -811,6 +825,49 @@ test(
       undefined,
       { timeout: 10_000 },
     );
+    assert.deepEqual(errors, []);
+  },
+);
+test(
+  "a copy prompt is withdrawn and creates no plan after another tab switches",
+  { timeout: 180_000 },
+  async (t) => {
+    const harness = new SyncHarness({ mode: "session" });
+    t.after(() => harness.close());
+    await harness.start();
+    const { page, errors } = await harness.openSessionPage();
+    await waitForPersistence(page);
+    await addOffering(page, "phy302-s");
+    await openAccount(page);
+    await page.locator('[data-action="register-start"]').click();
+    await page.locator("#auth-display-name").fill("Copy Race Alice");
+    await page.locator('[data-action="register-submit"]').click();
+    await page
+      .locator('[data-action="copy-plan"]')
+      .waitFor({ state: "visible", timeout: 30_000 });
+    const alice = (await readDocuments(page)).authState;
+    const bobHandle = "B".repeat(43);
+    await switchLocalAccount(page, bobHandle);
+    await page.waitForFunction(
+      () => globalThis.tanikunAuthController?.state?.stale === true,
+    );
+    assert.equal(await page.locator('[data-action="copy-plan"]').count(), 0);
+    const after = await readDocuments(page);
+    assert.equal(after.authState.accountHandle, bobHandle);
+    assert.equal(after.authState.sessionState, "active");
+    assert.equal(
+      after.keys.includes(`account:${alice.accountHandle}:planner`),
+      false,
+    );
+    assert.equal(
+      after.keys.includes(`auth:upload:${alice.accountHandle}`),
+      false,
+    );
+    assert.equal(
+      hasEnrollment(await readPlannerText(page, "planner"), "phy302-s"),
+      true,
+    );
+    await closeAccount(page);
     assert.deepEqual(errors, []);
   },
 );
