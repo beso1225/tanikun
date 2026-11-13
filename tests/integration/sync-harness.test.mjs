@@ -236,6 +236,7 @@ test(
         () => globalThis["__TANIKUN_SYNC_CONFIG__"],
       );
       assert.deepEqual(config, {
+        mode: "dev_bearer",
         apiOrigin: harness.apiOrigin,
         token: identityToken("alice"),
         maxRetry: 0,

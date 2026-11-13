@@ -22,7 +22,13 @@ const syncJson = (status, body) => ({
 async function openPage(
   t,
   viewport = { width: 1280, height: 900 },
-  { configure = true, beforeGoto, waitForReady = true } = {},
+  {
+    configure = true,
+    beforeGoto,
+    waitForReady = true,
+    mode = "dev_bearer",
+    expectedAccountHandle,
+  } = {},
 ) {
   const { server, origin } = await startStaticServer(dist);
   t.after(() => new Promise((finish) => server.close(finish)));
@@ -34,17 +40,34 @@ async function openPage(
   page.on("pageerror", (error) => errors.push(error.message));
   let api = null;
   if (configure) {
-    await page.addInitScript(
-      ({ apiOrigin, authToken }) => {
-        globalThis["__TANIKUN_SYNC_CONFIG__"] = {
-          apiOrigin,
-          token: authToken,
-          maxRetry: 0,
-        };
-      },
-      { apiOrigin: origin, authToken: token },
-    );
-    api = await installFakeApi(page, origin);
+    if (mode === "session") {
+      await page.addInitScript(
+        ({ expected }) => {
+          globalThis["__TANIKUN_SYNC_CONFIG__"] = {
+            mode: "session",
+            ...(expected === undefined
+              ? {}
+              : { expectedAccountHandle: expected }),
+            maxRetry: 0,
+          };
+        },
+        { expected: expectedAccountHandle },
+      );
+      api = await installFakeSessionApi(page, origin);
+    } else {
+      await page.addInitScript(
+        ({ apiOrigin, authToken }) => {
+          globalThis["__TANIKUN_SYNC_CONFIG__"] = {
+            mode: "dev_bearer",
+            apiOrigin,
+            token: authToken,
+            maxRetry: 0,
+          };
+        },
+        { apiOrigin: origin, authToken: token },
+      );
+      api = await installFakeApi(page, origin);
+    }
   }
   if (beforeGoto) await beforeGoto(page, origin);
   await page.goto(origin);
@@ -159,6 +182,166 @@ async function installFakeApi(page, origin) {
     },
     set mode(value) {
       mode = value;
+    },
+  };
+}
+
+async function installFakeSessionApi(page, origin) {
+  const handle = "S".repeat(43);
+  const csrf = "C".repeat(43);
+  const changes = [];
+  const bootstrapCalls = [];
+  const pushBodies = [];
+  const pushCsrf = [];
+  const pullCalls = [];
+  let unauthorized = false;
+  let authCalls = 0;
+  let authorizationSeen = null;
+  let bootstrapBody = null;
+  let bootstrapUrl = null;
+
+  const recordPush = (envelopes) =>
+    envelopes.map((envelope) => {
+      let sequence = changes.find(
+        (change) => change.change_id === envelope.change_id,
+      )?.server_sequence;
+      if (sequence === undefined) {
+        sequence = changes.length + 1;
+        changes.push({ ...envelope, server_sequence: sequence });
+      }
+      return { change_id: envelope.change_id, server_sequence: sequence };
+    });
+
+  await page.route(`${origin}/api/v1/**`, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const headers = request.headers();
+    if (headers.authorization !== undefined)
+      authorizationSeen = headers.authorization;
+    if (url.pathname === "/api/v1/auth/session") {
+      authCalls += 1;
+      if (unauthorized) {
+        await route.fulfill(syncJson(401, { error: { code: "unauthorized" } }));
+        return;
+      }
+      await route.fulfill(
+        syncJson(200, {
+          session: {
+            account: { handle, display_name: "Session Browser" },
+            expires_at: Date.now() + 43_200_000,
+            idle_expires_at: Date.now() + 1_800_000,
+            recent_auth: true,
+            recent_auth_expires_at: Date.now() + 300_000,
+            csrf_token: csrf,
+          },
+        }),
+      );
+      return;
+    }
+    if (unauthorized) {
+      await route.fulfill(syncJson(401, { error: { code: "unauthorized" } }));
+      return;
+    }
+    if (
+      url.pathname === "/api/v1/sync/document" &&
+      request.method() === "POST"
+    ) {
+      bootstrapCalls.push({
+        csrf: headers["x-csrf-token"] ?? null,
+        method: request.method(),
+        body: request.postData(),
+        url: request.url(),
+      });
+      bootstrapUrl = request.url();
+      bootstrapBody = request.postData();
+      if (headers["x-csrf-token"] !== csrf) {
+        await route.fulfill(
+          syncJson(403, { error: { code: "csrf_forbidden" } }),
+        );
+        return;
+      }
+      await route.fulfill(
+        syncJson(200, { document_id: documentId, cursor: changes.length }),
+      );
+      return;
+    }
+    if (
+      url.pathname === `/api/v1/sync/documents/${documentId}/changes` &&
+      request.method() === "POST"
+    ) {
+      pushCsrf.push(headers["x-csrf-token"] ?? null);
+      const body = JSON.parse(request.postData() ?? "{}");
+      const envelopes = Array.isArray(body.changes) ? body.changes : [];
+      pushBodies.push(envelopes);
+      if (headers["x-csrf-token"] !== csrf) {
+        await route.fulfill(
+          syncJson(403, { error: { code: "csrf_forbidden" } }),
+        );
+        return;
+      }
+      const accepted = recordPush(envelopes);
+      await route.fulfill(
+        syncJson(200, {
+          document_id: documentId,
+          accepted,
+          cursor: changes.length,
+        }),
+      );
+      return;
+    }
+    if (
+      url.pathname === `/api/v1/sync/documents/${documentId}/changes` &&
+      request.method() === "GET"
+    ) {
+      const after = Number(url.searchParams.get("after") ?? "0");
+      const limit = Number(url.searchParams.get("limit") ?? "100");
+      pullCalls.push({ after, limit });
+      const rows = changes
+        .filter((change) => change.server_sequence > after)
+        .slice(0, limit);
+      const cursor = changes.length;
+      const nextCursor = rows.length ? rows.at(-1).server_sequence : after;
+      await route.fulfill(
+        syncJson(200, {
+          document_id: documentId,
+          changes: rows,
+          next_cursor: nextCursor,
+          has_more: nextCursor < cursor,
+          cursor,
+        }),
+      );
+      return;
+    }
+    await route.fulfill(syncJson(404, { error: { code: "not_found" } }));
+  });
+
+  return {
+    handle,
+    csrf,
+    bootstrapCalls,
+    pushBodies,
+    pushCsrf,
+    pullCalls,
+    get authCalls() {
+      return authCalls;
+    },
+    get authorizationSeen() {
+      return authorizationSeen;
+    },
+    get bootstrapBody() {
+      return bootstrapBody;
+    },
+    get bootstrapUrl() {
+      return bootstrapUrl;
+    },
+    get changes() {
+      return changes.slice();
+    },
+    get unauthorized() {
+      return unauthorized;
+    },
+    set unauthorized(value) {
+      unauthorized = value;
     },
   };
 }
@@ -354,6 +537,54 @@ test(
     await addOffering(page);
     await waitForSync(page, "同期済み");
     assert.ok(api.bootstrapCalls.length > 0);
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "session transport uses same-origin cookies and in-memory CSRF without a bearer",
+  { timeout: 60_000 },
+  async (t) => {
+    const { page, api, errors } = await openPage(t, undefined, {
+      mode: "session",
+    });
+    await waitForSync(page, "同期済み");
+    assert.ok(api.authCalls >= 1);
+    assert.equal(api.authorizationSeen, null);
+    assert.equal(api.bootstrapCalls.length, 1);
+    assert.equal(api.bootstrapCalls[0].method, "POST");
+    assert.equal(api.bootstrapCalls[0].csrf, api.csrf);
+    assert.equal(api.bootstrapCalls[0].body, null);
+    assert.equal(new URL(api.bootstrapUrl).search, "");
+    assert.ok(api.pullCalls.length >= 1);
+    assert.ok(api.pushCsrf.length >= 1);
+    for (const csrf of api.pushCsrf) assert.equal(csrf, api.csrf);
+    const session = await page.evaluate(
+      () => globalThis.tanikunSyncShell.session,
+    );
+    assert.equal(session.account.handle, api.handle);
+    assert.equal(JSON.stringify(session).includes(api.csrf), false);
+    assert.deepEqual(errors, []);
+
+    api.unauthorized = true;
+    await addOffering(page);
+    await waitForSync(page, "再認証が必要");
+    assert.equal(await page.locator("#sync-retry").isVisible(), false);
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "session account mismatch stops before bootstrap",
+  { timeout: 60_000 },
+  async (t) => {
+    const { page, api, errors } = await openPage(t, undefined, {
+      mode: "session",
+      expectedAccountHandle: "X".repeat(43),
+    });
+    await waitForSync(page, "アカウントが変更されました");
+    assert.equal(api.bootstrapCalls.length, 0);
+    assert.equal(await page.locator("#sync-retry").isVisible(), false);
     assert.deepEqual(errors, []);
   },
 );

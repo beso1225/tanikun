@@ -27,7 +27,14 @@ export const SYNC_TRANSPORT_KINDS = Object.freeze({
   SERVER_ERROR: "server_error",
 });
 
+export const SYNC_TRANSPORT_MODES = Object.freeze({
+  DEV_BEARER: "dev_bearer",
+  SESSION: "session",
+});
+
 const K = SYNC_TRANSPORT_KINDS;
+const M = SYNC_TRANSPORT_MODES;
+const CSRF_HEADER = "X-CSRF-Token";
 const encoder = new TextEncoder();
 
 function exactKeys(value, keys) {
@@ -325,15 +332,35 @@ async function readResponseText(response) {
 
 export function createSyncTransport({
   fetch,
+  mode,
   baseUrl,
   token,
+  getCsrfToken,
   timeoutMs = 15_000,
 } = {}) {
   if (typeof fetch !== "function") {
     throw new TypeError("fetch must be a function");
   }
-  if (typeof token !== "string" || token.length === 0 || /[\r\n]/.test(token)) {
-    throw new TypeError("token must be a non-empty bearer token");
+  if (mode !== M.DEV_BEARER && mode !== M.SESSION) {
+    throw new TypeError("mode must be exactly dev_bearer or session");
+  }
+  if (mode === M.DEV_BEARER) {
+    if (
+      typeof token !== "string" ||
+      token.length === 0 ||
+      /[\r\n]/.test(token)
+    ) {
+      throw new TypeError("token must be a non-empty bearer token");
+    }
+    if (getCsrfToken !== undefined)
+      throw new TypeError("dev_bearer must not use a CSRF token");
+  } else {
+    // Session mode is same-origin cookie transport. A runtime bearer or any
+    // other opaque token is forbidden, and the CSRF token stays in memory.
+    if (token !== undefined)
+      throw new TypeError("session mode must not carry a runtime token");
+    if (typeof getCsrfToken !== "function")
+      throw new TypeError("session mode requires getCsrfToken");
   }
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new TypeError("timeoutMs must be a positive integer");
@@ -352,12 +379,31 @@ export function createSyncTransport({
   }
 
   const origin = base.origin;
-  const headers = Object.freeze({
-    Accept: "application/json",
-    Authorization: `Bearer ${token}`,
-  });
+  const credentials = mode === M.DEV_BEARER ? "omit" : "same-origin";
+  const headers =
+    mode === M.DEV_BEARER
+      ? Object.freeze({
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        })
+      : Object.freeze({ Accept: "application/json" });
 
-  async function request(url, init, signal, interpret) {
+  function writeHeaders() {
+    if (mode === M.DEV_BEARER) return {};
+    let csrf;
+    try {
+      csrf = getCsrfToken();
+    } catch {
+      return null;
+    }
+    if (typeof csrf !== "string" || !/^[A-Za-z0-9_-]{43}$/u.test(csrf))
+      return null;
+    return { [CSRF_HEADER]: csrf };
+  }
+
+  async function request(url, init, signal, interpret, { write = false } = {}) {
+    const extra = write ? writeHeaders() : {};
+    if (extra === null) return { kind: K.UNAUTHORIZED, retryable: false };
     if (signal?.aborted) {
       return { kind: K.ABORTED, retryable: false };
     }
@@ -376,8 +422,8 @@ export function createSyncTransport({
         response = await fetch(url, {
           ...init,
           cache: "no-store",
-          credentials: "omit",
-          headers: { ...headers, ...init.headers },
+          credentials,
+          headers: { ...headers, ...extra, ...init.headers },
           signal: controller.signal,
         });
       } catch {
@@ -406,11 +452,14 @@ export function createSyncTransport({
   }
 
   async function bootstrap({ signal } = {}) {
+    // Dev bearer keeps ADR-0014's cookie-free GET. Session mode provisions
+    // with POST, no body, no query, and the in-memory CSRF header.
     return request(
       new URL("/api/v1/sync/document", origin).href,
-      { method: "GET" },
+      { method: mode === M.DEV_BEARER ? "GET" : "POST" },
       signal,
       parseBootstrap,
+      { write: mode === M.SESSION },
     );
   }
 
@@ -444,6 +493,7 @@ export function createSyncTransport({
       },
       signal,
       (response, text) => parsePush(documentId, validated, response, text),
+      { write: mode === M.SESSION },
     );
   }
 

@@ -26,6 +26,7 @@ test(
         const config = await page.evaluate(
           () => globalThis["__TANIKUN_SYNC_CONFIG__"],
         );
+        assert.equal(config.mode, "dev_bearer");
         assert.equal(config.apiOrigin, harness.apiOrigin);
         assert.equal(config.token, identityToken(name));
         const document = await harness.bootstrap(name);
