@@ -287,4 +287,57 @@ describe("backup eligibility and counter policy", () => {
       backup_eligible: 1,
     });
   });
+
+  it("allows only one strict non-backup counter update when assertions race", async () => {
+    const { service, credential, registered } = await serviceWithCredential({
+      backupEligible: false,
+      backupState: false,
+      counter: 0,
+    });
+    const handle = registered.options.publicKey.user.id;
+    const firstBinding = bytes(32, 0xaf);
+    const secondBinding = bytes(32, 0xb8);
+    const [firstOptions, secondOptions] = await Promise.all([
+      service.signInOptions({ bindingDigest: firstBinding }),
+      service.signInOptions({ bindingDigest: secondBinding }),
+    ]);
+    const [firstAssertion, secondAssertion] = await Promise.all([
+      buildAssertionResponse({
+        challenge: firstOptions.publicKey.challenge,
+        rpID: CEREMONY_CONFIG.rpID,
+        origin: CEREMONY_CONFIG.origin,
+        credential,
+        userHandle: handle,
+        counter: 1,
+      }),
+      buildAssertionResponse({
+        challenge: secondOptions.publicKey.challenge,
+        rpID: CEREMONY_CONFIG.rpID,
+        origin: CEREMONY_CONFIG.origin,
+        credential,
+        userHandle: handle,
+        counter: 1,
+      }),
+    ]);
+    const results = await Promise.allSettled([
+      service.verifySignIn({
+        bindingDigest: firstBinding,
+        body: verificationBody(firstOptions.challenge_id, firstAssertion),
+      }),
+      service.verifySignIn({
+        bindingDigest: secondBinding,
+        body: verificationBody(secondOptions.challenge_id, secondAssertion),
+      }),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.find((result) => result.status === "rejected").reason,
+    ).toMatchObject({ code: "authentication_failed" });
+    expect(await credentialRow(credential.credentialId)).toMatchObject({
+      counter: 1,
+    });
+    expect(await activeSessionCount(accountId("alice0001"))).toBe(2);
+  });
 });
