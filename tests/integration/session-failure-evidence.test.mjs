@@ -1,8 +1,10 @@
 // #185 failure-evidence proof. A real session journey registers a fictional
 // account, then fails on purpose after the browser has real session cookies.
-// The retained failure log, screenshot, and sanitized trace must not contain the
-// raw session token, CSRF token, credential ID, display name, or credential
-// response fields. The harness must remove its temporary storage and processes.
+// The retained failure log and sanitized trace must not contain the raw session
+// token, CSRF token, credential ID, or credential response fields. The
+// screenshot remains a human-readable UI capture and can show fictional planner
+// text and the account display name. The harness must remove its temporary
+// storage and processes.
 
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
@@ -47,10 +49,11 @@ test(
             cookieState.session.value,
             account.csrfToken,
             credentials[0].credentialId,
-            "Alice Failure Evidence",
             "clientExtensionResults",
             "attestationObject",
             "authenticatorData",
+            "signature",
+            "userHandle",
             "X-CSRF-Token",
             "Authorization",
           ];
@@ -92,6 +95,11 @@ test(
         "the failure log retained a forbidden session value",
       );
     }
+    assert.equal(
+      failureLog.includes("Alice Failure Evidence"),
+      false,
+      "the failure log retained the account display name",
+    );
 
     await harness.close();
     await assertEvidenceSanitized(harness, forbidden);

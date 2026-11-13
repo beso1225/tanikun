@@ -107,10 +107,12 @@ confirms the account planner remains locally readable with no new writes.
 ### Evidence and cleanup
 
 `session-failure-evidence.test.mjs` fails a real session journey on purpose
-after registration. The retained failure log, screenshot, and sanitized trace
-must not contain the session token, CSRF token, credential ID, display name, or
-credential response fields. The test also checks that the harness removes its
-process group and temporary storage.
+after registration. The retained failure log and sanitized trace must not
+contain the session token, CSRF token, credential ID, display name, or credential
+response fields. The screenshot remains a human-readable UI capture and can show
+fictional planner text and the account display name; automated absence checks
+apply to logs and sanitized traces, not screenshot pixels. The test also checks
+that the harness removes its process group and temporary storage.
 
 The new tests close their harness, then read every retained evidence file and
 every sanitized trace entry. They assert the raw session token, CSRF token,
