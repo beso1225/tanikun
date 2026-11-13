@@ -1011,6 +1011,7 @@ test("session status retries body stream failures and timeouts after 200 headers
     assert.deepEqual(await client.read(), {
       kind: S.UNAVAILABLE,
       retryable: true,
+      reason: "offline",
     });
     assert.equal((await client.read()).kind, S.SIGNED_OUT);
     assert.equal(attempts, 2);

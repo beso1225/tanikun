@@ -19,7 +19,12 @@ const STATUS_LABELS = Object.freeze({
   error: "同期エラー",
   unconfigured: "同期未設定",
   reauth_required: "再認証が必要",
-  account_changed: "アカウントが変更されました",
+  account_changed: "アカウントを確認してください",
+  signed_out: "サインインしてください",
+  pending_upload_consent: "初回アップロード未許可",
+  history_mismatch: "履歴が一致しません",
+  stale_account: "アカウントが切り替わりました",
+  paused: "アカウント切り替え中",
 });
 
 let current = {
@@ -91,20 +96,52 @@ function setStatus(state, code = null, retryAfter) {
   render();
 }
 
+function notifyAuth(status) {
+  try {
+    globalThis.tanikunAuthController?.onSyncStatus?.(status);
+  } catch {
+    // The account surface is optional; sync still reports its own state.
+  }
+}
+
+function pauseForAuthChange() {
+  coordinator?.abort?.();
+  coordinator = null;
+  setStatus("paused");
+}
+
 function triggerSync() {
   if (Date.now() < retryNotBefore) return;
+  if (
+    CONFIG?.mode === M.SESSION &&
+    !coordinator &&
+    (current.code === "auth_bootstrap" ||
+      current.code === "temporarily_unavailable" ||
+      (current.code === "rate_limited" && !coordinator))
+  ) {
+    globalThis.location.reload();
+    return;
+  }
   if (!coordinator) {
     void start();
     return;
   }
   void coordinator.sync().catch((error) => {
+    const code = error?.code;
     if (
       CONFIG?.mode === M.SESSION &&
-      (error?.code === "unauthorized" || error?.code === "reauth_required")
+      (code === "unauthorized" || code === "reauth_required")
     ) {
       sessionClient?.clear();
       coordinator = null;
+      notifyAuth({ code: "reauth_required" });
       setStatus("reauth_required");
+      return;
+    }
+    if (CONFIG?.mode === M.SESSION && code === "stale_account") {
+      coordinator = null;
+      notifyAuth({ code: "stale_account" });
+      setStatus("error", "stale_account");
       return;
     }
     setStatus("error", "sync_failed");
@@ -181,7 +218,7 @@ async function waitForLocalReady() {
   return "timeout";
 }
 
-function createCoordinator(config, storage, statusClient) {
+function createCoordinator(config, storage, statusClient, auth) {
   const syncStore = globalThis.tanikunSyncStore.createSyncStore({
     indexedDB: globalThis.indexedDB,
   });
@@ -203,24 +240,108 @@ function createCoordinator(config, storage, statusClient) {
           baseUrl: apiOrigin,
           getCsrfToken: () => statusClient?.csrfToken ?? "",
         });
+  const accountHandle = config.mode === M.SESSION ? auth.accountHandle : null;
+  const generation = config.mode === M.SESSION ? auth.generation : null;
+  const authState = globalThis.tanikunAuthState;
+  const plannerKey =
+    config.mode === M.SESSION ? authState.plannerKey(auth) : "planner";
+  const fence =
+    config.mode === M.SESSION
+      ? async () => {
+          const scope = await authState.currentScope();
+          if (
+            scope.generation !== generation ||
+            scope.accountHandle !== accountHandle
+          )
+            throw Object.assign(new Error("stale_account"), {
+              code: "stale_account",
+            });
+          if (scope.sessionState !== "active")
+            throw Object.assign(new Error("reauth_required"), {
+              code: "reauth_required",
+            });
+        }
+      : null;
+  const verifySession =
+    config.mode === M.SESSION
+      ? async () => {
+          const status = await statusClient.read();
+          if (status.kind === "active") {
+            if (status.session.account.handle !== accountHandle)
+              throw Object.assign(new Error("account_changed"), {
+                code: "account_changed",
+              });
+            return;
+          }
+          if (status.kind === "signed_out" || status.kind === "reauth_required")
+            throw Object.assign(new Error("reauth_required"), {
+              code: "reauth_required",
+            });
+          if (status.kind === "rate_limited")
+            throw Object.assign(new Error("rate_limited"), {
+              code: "rate_limited",
+            });
+          throw Object.assign(
+            new Error(
+              status.reason === "offline"
+                ? "offline"
+                : "temporarily_unavailable",
+            ),
+            {
+              code:
+                status.reason === "offline"
+                  ? "offline"
+                  : "temporarily_unavailable",
+            },
+          );
+        }
+      : null;
   return globalThis.tanikunSyncCoordinator.createSyncCoordinator({
     storage,
     transport,
     apiOrigin,
     syncStore,
     metadataStore,
+    accountHandle,
+    generation,
+    plannerKey,
+    fence,
+    verifySession,
+    syncLockName:
+      config.mode === M.SESSION
+        ? (documentId) =>
+            authState.syncLockName({
+              accountHandle,
+              apiOrigin,
+              documentId,
+            })
+        : null,
     maxRetry: Number.isSafeInteger(config.maxRetry)
       ? config.maxRetry
       : undefined,
     onStatus: ({ state, code, pending, retry_after }) => {
       if (
-        config.mode === M.SESSION &&
-        state === "error" &&
+        CONFIG?.mode === M.SESSION &&
         (code === "unauthorized" || code === "reauth_required")
       ) {
         sessionClient?.clear();
         coordinator = null;
+        notifyAuth({ code: "reauth_required" });
         setStatus("reauth_required");
+        return;
+      }
+      if (
+        CONFIG?.mode === M.SESSION &&
+        (code === "stale_account" || code === "account_changed")
+      ) {
+        coordinator = null;
+        notifyAuth({ code });
+        setStatus("error", code);
+        return;
+      }
+      if (CONFIG?.mode === M.SESSION && code === "history_mismatch") {
+        notifyAuth({ code });
+        setStatus("error", code);
         return;
       }
       setStatus(state, code, retry_after);
@@ -257,48 +378,119 @@ async function startOnce() {
     return;
   }
   if (config.mode === M.SESSION) {
-    sessionClient = createSessionStatusClient({
-      fetch: callFetch,
-      baseUrl: config.apiOrigin ?? globalThis.location.origin,
-    });
-    let status;
-    try {
-      status = await sessionClient.read();
-    } catch {
-      sessionClient = null;
+    const authState = globalThis.tanikunAuthState;
+    if (!authState) {
+      setStatus("unconfigured");
+      return;
+    }
+    const authController = globalThis.tanikunAuthController;
+    await authController?.ready;
+    const controllerState = authController?.state;
+    if (controllerState?.kind === "malformed") {
       setStatus("error", "sync_setup_failed");
       return;
     }
-    if (status.kind === "active") {
-      if (
-        config.expectedAccountHandle !== undefined &&
-        status.session.account.handle !== config.expectedAccountHandle
-      ) {
-        setStatus("error", "account_changed");
-        return;
-      }
-    } else if (
-      status.kind === "signed_out" ||
-      status.kind === "reauth_required"
+    let auth;
+    try {
+      auth = await authState.read();
+    } catch {
+      setStatus("error", "auth_state_failed");
+      return;
+    }
+    if (
+      auth.sessionState !== "active" &&
+      controllerState?.sessionState === "offline"
     ) {
+      const retryAfter = controllerState.retryAfter;
+      setStatus(
+        retryAfter === undefined
+          ? controllerState.reason === "server"
+            ? "error"
+            : "offline"
+          : "error",
+        retryAfter === undefined
+          ? controllerState.reason === "server"
+            ? "temporarily_unavailable"
+            : "auth_bootstrap"
+          : "rate_limited",
+        retryAfter,
+      );
+      return;
+    }
+    if (auth.sessionState === "signed_out") {
+      setStatus("signed_out");
+      return;
+    }
+    if (auth.sessionState === "reauth_required") {
       setStatus("reauth_required");
       return;
-    } else {
+    }
+    const client =
+      authController?.sessionClient ??
+      createSessionStatusClient({
+        fetch: callFetch,
+        baseUrl: config.apiOrigin ?? globalThis.location.origin,
+      });
+    sessionClient = client;
+    const status = await client.read();
+    if (status.kind !== "active") {
+      if (status.kind === "signed_out" || status.kind === "reauth_required") {
+        try {
+          auth = await authState.setSessionState("reauth_required");
+        } catch {
+          // The local plan remains editable even when the state write fails.
+        }
+        notifyAuth({ code: "reauth_required" });
+        setStatus("reauth_required");
+        return;
+      }
       setStatus(
-        "error",
         status.retryable
           ? status.kind === "rate_limited"
             ? "rate_limited"
-            : "temporarily_unavailable"
+            : status.reason === "server"
+              ? "temporarily_unavailable"
+              : "offline"
           : "sync_setup_failed",
         status.retry_after,
       );
       return;
     }
-    // #183 must supply account-scoped storage and generation fencing before
-    // cookie sync can run. The current storage is the unbound offline plan;
-    // authenticating alone never authorizes its upload or a remote merge.
-    setStatus("unconfigured", "account_isolation_required");
+    if (
+      status.session.account.handle !== auth.accountHandle ||
+      (config.expectedAccountHandle !== undefined &&
+        status.session.account.handle !== config.expectedAccountHandle)
+    ) {
+      notifyAuth({ code: "account_changed" });
+      setStatus("error", "account_changed");
+      return;
+    }
+    const localState = await waitForLocalReady();
+    if (localState !== "saved") {
+      setStatus("error", "local_storage_unavailable");
+      return;
+    }
+    const storageScope = storage.scope?.();
+    if (
+      !storageScope ||
+      storageScope.plannerKey !== authState.plannerKey(auth)
+    ) {
+      notifyAuth({ code: "stale_account" });
+      setStatus("error", "stale_account");
+      return;
+    }
+    if (await authState.isPendingUpload(auth.accountHandle)) {
+      setStatus("pending_upload_consent");
+      return;
+    }
+    installLocalSaveTrigger(storage);
+    try {
+      coordinator = createCoordinator(config, storage, client, auth);
+    } catch {
+      setStatus("error", "sync_setup_failed");
+      return;
+    }
+    triggerSync();
     return;
   }
   installLocalSaveTrigger(storage);
@@ -361,6 +553,12 @@ globalThis.tanikunSyncShell = Object.freeze({
     return account ? { account } : null;
   },
   sync: triggerSync,
+  pauseForAuthChange,
+  async refresh() {
+    coordinator?.abort?.();
+    coordinator = null;
+    await start();
+  },
 });
 
 render();

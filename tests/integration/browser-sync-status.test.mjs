@@ -549,26 +549,51 @@ test(
 );
 
 test(
-  "session status cannot upload the unbound planner before account isolation",
+  "session sync adopts the account planner without a dev fallback",
   { timeout: 60_000 },
   async (t) => {
     const { page, api, errors } = await openPage(t, undefined, {
       mode: "session",
     });
-    await waitForSync(page, "同期未設定");
+    await waitForSync(page, "同期済み");
     assert.ok(api.authCalls >= 1);
     assert.equal(api.authorizationSeen, null);
-    assert.equal(api.bootstrapCalls.length, 0);
-    assert.equal(api.pushBodies.length, 0);
-    assert.equal(api.pullCalls.length, 0);
+    assert.equal(api.bootstrapCalls.length, 1);
+    assert.equal(api.bootstrapCalls[0].method, "POST");
+    assert.equal(api.bootstrapCalls[0].csrf, api.csrf);
+    assert.equal(api.bootstrapCalls[0].body, null);
+    assert.equal(api.bootstrapCalls[0].url.includes("?"), false);
+    assert.equal(api.pushBodies.length >= 1, true);
+    assert.equal(
+      api.pushBodies.flat().every((entry) => entry.document_id === documentId),
+      true,
+    );
+    const scope = await page.evaluate(() => globalThis.tanikunStorage.scope());
+    assert.equal(scope.plannerKey, `account:${api.handle}:planner`);
+    const keys = await page.evaluate(async () => {
+      const open = indexedDB.open("tanikun-planner", 1);
+      const database = await new Promise((resolvePromise, reject) => {
+        open.onsuccess = () => resolvePromise(open.result);
+        open.onerror = () => reject(open.error);
+      });
+      const transaction = database.transaction("documents", "readonly");
+      const request = transaction.objectStore("documents").getAllKeys();
+      return new Promise((resolvePromise, reject) => {
+        request.onsuccess = () => resolvePromise(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    });
+    assert.equal(keys.includes(`account:${api.handle}:planner`), true);
+    assert.equal(keys.includes("planner"), false);
     await addOffering(page);
     await waitForPersistence(page);
     await page.reload();
     await waitForPersistence(page);
-    await waitForSync(page, "同期未設定");
-    assert.equal(api.bootstrapCalls.length, 0);
-    assert.equal(api.pushBodies.length, 0);
-    assert.equal(api.pullCalls.length, 0);
+    await waitForSync(page, "同期済み");
+    assert.equal(
+      await page.evaluate(() => globalThis.tanikunStorage.scope().plannerKey),
+      `account:${api.handle}:planner`,
+    );
     const session = await page.evaluate(
       () => globalThis.tanikunSyncShell.session,
     );
@@ -586,7 +611,7 @@ test(
       mode: "session",
       expectedAccountHandle: "X".repeat(43),
     });
-    await waitForSync(page, "アカウントが変更されました");
+    await waitForSync(page, "アカウントを確認してください");
     assert.equal(api.bootstrapCalls.length, 0);
     assert.equal(await page.locator("#sync-retry").isVisible(), false);
     assert.deepEqual(errors, []);
@@ -594,7 +619,7 @@ test(
 );
 
 test(
-  "session status network and 503 failures offer retry without reloading",
+  "session status network and 503 failures offer a retry that recovers",
   { timeout: 60_000 },
   async (t) => {
     for (const failure of ["network", "503"]) {
@@ -615,13 +640,16 @@ test(
           );
         },
       });
-      await waitForSync(page, "同期エラー");
+      await waitForSync(
+        page,
+        failure === "network" ? "オフライン" : "同期エラー",
+      );
       assert.equal(await page.locator("#sync-retry").isVisible(), true);
       await page.locator("#sync-retry").click();
-      await waitForSync(page, "同期未設定");
-      assert.equal(attempts, 2);
-      assert.equal(api.bootstrapCalls.length, 0);
-      assert.equal(api.pushBodies.length, 0);
+      await waitForSync(page, "同期済み");
+      assert.equal(attempts >= 2, true);
+      assert.equal(api.bootstrapCalls.length, 1);
+      assert.equal(api.pushBodies.length >= 1, true);
       assert.deepEqual(errors, []);
     }
   },
@@ -654,10 +682,10 @@ test(
     await page.evaluate(() => globalThis.tanikunSyncShell.sync());
     assert.equal(attempts, 1);
     await page.locator("#sync-retry").click();
-    await waitForSync(page, "同期未設定");
-    assert.equal(attempts, 2);
-    assert.equal(api.bootstrapCalls.length, 0);
-    assert.equal(api.pushBodies.length, 0);
+    await waitForSync(page, "同期済み");
+    assert.equal(attempts >= 2, true);
+    assert.equal(api.bootstrapCalls.length, 1);
+    assert.equal(api.pushBodies.length >= 1, true);
     assert.deepEqual(errors, []);
   },
 );
@@ -698,7 +726,7 @@ test(
       });
       await waitForSync(
         page,
-        body.session === null ? "再認証が必要" : "同期エラー",
+        body.session === null ? "サインインしてください" : "同期エラー",
       );
       assert.equal(await page.locator("#sync-retry").isVisible(), false);
       assert.equal(api.bootstrapCalls.length, 0);

@@ -29,6 +29,20 @@ const sameBytes = (left, right) =>
     }
   }
 
+  const validateFence = (authState, fence) => {
+    if (!fence) return;
+    if (
+      !authState ||
+      typeof authState !== "object" ||
+      Array.isArray(authState) ||
+      Object.keys(authState).length !== 4 ||
+      authState.authVersion !== 1 ||
+      authState.generation !== fence.generation ||
+      authState.accountHandle !== fence.accountHandle
+    )
+      throw new SyncMetadataError("stale_account");
+  };
+
   const validateMetadata = (value) => {
     if (
       !value ||
@@ -88,7 +102,7 @@ const sameBytes = (left, right) =>
       return value === undefined ? emptyMetadata() : validateMetadata(value);
     };
 
-    const observe = async (key, cursor) => {
+    const observe = async (key, cursor, fence = null) => {
       if (!validCursor(cursor)) throw new SyncMetadataError("invalid_cursor");
       const database = await open();
       return new Promise((resolve, reject) => {
@@ -119,33 +133,36 @@ const sameBytes = (left, right) =>
           { once: true },
         );
         const request = store.get(key);
-        request.addEventListener(
-          "success",
-          () => {
-            try {
-              const current =
-                request.result === undefined
-                  ? emptyMetadata()
-                  : validateMetadata(request.result);
-              if (
-                cursor < current.mergedCursor ||
-                cursor < current.observedHighWater
-              ) {
-                throw new SyncMetadataError("rollback");
-              }
-              updated = {
-                syncVersion: 1,
-                mergedCursor: current.mergedCursor,
-                observedHighWater: Math.max(current.observedHighWater, cursor),
-              };
-              store.put(updated, key);
-            } catch (error) {
-              failure = error;
-              transaction.abort();
+        const authRequest = fence ? store.get("auth:state") : null;
+        let remaining = authRequest ? 2 : 1;
+        const apply = () => {
+          remaining -= 1;
+          if (remaining !== 0) return;
+          try {
+            if (authRequest) validateFence(authRequest.result, fence);
+            const current =
+              request.result === undefined
+                ? emptyMetadata()
+                : validateMetadata(request.result);
+            if (
+              cursor < current.mergedCursor ||
+              cursor < current.observedHighWater
+            ) {
+              throw new SyncMetadataError("rollback");
             }
-          },
-          { once: true },
-        );
+            updated = {
+              syncVersion: 1,
+              mergedCursor: current.mergedCursor,
+              observedHighWater: Math.max(current.observedHighWater, cursor),
+            };
+            store.put(updated, key);
+          } catch (error) {
+            failure = error;
+            transaction.abort();
+          }
+        };
+        request.addEventListener("success", apply, { once: true });
+        authRequest?.addEventListener("success", apply, { once: true });
         request.addEventListener(
           "error",
           () => {
@@ -160,6 +177,8 @@ const sameBytes = (left, right) =>
 
     const applyPage = async ({
       key,
+      plannerKey = "planner",
+      fence = null,
       expectedMergedCursor,
       expectedPlannerBytes,
       changes,
@@ -202,13 +221,15 @@ const sameBytes = (left, right) =>
           { once: true },
         );
 
-        let remaining = 2;
+        let remaining = fence ? 3 : 2;
         let planner;
         let metadata;
+        let authState;
         const apply = () => {
           remaining -= 1;
           if (remaining !== 0) return;
           try {
+            if (fence) validateFence(authState, fence);
             const current = validateMetadata(metadata);
             if (current.mergedCursor !== expectedMergedCursor)
               throw new SyncMetadataError("stale_cursor");
@@ -250,7 +271,7 @@ const sameBytes = (left, right) =>
               ),
             };
             validateMetadata(nextMetadata);
-            store.put(record, "planner");
+            store.put(record, plannerKey);
             store.put(nextMetadata, key);
           } catch (error) {
             failure = error;
@@ -258,7 +279,7 @@ const sameBytes = (left, right) =>
           }
         };
 
-        const plannerRequest = store.get("planner");
+        const plannerRequest = store.get(plannerKey);
         plannerRequest.addEventListener(
           "success",
           () => {
@@ -278,6 +299,7 @@ const sameBytes = (left, right) =>
           { once: true },
         );
         const metadataRequest = store.get(key);
+        const authRequest = fence ? store.get("auth:state") : null;
         metadataRequest.addEventListener(
           "success",
           () => {
@@ -296,10 +318,28 @@ const sameBytes = (left, right) =>
           },
           { once: true },
         );
+        authRequest?.addEventListener(
+          "success",
+          () => {
+            authState = authRequest.result;
+            apply();
+          },
+          { once: true },
+        );
+        authRequest?.addEventListener(
+          "error",
+          () => {
+            failure =
+              authRequest.error ??
+              new Error("アカウント状態にアクセスできません");
+            transaction.abort();
+          },
+          { once: true },
+        );
       });
     };
 
-    const resetMerged = async (key) => {
+    const resetMerged = async (key, fence = null) => {
       const database = await open();
       return new Promise((resolve, reject) => {
         const transaction = database.transaction(storeName, "readwrite");
@@ -307,24 +347,27 @@ const sameBytes = (left, right) =>
         let next;
         let failure;
         const request = store.get(key);
-        request.addEventListener(
-          "success",
-          () => {
+        const authRequest = fence ? store.get("auth:state") : null;
+        let remaining = authRequest ? 2 : 1;
+        const apply = () => {
+          remaining -= 1;
+          if (remaining !== 0) return;
+          try {
+            if (authRequest) validateFence(authRequest.result, fence);
+            const current = validateMetadata(request.result);
+            next = { ...current, mergedCursor: 0 };
+            store.put(next, key);
+          } catch (error) {
+            failure = error;
             try {
-              const current = validateMetadata(request.result);
-              next = { ...current, mergedCursor: 0 };
-              store.put(next, key);
-            } catch (error) {
-              failure = error;
-              try {
-                transaction.abort();
-              } catch {
-                // A completed transaction cannot be aborted.
-              }
+              transaction.abort();
+            } catch {
+              // A completed transaction cannot be aborted.
             }
-          },
-          { once: true },
-        );
+          }
+        };
+        request.addEventListener("success", apply, { once: true });
+        authRequest?.addEventListener("success", apply, { once: true });
         transaction.addEventListener("complete", () => resolve(next), {
           once: true,
         });
@@ -341,11 +384,33 @@ const sameBytes = (left, right) =>
       });
     };
 
-    const clear = async (key) => {
+    const clear = async (key, fence = null) => {
       const database = await open();
       await new Promise((resolve, reject) => {
         const transaction = database.transaction(storeName, "readwrite");
-        transaction.objectStore(storeName).delete(key);
+        const store = transaction.objectStore(storeName);
+        if (!fence) {
+          store.delete(key);
+        } else {
+          const authRequest = store.get("auth:state");
+          authRequest.addEventListener(
+            "success",
+            () => {
+              try {
+                validateFence(authRequest.result, fence);
+                store.delete(key);
+              } catch (error) {
+                try {
+                  transaction.abort();
+                } catch {
+                  // The transaction may already be inactive.
+                }
+                reject(error);
+              }
+            },
+            { once: true },
+          );
+        }
         transaction.addEventListener("complete", () => resolve(), {
           once: true,
         });

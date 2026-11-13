@@ -1220,13 +1220,21 @@ test("fails closed when a fresh seed follows an interrupted discard", async () =
   const pushes = context.transport.pushes.length;
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "error");
-  assert.equal(result.code, "discard_pending");
+  assert.equal(result.code, "history_mismatch");
   assert.equal(context.transport.pushes.length, pushes);
-  assert.deepEqual(await context.syncStore.listOutbox(syncScope), []);
+  assert.equal(
+    (await context.syncStore.listOutbox(syncScope)).length >= 1,
+    true,
+  );
   assert.equal(
     JSON.parse(await context.storage.load()).program_id,
     "fresh-seed",
   );
+  assert.equal(
+    (await context.metadataStore.read(metadataKey())).mergedCursor,
+    2,
+  );
+  assert.equal((await context.syncStore.seenHashes(syncScope)).size > 0, true);
 });
 
 test("rate limits retry bootstrap, pull, and identical push envelopes after Retry-After", async () => {

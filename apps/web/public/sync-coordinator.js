@@ -102,6 +102,12 @@ const retryable = (result) =>
     apiOrigin,
     syncStore,
     metadataStore,
+    accountHandle = null,
+    generation = null,
+    plannerKey = "planner",
+    fence = null,
+    verifySession = null,
+    syncLockName = null,
     onStatus = () => {},
     locks = globalThis.navigator?.locks,
     sleep,
@@ -110,11 +116,19 @@ const retryable = (result) =>
   } = {}) => {
     if (!storage || !transport || !apiOrigin || !syncStore || !metadataStore)
       throw new Error("同期の依存関係が不足しています");
+    if (accountHandle !== null && !/^[A-Za-z0-9_-]{43}$/u.test(accountHandle))
+      throw new Error("accountHandle が不正です");
+    if (generation !== null && !/^[A-Za-z0-9_-]{22}$/u.test(generation))
+      throw new Error("generation が不正です");
+    if (typeof plannerKey !== "string" || plannerKey.length === 0)
+      throw new Error("plannerKey が不正です");
     let documentId = initialDocumentId;
     let currentStatus = "starting";
     let running;
     let epoch = 0;
     let discarding = false;
+    let aborted = false;
+    const controller = new AbortController();
     const pendingEnqueues = new Set();
     let origin;
     try {
@@ -136,11 +150,33 @@ const retryable = (result) =>
       }
     };
 
-    const metadataKey = () => "sync:" + JSON.stringify([origin, documentId]);
-    const syncScope = () => `${origin}:${documentId}`;
+    const metadataKey = () =>
+      accountHandle
+        ? "sync:" + JSON.stringify([accountHandle, origin, documentId])
+        : "sync:" + JSON.stringify([origin, documentId]);
+    const syncScope = () =>
+      accountHandle
+        ? `${accountHandle}|${origin}|${documentId}`
+        : `${origin}:${documentId}`;
+    const fenceOptions = () =>
+      generation === null ? null : { generation, accountHandle };
+
+    const checkFence = async () => {
+      if (fence) await fence();
+    };
+
+    const verifyBoundSession = async () => {
+      if (!verifySession) return;
+      try {
+        await verifySession();
+      } catch (error) {
+        throw new SyncCoordinatorError(error?.code ?? "reauth_required");
+      }
+    };
 
     const retry = async (operation) => {
       for (let attempt = 0; ; attempt += 1) {
+        if (aborted) throw new SyncCoordinatorError("aborted");
         const result = await operation();
         if (!retryable(result) || attempt >= maxRetry) {
           if (retryable(result))
@@ -159,24 +195,33 @@ const retryable = (result) =>
       }
     };
 
+    const lockName = () => {
+      if (typeof syncLockName === "function") return syncLockName(documentId);
+      return syncLockName ?? `tanikun-sync:${origin}:${documentId}`;
+    };
+
     const withLock = (operation) => {
       if (locks?.request) {
-        return locks.request(
-          `tanikun-sync:${origin}:${documentId}`,
-          { mode: "exclusive" },
-          operation,
-        );
+        return locks.request(lockName(), { mode: "exclusive" }, operation);
       }
       return operation();
     };
 
     const ensureDocument = async () => {
+      await checkFence();
       if (documentId) return;
-      const result = await retry(() => transport.bootstrap());
+      await verifyBoundSession();
+      await checkFence();
+      const result = await retry(() =>
+        transport.bootstrap({ signal: controller.signal }),
+      );
       if (result.kind !== "bootstrapped")
         throw new SyncCoordinatorError(result.code ?? result.kind, result);
+      // Never bind a document from a response that arrives after an account
+      // change or reauthentication.
+      await checkFence();
       documentId = result.document_id;
-      await metadataStore.observe(metadataKey(), result.cursor);
+      await metadataStore.observe(metadataKey(), result.cursor, fenceOptions());
     };
 
     const enqueueChange = async (change, expectedEpoch = epoch) => {
@@ -212,6 +257,7 @@ const retryable = (result) =>
     });
 
     const scanLocalChanges = async () => {
+      await checkFence();
       const changes = storage.changes();
       const seen = await syncStore.seenHashes(syncScope());
       const outbox = await syncStore.outboxHashes(syncScope());
@@ -229,10 +275,12 @@ const retryable = (result) =>
     };
 
     const pushBatch = async (batch) => {
+      await checkFence();
       const result = await retry(() =>
         transport.push(
           documentId,
           batch.map((entry) => entry.envelope),
+          { signal: controller.signal },
         ),
       );
       if (
@@ -247,11 +295,21 @@ const retryable = (result) =>
         return;
       }
       if (result.kind !== "pushed") {
+        await checkFence();
         if (Number.isSafeInteger(result.cursor))
-          await metadataStore.observe(metadataKey(), result.cursor);
+          await metadataStore.observe(
+            metadataKey(),
+            result.cursor,
+            fenceOptions(),
+          );
         throw new SyncCoordinatorError(result.code ?? result.kind, result);
       }
-      await metadataStore.observe(metadataKey(), result.cursor);
+      // A switch while the append is in flight must leave the outbox intact.
+      // The server may have accepted the batch, so retrying the identical
+      // envelopes under the new account scope is not this tab's decision.
+      await checkFence();
+      await metadataStore.observe(metadataKey(), result.cursor, fenceOptions());
+      await checkFence();
       await syncStore.acknowledge(
         syncScope(),
         batch.map((entry) => entry.change_id),
@@ -267,6 +325,7 @@ const retryable = (result) =>
     };
 
     const pullPages = async (maxPageSize) => {
+      await checkFence();
       await storage.load();
       let snapshot = storage.snapshot();
       if (snapshot?.storageVersion === 1)
@@ -279,7 +338,10 @@ const retryable = (result) =>
         // log, reset only the merged cursor and preserve the high-water.
         if (documentId) await syncStore.clear(syncScope());
         if (metadata.mergedCursor > 0)
-          metadata = await metadataStore.resetMerged(metadataKey());
+          metadata = await metadataStore.resetMerged(
+            metadataKey(),
+            fenceOptions(),
+          );
       } else if (metadata.mergedCursor > 0) {
         const localRoots = new Set(
           storage
@@ -296,22 +358,28 @@ const retryable = (result) =>
           [...localRoots].every((root) => seen.has(root));
         if (!rootIsKnown) {
           // A re-seeded independent root cannot belong to the merged cursor.
-          // Clear its stale sync state and fail closed; explicit discard is
-          // required before adopting either history.
-          if (documentId) await syncStore.clear(syncScope());
-          throw new SyncCoordinatorError("discard_pending");
+          // Keep every plan, outbox entry, seen hash, and cursor for explicit
+          // recovery. Never clear state on a root mismatch.
+          throw new SyncCoordinatorError("history_mismatch");
         }
       }
       for (let pages = 0; pages < 10_000; pages += 1) {
+        await checkFence();
         const result = await retry(() =>
           transport.pull(documentId, {
             after: metadata.mergedCursor,
             limit: maxPageSize,
+            signal: controller.signal,
           }),
         );
         if (result.kind !== "pulled") {
+          await checkFence();
           if (Number.isSafeInteger(result.cursor))
-            await metadataStore.observe(metadataKey(), result.cursor);
+            await metadataStore.observe(
+              metadataKey(),
+              result.cursor,
+              fenceOptions(),
+            );
           throw new SyncCoordinatorError(result.code ?? result.kind, result);
         }
         const after = metadata.mergedCursor;
@@ -332,7 +400,12 @@ const retryable = (result) =>
             result.cursor !== after
           )
             throw new SyncCoordinatorError("inconsistent_cursor");
-          metadata = await metadataStore.observe(metadataKey(), result.cursor);
+          await checkFence();
+          metadata = await metadataStore.observe(
+            metadataKey(),
+            result.cursor,
+            fenceOptions(),
+          );
           return metadata;
         }
         if (result.next_cursor <= after)
@@ -340,7 +413,12 @@ const retryable = (result) =>
         // ADR-0013 requires the observed high-water commit before page
         // processing. Keep it even if dependency or root validation rejects
         // this page, so a later rollback is still detectable.
-        metadata = await metadataStore.observe(metadataKey(), result.cursor);
+        await checkFence();
+        metadata = await metadataStore.observe(
+          metadataKey(),
+          result.cursor,
+          fenceOptions(),
+        );
 
         const local = storage.changes().map((change) => ({
           bytes: change,
@@ -386,9 +464,13 @@ const retryable = (result) =>
           changes.push(entry.bytes);
         }
 
+        await checkFence();
         await syncStore.markRemote(syncScope(), hashes);
+        await checkFence();
         await metadataStore.applyPage({
           key: metadataKey(),
+          plannerKey,
+          fence: fenceOptions(),
           expectedMergedCursor: metadata.mergedCursor,
           expectedPlannerBytes: snapshot?.bytes ?? null,
           changes,
@@ -405,7 +487,7 @@ const retryable = (result) =>
     };
 
     const runSync = async ({ maxBatchChanges, maxPageChanges }) => {
-      await ensureDocument();
+      await checkFence();
       // Pull first: a fresh client must obtain the server history before it
       // uploads local history. The first page root check rejects independent
       // Automerge roots instead of silently merging two histories.
@@ -436,6 +518,9 @@ const retryable = (result) =>
         emit("syncing");
         try {
           const limits = await loadProtocolLimits();
+          await checkFence();
+          await verifyBoundSession();
+          await checkFence();
           await ensureDocument();
           return await withLock(() => runSync(limits));
         } catch (error) {
@@ -459,6 +544,7 @@ const retryable = (result) =>
       try {
         if (running) await running;
         epoch += 1;
+        await checkFence();
         await withLock(async () => {
           // Remove the planner first so an in-flight save queues behind this
           // operation, then drain any hook that had already started before
@@ -466,8 +552,9 @@ const retryable = (result) =>
           await storage.discard?.();
           await Promise.allSettled(pendingEnqueues);
           if (documentId) {
+            await checkFence();
             await syncStore.clear(syncScope());
-            await metadataStore.clear(metadataKey());
+            await metadataStore.clear(metadataKey(), fenceOptions());
           }
         });
       } finally {
@@ -475,9 +562,16 @@ const retryable = (result) =>
       }
     };
 
+    const abort = () => {
+      aborted = true;
+      epoch += 1;
+      controller.abort();
+    };
+
     return {
       sync,
       discard,
+      abort,
       status: () => currentStatus,
       documentId: () => documentId,
     };
