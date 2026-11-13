@@ -39,10 +39,19 @@ function fail(code = "authentication_failed") {
   throw new AuthStorageError(code);
 }
 
-function assertSupportedCredentialAlgorithm(publicKey) {
+function assertEs256PublicKey(publicKey) {
   try {
     const key = decodeCredentialPublicKey(publicKey);
-    if (!SUPPORTED_ALGORITHM_IDS.includes(key.get(cose.COSEKEYS.alg))) fail();
+    if (
+      key.get(cose.COSEKEYS.kty) !== cose.COSEKTY.EC2 ||
+      !SUPPORTED_ALGORITHM_IDS.includes(key.get(cose.COSEKEYS.alg)) ||
+      key.get(cose.COSEKEYS.crv) !== cose.COSECRV.P256
+    )
+      fail();
+    for (const coordinate of [cose.COSEKEYS.x, cose.COSEKEYS.y]) {
+      const value = key.get(coordinate);
+      if (!(value instanceof Uint8Array) || value.length !== 32) fail();
+    }
   } catch {
     fail();
   }
@@ -126,6 +135,7 @@ function validateRegistrationInfo(result, config, expectedId) {
     fail();
   }
   if (publicKey.credentialId !== expectedId) fail();
+  assertEs256PublicKey(publicKey.publicKey);
   return {
     credentialId: expectedId,
     publicKey: publicKey.publicKey,
@@ -465,7 +475,7 @@ export function createAuthCeremonyService({
     if (!credential) fail();
     // The assertion verifier supports more algorithms than Phase 5 permits.
     // Enforce the policy for stored keys as well as new registrations.
-    assertSupportedCredentialAlgorithm(credential.publicKey);
+    assertEs256PublicKey(credential.publicKey);
     if (purpose === "step_up" && credential.userId !== activeSession.userId)
       fail();
     if (purpose === "sign_in") {

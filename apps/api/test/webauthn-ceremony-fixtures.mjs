@@ -52,6 +52,16 @@ export async function createCredential({ idFill = 1, idLength = 16 } = {}) {
 
 async function cosePublicKey(publicKey, algorithm = -7) {
   const jwk = await crypto.subtle.exportKey("jwk", publicKey);
+  if (publicKey.algorithm.name === "Ed25519") {
+    return isoCBOR.encode(
+      new Map([
+        [1, 1],
+        [3, algorithm],
+        [-1, 6],
+        [-2, isoBase64URL.toBuffer(jwk.x)],
+      ]),
+    );
+  }
   return isoCBOR.encode(
     new Map([
       [1, 2],
