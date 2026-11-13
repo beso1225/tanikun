@@ -521,7 +521,7 @@ export function createAuthClient({
     throw statusCodeError(code, response.status, response);
   }
 
-  async function register({ displayName, signal } = {}) {
+  async function register({ displayName, signal, beforeVerify } = {}) {
     if (!credentials || typeof credentials.create !== "function")
       throw new AuthClientError("unsupported");
     const options = await request("/api/v1/auth/register/options", {
@@ -544,6 +544,7 @@ export function createAuthClient({
     if (!credential) throw new AuthClientError("canceled");
     const serialized = serializeRegistrationCredential(credential);
     if (signal?.aborted) throw new AuthClientError("canceled");
+    await beforeVerify?.();
     const verified = await request("/api/v1/auth/register/verify", {
       method: "POST",
       body: { challenge_id: parsed.challengeId, credential: serialized },
@@ -552,7 +553,7 @@ export function createAuthClient({
     return sessionBody(verified);
   }
 
-  async function signIn({ signal } = {}) {
+  async function signIn({ signal, beforeVerify } = {}) {
     if (!credentials || typeof credentials.get !== "function")
       throw new AuthClientError("unsupported");
     const options = await request("/api/v1/auth/sign-in/options", {
@@ -575,6 +576,7 @@ export function createAuthClient({
     if (!credential) throw new AuthClientError("canceled");
     const serialized = serializeAssertionCredential(credential);
     if (signal?.aborted) throw new AuthClientError("canceled");
+    await beforeVerify?.();
     const verified = await request("/api/v1/auth/sign-in/verify", {
       method: "POST",
       body: { challenge_id: parsed.challengeId, credential: serialized },

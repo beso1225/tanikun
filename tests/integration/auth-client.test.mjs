@@ -544,3 +544,31 @@ test("aborting a pending assertion prevents the verify request", async () => {
   assert.equal(getOptions.signal, controller.signal);
   assert.equal(verifyCalls, 0);
 });
+
+test("a stale account fence after native credentials stops verification without broadcasts", async () => {
+  for (const operation of ["register", "signIn"]) {
+    const { fetch, calls } = createFetch([
+      jsonResponse(
+        operation === "register" ? registrationOptions() : assertionOptions(),
+      ),
+      jsonResponse({ session: activeSession }),
+    ]);
+    const client = createAuthClient({
+      fetch,
+      baseUrl: "https://localhost:4300",
+      credentials: {
+        create: async () => syntheticRegistrationCredential(),
+        get: async () => syntheticAssertionCredential(),
+      },
+    });
+    await assert.rejects(
+      client[operation]({
+        beforeVerify: async () => {
+          throw Object.assign(new Error("stale"), { code: "stale_account" });
+        },
+      }),
+      { code: "stale_account" },
+    );
+    assert.equal(calls.length, 1);
+  }
+});

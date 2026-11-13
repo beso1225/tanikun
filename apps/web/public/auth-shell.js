@@ -701,6 +701,12 @@ async function startCeremony() {
   return { expected, ceremony };
 }
 
+async function checkCeremonyScope(expected) {
+  const current = await authState.read();
+  if (!sameScope(current, expected))
+    throw Object.assign(new Error("stale_account"), { code: "stale_account" });
+}
+
 async function adoptActiveSession(session, expected) {
   await pauseSync();
   const written = await authState.write({
@@ -778,6 +784,7 @@ async function register() {
     const session = await authClient.register({
       displayName: displayName.length > 0 ? displayName : undefined,
       signal: ceremony.signal,
+      beforeVerify: () => checkCeremonyScope(expected),
     });
     if (ceremony.signal.aborted || state.ceremony !== ceremony)
       throw new AuthClientError("canceled");
@@ -831,7 +838,10 @@ async function signIn() {
   state.message = null;
   renderDialog();
   try {
-    const session = await authClient.signIn({ signal: ceremony.signal });
+    const session = await authClient.signIn({
+      signal: ceremony.signal,
+      beforeVerify: () => checkCeremonyScope(expected),
+    });
     if (ceremony.signal.aborted || state.ceremony !== ceremony)
       throw new AuthClientError("canceled");
     finishCeremony(ceremony);
