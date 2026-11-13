@@ -142,9 +142,10 @@ let
     # fixed-window limiter, but neither auth handler is registered in the
     # default Worker bridge. #182 still owns session sync integration and route
     # activation. Include every production module, migration, and a runtime
-    # config that does not depend on the source tree's Moon project. The source config keeps its
-    # build/watch hooks for local development; the packaged copy strips them and
-    # the missing schema path so Wrangler can start inside the Nix output.
+    # config that does not depend on the source tree's Moon project. The source
+    # config keeps its build/watch hooks for local development; the packaged
+    # copy strips them and the missing schema path so Wrangler can start inside
+    # the Nix output.
     installPhase = ''
       mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/rate-limits" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
