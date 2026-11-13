@@ -80,6 +80,10 @@ export function redactEvidenceText(text) {
     .replace(/\bBearer\s+\S+/gi, "Bearer <redacted>")
     .replace(/(\/api\/v1\/sync\/documents\/)[^/\s?#"'<>]+/g, "$1<document-id>")
     .replace(
+      /(\/api\/v1\/auth\/credentials\/)[^/\s?#"'<>]+(\/remove)/g,
+      "$1<credential-id>$2",
+    )
+    .replace(
       /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
       "<document-id>",
     )
