@@ -572,3 +572,285 @@ test("a stale account fence after native credentials stops verification without 
     assert.equal(calls.length, 1);
   }
 });
+
+function credentialMetadata(overrides = {}) {
+  return {
+    id: "AQ",
+    created_at: 1_760_000_000_000,
+    last_used_at: 1_760_000_010_000,
+    backup_eligible: false,
+    backup_state: false,
+    ...overrides,
+  };
+}
+
+function stepUpOptions(overrides = {}) {
+  const options = assertionOptions(overrides);
+  options.publicKey.allowCredentials = [
+    { type: "public-key", id: "AQ" },
+    { type: "public-key", id: "Ag" },
+  ];
+  return options;
+}
+
+test("listCredentials reads only minimal owned metadata without tokens", async () => {
+  const { fetch, calls } = createFetch([
+    jsonResponse({
+      credentials: [
+        credentialMetadata(),
+        credentialMetadata({
+          id: "Ag",
+          backup_eligible: true,
+          backup_state: true,
+        }),
+      ],
+    }),
+  ]);
+  const client = createAuthClient({ fetch, baseUrl: "https://localhost:4300" });
+  const credentials = await client.listCredentials();
+  assert.deepEqual(credentials, [
+    credentialMetadata(),
+    credentialMetadata({
+      id: "Ag",
+      backup_eligible: true,
+      backup_state: true,
+    }),
+  ]);
+  assert.equal(calls[0].url, "https://localhost:4300/api/v1/auth/credentials");
+  assert.equal(calls[0].init.method, "GET");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(calls[0].init.headers.Authorization, undefined);
+  assert.equal(calls[0].init.body, undefined);
+  assert.equal(JSON.stringify(credentials).includes("csrf"), false);
+  assert.equal(JSON.stringify(credentials).includes("public_key"), false);
+});
+
+test("listCredentials rejects unknown, duplicate, or malformed metadata", async () => {
+  for (const body of [
+    { credentials: [credentialMetadata({ public_key: "canary" })] },
+    {
+      credentials: [credentialMetadata(), credentialMetadata()],
+    },
+    { credentials: [credentialMetadata({ id: "not/base64url!" })] },
+    { credentials: [credentialMetadata({ created_at: -1 })] },
+  ]) {
+    const { fetch } = createFetch([jsonResponse(body)]);
+    const client = createAuthClient({
+      fetch,
+      baseUrl: "https://localhost:4300",
+    });
+    await assert.rejects(
+      client.listCredentials(),
+      (error) => error.code === "malformed",
+    );
+  }
+});
+
+test("addCredential uses projected options, CSRF, and only allowlisted fields", async () => {
+  const { fetch, calls } = createFetch([
+    jsonResponse(registrationOptions()),
+    jsonResponse({ credential: credentialMetadata() }),
+  ]);
+  const nativelyCreated = syntheticRegistrationCredential();
+  const client = createAuthClient({
+    fetch,
+    baseUrl: "https://localhost:4300",
+    credentials: {
+      async create() {
+        return nativelyCreated;
+      },
+    },
+  });
+  const csrf = activeSession.csrf_token;
+  const added = await client.addCredential({ csrfToken: csrf });
+  assert.equal(added.id, "AQ");
+  assert.equal(calls.length, 2);
+  assert.equal(
+    calls[0].url,
+    "https://localhost:4300/api/v1/auth/credentials/options",
+  );
+  assert.equal(
+    calls[1].url,
+    "https://localhost:4300/api/v1/auth/credentials/verify",
+  );
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], csrf);
+  assert.equal(calls[1].init.headers["X-CSRF-Token"], csrf);
+  const verifyBody = JSON.parse(calls[1].init.body);
+  assert.deepEqual(Object.keys(verifyBody).toSorted(), [
+    "challenge_id",
+    "credential",
+  ]);
+  assert.deepEqual(Object.keys(verifyBody.credential.response).toSorted(), [
+    "attestationObject",
+    "clientDataJSON",
+  ]);
+  assert.equal(JSON.stringify(verifyBody).includes(PRF_CANARY), false);
+  assert.equal(
+    JSON.stringify(verifyBody).includes("clientExtensionResults"),
+    false,
+  );
+});
+
+test("stepUp accepts a nonempty allow list and an omitted userHandle", async () => {
+  const { fetch, calls } = createFetch([
+    jsonResponse(stepUpOptions()),
+    jsonResponse({
+      recent_auth: true,
+      recent_auth_expires_at: 1_760_000_300_000,
+    }),
+  ]);
+  const assertion = syntheticAssertionCredential();
+  assertion.response.userHandle = null;
+  let nativeOptions;
+  const client = createAuthClient({
+    fetch,
+    baseUrl: "https://localhost:4300",
+    credentials: {
+      async get(options) {
+        nativeOptions = options;
+        return assertion;
+      },
+    },
+  });
+  const result = await client.stepUp({
+    csrfToken: activeSession.csrf_token,
+  });
+  assert.deepEqual(result, {
+    recent_auth: true,
+    recent_auth_expires_at: 1_760_000_300_000,
+  });
+  assert.deepEqual(nativeOptions.publicKey.allowCredentials, [
+    { type: "public-key", id: bytes(1) },
+    { type: "public-key", id: bytes(2) },
+  ]);
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], activeSession.csrf_token);
+  assert.equal(calls[1].init.headers["X-CSRF-Token"], activeSession.csrf_token);
+  const verifyBody = JSON.parse(calls[1].init.body);
+  assert.equal(
+    Object.hasOwn(verifyBody.credential.response, "userHandle"),
+    false,
+  );
+  assert.equal(JSON.stringify(verifyBody).includes(PRF_CANARY), false);
+});
+
+test("removeCredential sends only the owned ID and CSRF with a fresh scope fence", async () => {
+  const { fetch, calls } = createFetch([new Response(null, { status: 204 })]);
+  const client = createAuthClient({ fetch, baseUrl: "https://localhost:4300" });
+  let fenceCalls = 0;
+  await client.removeCredential({
+    credentialId: "AQ",
+    csrfToken: activeSession.csrf_token,
+    async beforeVerify() {
+      fenceCalls += 1;
+      return { csrfToken: activeSession.csrf_token };
+    },
+  });
+  assert.equal(fenceCalls, 1);
+  assert.equal(
+    calls[0].url,
+    "https://localhost:4300/api/v1/auth/credentials/AQ/remove",
+  );
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], activeSession.csrf_token);
+  assert.equal(calls[0].init.body, undefined);
+});
+
+test("credential management errors are explicit and never echo credential data", async () => {
+  for (const [code, expected] of [
+    ["recent_auth_required", "recent_auth_required"],
+    ["credential_limit", "credential_limit"],
+    ["last_credential", "last_credential"],
+    ["not_found", "not_found"],
+  ]) {
+    const { fetch } = createFetch([
+      jsonResponse(
+        { error: { code } },
+        code === "recent_auth_required" ? 403 : 409,
+      ),
+    ]);
+    const client = createAuthClient({
+      fetch,
+      baseUrl: "https://localhost:4300",
+    });
+    await assert.rejects(
+      client.removeCredential({
+        credentialId: "AQ",
+        csrfToken: activeSession.csrf_token,
+      }),
+      (error) =>
+        error.code === expected &&
+        !String(error).includes(PRF_CANARY) &&
+        !String(error).includes("AQ"),
+    );
+  }
+});
+
+test("aborting a pending step-up ceremony prevents verification", async () => {
+  let verifyCalls = 0;
+  const controller = new AbortController();
+  const { fetch } = createFetch([
+    jsonResponse(stepUpOptions()),
+    () => {
+      verifyCalls += 1;
+      return jsonResponse({
+        recent_auth: true,
+        recent_auth_expires_at: 1_760_000_300_000,
+      });
+    },
+  ]);
+  const client = createAuthClient({
+    fetch,
+    baseUrl: "https://localhost:4300",
+    credentials: {
+      get() {
+        controller.abort();
+        return Promise.resolve(syntheticAssertionCredential());
+      },
+    },
+  });
+  await assert.rejects(
+    client.stepUp({
+      csrfToken: activeSession.csrf_token,
+      signal: controller.signal,
+    }),
+    (error) => error.code === "canceled",
+  );
+  assert.equal(verifyCalls, 0);
+});
+
+test("credential mutations use only the CSRF token from the final scope fence", async () => {
+  const fresh = "D".repeat(43);
+  const { fetch, calls } = createFetch([new Response(null, { status: 204 })]);
+  const client = createAuthClient({ fetch, baseUrl: "https://localhost:4300" });
+  await client.removeCredential({
+    credentialId: "AQ",
+    csrfToken: activeSession.csrf_token,
+    async beforeVerify() {
+      await Promise.resolve();
+      return { csrfToken: fresh };
+    },
+  });
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], fresh);
+});
+
+test("a failed final scope fence prevents a credential mutation request", async () => {
+  let fetches = 0;
+  const client = createAuthClient({
+    fetch: async () => {
+      fetches += 1;
+      return new Response(null, { status: 204 });
+    },
+    baseUrl: "https://localhost:4300",
+  });
+  await assert.rejects(
+    client.removeCredential({
+      credentialId: "AQ",
+      csrfToken: activeSession.csrf_token,
+      async beforeVerify() {
+        throw Object.assign(new Error("stale"), { code: "stale_account" });
+      },
+    }),
+    (error) => error.code === "stale_account",
+  );
+  assert.equal(fetches, 0);
+});
