@@ -18,3 +18,4 @@ export {
   parseRegistrationVerification,
 } from "./wire.mjs";
 export { handleWebAuthnRequest } from "../http/webauthn.mjs";
+export { handleSessionAuthRequest } from "../http/session-auth.mjs";
