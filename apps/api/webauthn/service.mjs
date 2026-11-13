@@ -373,11 +373,12 @@ export function createAuthCeremonyService({
     existingSession,
     purpose,
     activeSession,
+    parsed: parsedInput = null,
   }) {
     if (purpose === "register" && existingSession)
       fail("already_authenticated");
     if (purpose === "add_credential" && !activeSession) fail("unauthorized");
-    const parsed = parseRegistrationVerification(body);
+    const parsed = parsedInput ?? parseRegistrationVerification(body);
     const consumed = await auth.consumeCeremonyChallenge({
       challengeId: parsed.challengeId,
       bindingDigest,
@@ -452,10 +453,13 @@ export function createAuthCeremonyService({
     purpose,
     activeSession,
     presentedSession,
+    parsed: parsedInput = null,
   }) {
-    const parsed = parseAssertionVerification(body, {
-      discoverable: purpose === "sign_in",
-    });
+    const parsed =
+      parsedInput ??
+      parseAssertionVerification(body, {
+        discoverable: purpose === "sign_in",
+      });
     const consumed = await auth.consumeCeremonyChallenge({
       challengeId: parsed.challengeId,
       bindingDigest,
@@ -567,39 +571,53 @@ export function createAuthCeremonyService({
       return issueAddCredential({ bindingDigest, session });
     },
 
-    verifyRegistration({ bindingDigest, body, existingSession = null }) {
+    verifyRegistration({
+      bindingDigest,
+      body,
+      existingSession = null,
+      parsed = null,
+    }) {
       return verifyRegistrationCeremony({
         bindingDigest,
         body,
         existingSession,
         purpose: "register",
+        parsed,
       });
     },
 
-    verifySignIn({ bindingDigest, body, presentedSession = null }) {
+    verifySignIn({
+      bindingDigest,
+      body,
+      presentedSession = null,
+      parsed = null,
+    }) {
       return verifyAssertionCeremony({
         bindingDigest,
         body,
         purpose: "sign_in",
         presentedSession,
+        parsed,
       });
     },
 
-    async verifyStepUp({ bindingDigest, body, session }) {
+    async verifyStepUp({ bindingDigest, body, session, parsed = null }) {
       return verifyAssertionCeremony({
         bindingDigest,
         body,
         purpose: "step_up",
         activeSession: requireSession(session),
+        parsed,
       });
     },
 
-    async verifyAddCredential({ bindingDigest, body, session }) {
+    async verifyAddCredential({ bindingDigest, body, session, parsed = null }) {
       return verifyRegistrationCeremony({
         bindingDigest,
         body,
         purpose: "add_credential",
         activeSession: requireSession(session),
+        parsed,
       });
     },
   };
