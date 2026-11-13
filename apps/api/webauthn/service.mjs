@@ -178,6 +178,11 @@ function requireSession(session) {
     requireUserId(session.userId, "unauthorized");
     requireAccountHandle(session.account?.handle, "unauthorized");
     if (typeof session.account?.displayName !== "string") fail("unauthorized");
+    if (
+      session.account?.userId !== undefined &&
+      session.account.userId !== session.userId
+    )
+      fail("unauthorized");
   } catch (error) {
     if (error instanceof AuthStorageError) {
       if (error.code === "unauthorized") throw error;
@@ -564,7 +569,7 @@ export function createAuthCeremonyService({
       });
     },
 
-    verifyStepUp({ bindingDigest, body, session }) {
+    async verifyStepUp({ bindingDigest, body, session }) {
       return verifyAssertionCeremony({
         bindingDigest,
         body,
@@ -573,7 +578,7 @@ export function createAuthCeremonyService({
       });
     },
 
-    verifyAddCredential({ bindingDigest, body, session }) {
+    async verifyAddCredential({ bindingDigest, body, session }) {
       return verifyRegistrationCeremony({
         bindingDigest,
         body,

@@ -334,7 +334,7 @@ describe("credential uniqueness and enrollment atomicity", () => {
     ).toEqual({ consumed_at: clock.current() });
   });
 
-  it("does not let an add-credential ceremony replace an existing credential via another session", async () => {
+  it("rejects an add-credential ceremony with an inconsistent session principal", async () => {
     const clock = fakeClock();
     const service = makeCeremonyService({ clock, challengeFill: 0x63 });
     const credential = await createCredential({ idFill: 0x73 });
@@ -358,7 +358,7 @@ describe("credential uniqueness and enrollment atomicity", () => {
           body: verificationBody(begin.challenge_id, response),
           session: { ...session, userId: accountId("other0001") },
         }),
-      { code: "authentication_failed" },
+      { code: "unauthorized" },
     );
     expect(
       await queryFirst("SELECT COUNT(*) AS count FROM credentials"),
