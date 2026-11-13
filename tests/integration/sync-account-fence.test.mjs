@@ -594,3 +594,46 @@ test("each-sync session verification preserves Retry-After on rate limits", asyn
   assert.equal(result.retry_after, 3);
   assert.equal(context.transport.calls.bootstrap, 0);
 });
+
+test("late session verification failure is fenced before notifying the new account", async () => {
+  const context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+  });
+  const statuses = [];
+  const coordinator = createSyncCoordinator({
+    storage: context.storage,
+    transport: context.transport,
+    apiOrigin,
+    syncStore: context.syncStore,
+    metadataStore: context.metadataStore,
+    accountHandle: aliceHandle,
+    generation: context.state.generation,
+    plannerKey: `account:${aliceHandle}:planner`,
+    fence: async () => {
+      const current = await context.auth.read();
+      if (
+        current.generation !== context.state.generation ||
+        current.accountHandle !== aliceHandle
+      )
+        throw Object.assign(new Error("stale"), { code: "stale_account" });
+    },
+    verifySession: async () => {
+      await context.auth.write({
+        accountHandle: bobHandle,
+        sessionState: "active",
+      });
+      throw Object.assign(new Error("expired"), { code: "reauth_required" });
+    },
+    onStatus: (status) => statuses.push(status),
+    locks: null,
+  });
+  assert.equal((await coordinator.sync()).code, "stale_account");
+  assert.equal(
+    statuses.some((status) => status.code === "reauth_required"),
+    false,
+  );
+  assert.equal((await context.auth.read()).accountHandle, bobHandle);
+  assert.equal((await context.auth.read()).sessionState, "active");
+});

@@ -171,6 +171,9 @@ const retryable = (result) =>
       try {
         await verifySession();
       } catch (error) {
+        // A delayed failure belongs to the scope that initiated the request.
+        // Do not mark a newer account expired after a switch while awaiting it.
+        await checkFence();
         const result =
           error?.result ??
           (Number.isSafeInteger(error?.retry_after)
