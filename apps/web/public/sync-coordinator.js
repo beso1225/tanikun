@@ -108,6 +108,7 @@ const retryable = (result) =>
     fence = null,
     verifySession = null,
     syncLockName = null,
+    authLock = null,
     onStatus = () => {},
     locks = globalThis.navigator?.locks,
     sleep,
@@ -170,7 +171,15 @@ const retryable = (result) =>
       try {
         await verifySession();
       } catch (error) {
-        throw new SyncCoordinatorError(error?.code ?? "reauth_required");
+        const result =
+          error?.result ??
+          (Number.isSafeInteger(error?.retry_after)
+            ? { retry_after: error.retry_after }
+            : undefined);
+        throw new SyncCoordinatorError(
+          error?.code ?? "reauth_required",
+          result,
+        );
       }
     };
 
@@ -207,6 +216,21 @@ const retryable = (result) =>
       return operation();
     };
 
+    // Sync state lives in a different IndexedDB database from `auth:state`.
+    // Serialize each mutation with auth writes and recheck the expected scope
+    // while the auth lock is held. This is not a cross-database transaction;
+    // the lock prevents a switch from committing between the check and the
+    // outbox/seen write.
+    const withAuthMutation = (operation) => {
+      const run = async () => {
+        await checkFence();
+        return operation();
+      };
+      if (authLock && locks?.request)
+        return locks.request(authLock, { mode: "exclusive" }, run);
+      return run();
+    };
+
     const ensureDocument = async () => {
       await checkFence();
       if (documentId) return;
@@ -236,13 +260,15 @@ const retryable = (result) =>
         .changes()
         .findIndex((candidate) => decodeHash(candidate) === changeId);
       if (discarding || epoch !== expectedEpoch) return false;
-      await syncStore.enqueue(syncScope(), [
-        {
-          change_id: changeId,
-          envelope: envelopeFor(change, documentId),
-          order: index < 0 ? Number.MAX_SAFE_INTEGER : index,
-        },
-      ]);
+      await withAuthMutation(() =>
+        syncStore.enqueue(syncScope(), [
+          {
+            change_id: changeId,
+            envelope: envelopeFor(change, documentId),
+            order: index < 0 ? Number.MAX_SAFE_INTEGER : index,
+          },
+        ]),
+      );
       return true;
     };
 
@@ -271,7 +297,7 @@ const retryable = (result) =>
           order: index,
         });
       }
-      await syncStore.enqueue(syncScope(), entries);
+      await withAuthMutation(() => syncStore.enqueue(syncScope(), entries));
     };
 
     const pushBatch = async (batch) => {
@@ -309,10 +335,11 @@ const retryable = (result) =>
       // envelopes under the new account scope is not this tab's decision.
       await checkFence();
       await metadataStore.observe(metadataKey(), result.cursor, fenceOptions());
-      await checkFence();
-      await syncStore.acknowledge(
-        syncScope(),
-        batch.map((entry) => entry.change_id),
+      await withAuthMutation(() =>
+        syncStore.acknowledge(
+          syncScope(),
+          batch.map((entry) => entry.change_id),
+        ),
       );
     };
 
@@ -336,7 +363,8 @@ const retryable = (result) =>
         // that no longer exists. Clear them before a scan can re-upload a
         // discarded plan. If the metadata still points past the start of the
         // log, reset only the merged cursor and preserve the high-water.
-        if (documentId) await syncStore.clear(syncScope());
+        if (documentId)
+          await withAuthMutation(() => syncStore.clear(syncScope()));
         if (metadata.mergedCursor > 0)
           metadata = await metadataStore.resetMerged(
             metadataKey(),
@@ -464,8 +492,7 @@ const retryable = (result) =>
           changes.push(entry.bytes);
         }
 
-        await checkFence();
-        await syncStore.markRemote(syncScope(), hashes);
+        await withAuthMutation(() => syncStore.markRemote(syncScope(), hashes));
         await checkFence();
         await metadataStore.applyPage({
           key: metadataKey(),
@@ -552,8 +579,7 @@ const retryable = (result) =>
           await storage.discard?.();
           await Promise.allSettled(pendingEnqueues);
           if (documentId) {
-            await checkFence();
-            await syncStore.clear(syncScope());
+            await withAuthMutation(() => syncStore.clear(syncScope()));
             await metadataStore.clear(metadataKey(), fenceOptions());
           }
         });

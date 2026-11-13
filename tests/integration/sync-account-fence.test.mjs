@@ -191,6 +191,7 @@ async function createSessionContext({
   let fenceFailure = null;
   let verifyError = null;
   let verifyCalls = 0;
+  let authLockHook = null;
   const coordinator = createSyncCoordinator({
     storage,
     transport,
@@ -201,6 +202,7 @@ async function createSessionContext({
     generation: state.generation,
     plannerKey: `account:${handle}:planner`,
     syncLockName: `tanikun-sync:${handle}:${apiOrigin}:${documentId}`,
+    authLock: "tanikun-auth-v1",
     fence: async () => {
       if (fenceFailure)
         throw Object.assign(new Error("stale"), {
@@ -215,14 +217,19 @@ async function createSessionContext({
     },
     verifySession: async () => {
       verifyCalls += 1;
-      if (verifyError)
-        throw Object.assign(new Error("verify"), {
-          code: verifyError,
-        });
+      if (verifyError) {
+        if (typeof verifyError === "string")
+          throw Object.assign(new Error("verify"), {
+            code: verifyError,
+          });
+        throw verifyError;
+      }
     },
     locks: {
       request(name, _options, operation) {
         lockNames.push(name);
+        if (authLockHook && name === "tanikun-auth-v1")
+          return authLockHook(operation);
         return operation();
       },
     },
@@ -245,6 +252,9 @@ async function createSessionContext({
     setVerifyError(value) {
       verifyError = value;
     },
+    setAuthLockHook(value) {
+      authLockHook = value;
+    },
     get verifyCalls() {
       return verifyCalls;
     },
@@ -266,9 +276,14 @@ test("session sync uses the exact account metadata, outbox, and lock layout", as
   await context.storage.save(JSON.stringify(source));
   const result = await context.coordinator.sync();
   assert.equal(result.kind, "synced");
-  assert.deepEqual(context.lockNames, [
-    `tanikun-sync:${aliceHandle}:${apiOrigin}:${aliceDocument}`,
-  ]);
+  assert.deepEqual(
+    context.lockNames.filter((name) => name !== "tanikun-auth-v1"),
+    [`tanikun-sync:${aliceHandle}:${apiOrigin}:${aliceDocument}`],
+  );
+  assert.equal(
+    context.lockNames.filter((name) => name === "tanikun-auth-v1").length >= 1,
+    true,
+  );
   assert.equal(context.transport.calls.pushes.length, 1);
   assert.equal(context.transport.calls.pushes[0].length >= 1, true);
   assert.deepEqual(
@@ -480,4 +495,102 @@ test("an unrelated server root stops with history_mismatch and preserves state",
   assert.equal((await context.syncStore.seenHashes(scope)).size, 0);
   assert.equal((await context.readMetadata()).mergedCursor, 0);
   assert.equal(context.transport.calls.pushes.length, 0);
+});
+
+test("a switch at the acknowledge boundary does not delete Alice outbox", async () => {
+  const context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+  });
+  await context.storage.load();
+  await context.storage.save(JSON.stringify(source));
+  const other = createAuthStateStore({
+    indexedDB: context.indexedDB,
+    channelFactory: null,
+    locks: null,
+  });
+  let authLocks = 0;
+  context.setAuthLockHook(async (operation) => {
+    authLocks += 1;
+    if (authLocks === 2)
+      await other.write({
+        accountHandle: bobHandle,
+        sessionState: "active",
+      });
+    return operation();
+  });
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "stale_account");
+  const scope = `${aliceHandle}|${apiOrigin}|${aliceDocument}`;
+  assert.equal((await context.syncStore.listOutbox(scope)).length >= 1, true);
+  assert.equal((await context.syncStore.seenHashes(scope)).size, 0);
+  assert.equal((await context.readMetadata()).mergedCursor, 0);
+});
+
+test("a switch at the mark-remote boundary does not record Alice seen hashes", async () => {
+  const context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+  });
+  await context.storage.load();
+  await context.storage.save(JSON.stringify(source));
+  const snapshot = await context.storage.snapshot();
+  const base = Automerge.load(snapshot.bytes);
+  const remote = Automerge.change(base, (draft) => {
+    draft.program_id = "remote-account-plan";
+  });
+  const remoteChange = Automerge.getAllChanges(remote).at(-1);
+  context.transport.pull = async () => ({
+    kind: "pulled",
+    document_id: aliceDocument,
+    changes: [
+      {
+        ...envelope(remoteChange, aliceDocument),
+        server_sequence: 1,
+      },
+    ],
+    next_cursor: 1,
+    has_more: false,
+    cursor: 1,
+  });
+  const other = createAuthStateStore({
+    indexedDB: context.indexedDB,
+    channelFactory: null,
+    locks: null,
+  });
+  context.setAuthLockHook(async (operation) => {
+    await other.write({
+      accountHandle: bobHandle,
+      sessionState: "active",
+    });
+    return operation();
+  });
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "stale_account");
+  const scope = `${aliceHandle}|${apiOrigin}|${aliceDocument}`;
+  assert.equal((await context.syncStore.seenHashes(scope)).size, 0);
+  assert.equal((await context.readMetadata()).mergedCursor, 0);
+});
+
+test("each-sync session verification preserves Retry-After on rate limits", async () => {
+  const context = await createSessionContext({
+    handle: aliceHandle,
+    fill: 1,
+    documentId: aliceDocument,
+  });
+  context.setVerifyError(
+    Object.assign(new Error("rate"), {
+      code: "rate_limited",
+      result: { retry_after: 3 },
+    }),
+  );
+  const result = await context.coordinator.sync();
+  assert.equal(result.kind, "error");
+  assert.equal(result.code, "rate_limited");
+  assert.equal(result.retry_after, 3);
+  assert.equal(context.transport.calls.bootstrap, 0);
 });

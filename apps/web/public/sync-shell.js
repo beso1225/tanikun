@@ -110,6 +110,17 @@ function pauseForAuthChange() {
   setStatus("paused");
 }
 
+async function refreshAfterBootstrap() {
+  coordinator?.abort?.();
+  coordinator = null;
+  try {
+    await globalThis.tanikunAuthController?.refresh?.();
+  } catch {
+    // The next start reports the current auth state without discarding edits.
+  }
+  await start();
+}
+
 function triggerSync() {
   if (Date.now() < retryNotBefore) return;
   if (
@@ -117,9 +128,9 @@ function triggerSync() {
     !coordinator &&
     (current.code === "auth_bootstrap" ||
       current.code === "temporarily_unavailable" ||
-      (current.code === "rate_limited" && !coordinator))
+      current.code === "rate_limited")
   ) {
-    globalThis.location.reload();
+    void refreshAfterBootstrap();
     return;
   }
   if (!coordinator) {
@@ -280,6 +291,10 @@ function createCoordinator(config, storage, statusClient, auth) {
           if (status.kind === "rate_limited")
             throw Object.assign(new Error("rate_limited"), {
               code: "rate_limited",
+              result:
+                status.retry_after === undefined
+                  ? undefined
+                  : { retry_after: status.retry_after },
             });
           throw Object.assign(
             new Error(
@@ -307,6 +322,7 @@ function createCoordinator(config, storage, statusClient, auth) {
     plannerKey,
     fence,
     verifySession,
+    authLock: config.mode === M.SESSION ? "tanikun-auth-v1" : null,
     syncLockName:
       config.mode === M.SESSION
         ? (documentId) =>
@@ -401,7 +417,11 @@ async function startOnce() {
       auth.sessionState !== "active" &&
       controllerState?.sessionState === "offline"
     ) {
-      const retryAfter = controllerState.retryAfter;
+      const retryAfter =
+        Number.isSafeInteger(controllerState.retryAfter) &&
+        controllerState.retryAfter > 0
+          ? controllerState.retryAfter
+          : undefined;
       setStatus(
         retryAfter === undefined
           ? controllerState.reason === "server"
@@ -436,8 +456,21 @@ async function startOnce() {
     if (status.kind !== "active") {
       if (status.kind === "signed_out" || status.kind === "reauth_required") {
         try {
-          auth = await authState.setSessionState("reauth_required");
-        } catch {
+          auth = await authState.setSessionState("reauth_required", {
+            generation: auth.generation,
+            accountHandle: auth.accountHandle,
+          });
+        } catch (error) {
+          if (error?.code === "stale_account") {
+            try {
+              auth = await authState.read();
+            } catch {
+              // The recovery surface uses the last readable state.
+            }
+            notifyAuth({ code: "stale_account" });
+            setStatus("error", "stale_account");
+            return;
+          }
           // The local plan remains editable even when the state write fails.
         }
         notifyAuth({ code: "reauth_required" });
@@ -457,6 +490,16 @@ async function startOnce() {
       );
       return;
     }
+    const currentAuth = await authState.read();
+    if (
+      currentAuth.generation !== auth.generation ||
+      currentAuth.accountHandle !== auth.accountHandle
+    ) {
+      notifyAuth({ code: "stale_account" });
+      setStatus("error", "stale_account");
+      return;
+    }
+    auth = currentAuth;
     if (
       status.session.account.handle !== auth.accountHandle ||
       (config.expectedAccountHandle !== undefined &&
@@ -556,9 +599,7 @@ globalThis.tanikunSyncShell = Object.freeze({
   sync: triggerSync,
   pauseForAuthChange,
   async refresh() {
-    coordinator?.abort?.();
-    coordinator = null;
-    await start();
+    await refreshAfterBootstrap();
   },
 });
 
