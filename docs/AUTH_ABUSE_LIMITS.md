@@ -130,16 +130,18 @@ compensate. The cloud platform references were checked on 2026-11-13:
 `handleSessionAuthRequest` is the composition point. It applies the session
 boundary's mode, exact Origin, route, method, session, CSRF, recent-auth, media,
 and body checks before the fixed-window check. The fixed-window check runs
-before browser-binding verification, challenge consumption, WebAuthn parsing,
-attestation parsing, signature verification, and the requested operation. A
-request whose body is malformed, oversized, or has the wrong media type keeps
+before verification of the browser-binding cookie, challenge consumption,
+WebAuthn parsing, attestation parsing, signature verification, and the requested
+operation. A request whose body is malformed, oversized, or has the wrong media type keeps
 its existing `400`, `413`, or `415` response even when a bucket is exhausted.
 
 A missing or invalid binding cookie cannot be used to skip the address or
 session budget. On verification routes the read used for the rate key never
 mints or rebinds a cookie. The route's normal binding check still returns the
-documented `401`, and a rate-limited request returns `429` without a
-`Set-Cookie` header.
+documented `401`. Options prepare and charge a candidate binding even on its
+first issuance, then set the binding cookie only after success. A rate-limited
+request returns `429` without issuing or rotating a cookie; it may still clear
+an invalid presented session cookie under the session boundary's policy.
 
 The route mappings are:
 
@@ -177,7 +179,7 @@ error code. Tests cover synthetic canaries in credential IDs, addresses,
 cookies, and SQL trigger messages and assert that they do not appear in the
 response, console output, or stored bucket keys. No raw session token, CSRF
 token, challenge, assertion, PRF output, planner payload, or credential
-response is accepted by the limiter's API or written to the counter table.
+response is written to the counter table or diagnostic output.
 
 ## Verification
 

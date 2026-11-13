@@ -161,6 +161,12 @@ async function dispatch(request, env, dependencies, state) {
   if (!ratePolicies) throw new ApiError("not_found");
   const ceremony =
     route.kind === "webauthn" ? parseCeremonyBody(route.id, body) : null;
+  // Charge the first issuance to the new binding as well. Keep this candidate
+  // private until admission and issuance succeed; verification never mints.
+  let binding =
+    route.binding === "options"
+      ? await admission.readBinding(cookies, { mode: "options" })
+      : null;
   if (ratePolicies.length > 0) {
     const limiter = await createConfiguredAuthRateLimiter({
       db: env.DB,
@@ -171,7 +177,7 @@ async function dispatch(request, env, dependencies, state) {
     const bindingForRate =
       route.binding === "none"
         ? null
-        : await admission.readBindingForRate(cookies);
+        : (binding ?? (await admission.readBindingForRate(cookies)));
     await limiter.enforce(ratePolicies, {
       address: limiter.address,
       binding: bindingForRate?.digest ?? null,
@@ -181,10 +187,7 @@ async function dispatch(request, env, dependencies, state) {
     });
   }
 
-  let binding = null;
-  if (route.binding === "options") {
-    binding = await admission.readBinding(cookies, { mode: "options" });
-  } else if (route.binding === "verify") {
+  if (route.binding === "verify") {
     binding = await admission.readBinding(cookies, { mode: "verify" });
   }
 

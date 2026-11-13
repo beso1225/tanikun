@@ -5,7 +5,11 @@ import worker from "../bridges/worker.mjs";
 import { handleSessionAuthRequest } from "../http/session-auth.mjs";
 import { createAuthRepository } from "../repositories/auth.mjs";
 import { createSessionAdmission } from "../session/admission.mjs";
-import { createSessionMaterial } from "../webauthn/session-material.mjs";
+import {
+  createSessionMaterial,
+  decodeSessionToken,
+  sha256,
+} from "../webauthn/session-material.mjs";
 import {
   base64Url,
   bytes,
@@ -283,6 +287,47 @@ function bindingCookie(fill) {
 }
 
 describe("challenge-issue fixed windows", () => {
+  it("charges the newly minted binding for its first challenge issuance", async () => {
+    const clock = alignedClock(600_000);
+    const environment = authEnv();
+    const deps = dependencies(clock);
+    const repository = createAuthRepository(env.DB, { now: clock.now });
+    let binding = null;
+    for (let index = 0; index < 5; index += 1) {
+      const response = await handleSessionAuthRequest(
+        request("/api/v1/auth/sign-in/options", {
+          body: {},
+          headers: binding ? { Cookie: `${BINDING}=${binding}` } : {},
+        }),
+        environment,
+        deps,
+      );
+      expect(response.status).toBe(200);
+      binding ??= cookieValueFromResponse(response, BINDING);
+      expect(binding).toHaveLength(43);
+      const options = await response.json();
+      // Consume each challenge to isolate the fixed window from the separate
+      // three-outstanding-challenge cap.
+      await repository.consumeCeremonyChallenge({
+        challengeId: options.challenge_id,
+        purpose: "sign_in",
+        bindingDigest: await sha256(decodeSessionToken(binding)),
+      });
+    }
+    const blocked = await handleSessionAuthRequest(
+      request("/api/v1/auth/sign-in/options", {
+        body: {},
+        headers: { Cookie: `${BINDING}=${binding}` },
+      }),
+      environment,
+      deps,
+    );
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("Retry-After")).toBe("600");
+    expect(setCookies(blocked)).toEqual([]);
+    expect(await countRows("challenges")).toBe(5);
+  });
+
   it("limits trusted addresses, rejects forged forwarding headers, and isolates addresses", async () => {
     const clock = alignedClock(3_600_000);
     const environment = authEnv();
@@ -369,18 +414,16 @@ describe("challenge-issue fixed windows", () => {
     expect(cap.headers.get("Retry-After")).toBe("300");
 
     clock.advance(301_000);
-    for (let index = 0; index < 2; index += 1) {
-      const afterExpiry = await handleSessionAuthRequest(
-        request("/api/v1/auth/sign-in/options", {
-          body: {},
-          headers: { Cookie: cookie },
-          ...trusted,
-        }),
-        environment,
-        deps,
-      );
-      expect(afterExpiry.status).toBe(200);
-    }
+    const afterExpiry = await handleSessionAuthRequest(
+      request("/api/v1/auth/sign-in/options", {
+        body: {},
+        headers: { Cookie: cookie },
+        ...trusted,
+      }),
+      environment,
+      deps,
+    );
+    expect(afterExpiry.status).toBe(200);
     const fixedWindow = await handleSessionAuthRequest(
       request("/api/v1/auth/sign-in/options", {
         body: {},
