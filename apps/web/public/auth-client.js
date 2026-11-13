@@ -532,12 +532,18 @@ export function createAuthClient({
     const parsed = parseCredentialOptions(options, "registration");
     let credential;
     try {
-      credential = await credentials.create({ publicKey: parsed.publicKey });
+      credential = await credentials.create({
+        publicKey: parsed.publicKey,
+        signal,
+      });
     } catch (error) {
+      if (signal?.aborted) throw new AuthClientError("canceled");
       throw credentialFailure(error);
     }
+    if (signal?.aborted) throw new AuthClientError("canceled");
     if (!credential) throw new AuthClientError("canceled");
     const serialized = serializeRegistrationCredential(credential);
+    if (signal?.aborted) throw new AuthClientError("canceled");
     const verified = await request("/api/v1/auth/register/verify", {
       method: "POST",
       body: { challenge_id: parsed.challengeId, credential: serialized },
@@ -557,12 +563,18 @@ export function createAuthClient({
     const parsed = parseCredentialOptions(options, "sign_in");
     let credential;
     try {
-      credential = await credentials.get({ publicKey: parsed.publicKey });
+      credential = await credentials.get({
+        publicKey: parsed.publicKey,
+        signal,
+      });
     } catch (error) {
+      if (signal?.aborted) throw new AuthClientError("canceled");
       throw credentialFailure(error);
     }
+    if (signal?.aborted) throw new AuthClientError("canceled");
     if (!credential) throw new AuthClientError("canceled");
     const serialized = serializeAssertionCredential(credential);
+    if (signal?.aborted) throw new AuthClientError("canceled");
     const verified = await request("/api/v1/auth/sign-in/verify", {
       method: "POST",
       body: { challenge_id: parsed.challengeId, credential: serialized },

@@ -191,7 +191,7 @@ test("auth changes bump the generation, announce, and never store secrets", asyn
   assert.notEqual(bob.generation, alice.generation);
   assert.equal(bob.accountHandle, HANDLE_BOB);
 
-  const reauth = await store.setSessionState("reauth_required");
+  const reauth = await store.setSessionState("reauth_required", bob);
   assert.equal(reauth.generation, bob.generation);
   assert.equal(reauth.accountHandle, HANDLE_BOB);
   assert.equal(reauth.sessionState, "reauth_required");
@@ -318,7 +318,11 @@ test("copying the unbound plan preserves both plans and marks a pending upload",
   };
   await writeKey("tanikun-planner", "planner", unbound);
 
-  assert.equal(await store.copyUnboundToAccount(HANDLE_ALICE), true);
+  const alice = await store.write({
+    accountHandle: HANDLE_ALICE,
+    sessionState: "active",
+  });
+  assert.equal(await store.copyUnboundToAccount(HANDLE_ALICE, alice), true);
   const original = await readKey("tanikun-planner", "planner");
   const copied = await readKey(
     "tanikun-planner",
@@ -335,12 +339,12 @@ test("copying the unbound plan preserves both plans and marks a pending upload",
     JSON.stringify({ pendingUpload: true }),
   );
 
-  assert.equal(await store.copyUnboundToAccount(HANDLE_ALICE), false);
+  assert.equal(await store.copyUnboundToAccount(HANDLE_ALICE, alice), false);
   assert.deepEqual(
     await readKey("tanikun-planner", `account:${HANDLE_ALICE}:planner`),
     unbound,
   );
-  await store.setPendingUpload(HANDLE_ALICE, false);
+  await store.setPendingUpload(HANDLE_ALICE, false, alice);
   assert.equal(await store.isPendingUpload(HANDLE_ALICE), false);
 });
 
@@ -391,4 +395,121 @@ test("dev mode initializes no auth state", async () => {
     (error) =>
       error instanceof AuthStateError && error.code === "invalid_auth_state",
   );
+});
+
+test("a late expiry update cannot restore an account after another tab switches", async () => {
+  let hold = false;
+  let resume;
+  let queued;
+  const pending = new Promise((resolve) => {
+    queued = resolve;
+  });
+  const store = createAuthStateStore({
+    indexedDB,
+    channelFactory: null,
+    locks: {
+      request(_name, _options, operation) {
+        if (!hold) return operation();
+        return new Promise((resolve, reject) => {
+          resume = () =>
+            Promise.resolve().then(operation).then(resolve, reject);
+          queued();
+        });
+      },
+    },
+  });
+  stores.push(store);
+  await store.initialize({ mode: "session" });
+  const alice = await store.write({
+    accountHandle: HANDLE_ALICE,
+    sessionState: "active",
+  });
+  hold = true;
+  const late = store.setSessionState("reauth_required", alice);
+  await pending;
+  const other = createAuthStateStore({
+    indexedDB,
+    channelFactory: null,
+    locks: null,
+  });
+  stores.push(other);
+  const bob = await other.write({
+    accountHandle: HANDLE_BOB,
+    sessionState: "active",
+  });
+  resume();
+  await assert.rejects(late, { code: "stale_account" });
+  assert.deepEqual(await other.read(), bob);
+});
+
+test("copy, decline, and consent reject a stale generation without touching Bob", async () => {
+  const { store } = createStore();
+  await store.initialize({ mode: "session" });
+  const alice = await store.write({
+    accountHandle: HANDLE_ALICE,
+    sessionState: "active",
+  });
+  await writeKey("tanikun-planner", "planner", {
+    storageVersion: 2,
+    bytes: Uint8Array.from([1, 2, 3]),
+  });
+  const bob = await store.write({
+    accountHandle: HANDLE_BOB,
+    sessionState: "active",
+  });
+  for (const operation of [
+    () => store.copyUnboundToAccount(HANDLE_ALICE, alice),
+    () => store.setPendingUpload(HANDLE_ALICE, true, alice),
+    () => store.setCopyDeclined(HANDLE_ALICE, true, alice),
+    () => store.setPendingUpload(HANDLE_ALICE, false, alice),
+  ]) {
+    await assert.rejects(operation, { code: "stale_account" });
+  }
+  assert.deepEqual(await store.read(), bob);
+  assert.equal(await store.accountPlanExists(HANDLE_ALICE), false);
+  assert.equal(await store.isPendingUpload(HANDLE_ALICE), false);
+  assert.equal(await store.isCopyDeclined(HANDLE_ALICE), false);
+  assert.deepEqual(await readKey("tanikun-planner", "planner"), {
+    storageVersion: 2,
+    bytes: Uint8Array.from([1, 2, 3]),
+  });
+});
+
+test("a late expiry after logout cannot restore the previous account", async () => {
+  const { store } = createStore();
+  await store.initialize({ mode: "session" });
+  const alice = await store.write({
+    accountHandle: HANDLE_ALICE,
+    sessionState: "active",
+  });
+  const signedOut = await store.write({
+    accountHandle: null,
+    sessionState: "signed_out",
+  });
+  await assert.rejects(store.setSessionState("reauth_required", alice), {
+    code: "stale_account",
+  });
+  assert.deepEqual(await store.read(), signedOut);
+});
+
+test("a delayed active adoption cannot overwrite a newer lifecycle", async () => {
+  const { store } = createStore();
+  await store.initialize({ mode: "session" });
+  const alice = await store.write({
+    accountHandle: HANDLE_ALICE,
+    sessionState: "active",
+  });
+  const bob = await store.write({
+    accountHandle: HANDLE_BOB,
+    sessionState: "active",
+  });
+  await assert.rejects(
+    store.write({
+      accountHandle: HANDLE_ALICE,
+      sessionState: "active",
+      expected: alice,
+    }),
+    { code: "stale_account" },
+  );
+  assert.deepEqual(await store.read(), bob);
 });

@@ -60,6 +60,32 @@
     return encodeBase64Url(bytes);
   }
 
+  function validateExpected(value) {
+    if (
+      !record(value) ||
+      typeof value.generation !== "string" ||
+      !GENERATION.test(value.generation) ||
+      !(
+        value.accountHandle === null ||
+        (typeof value.accountHandle === "string" &&
+          HANDLE.test(value.accountHandle))
+      )
+    )
+      throw new AuthStateError("invalid_expected_scope");
+    return {
+      generation: value.generation,
+      accountHandle: value.accountHandle,
+    };
+  }
+
+  function snapshotOf(value) {
+    const state = validateState(value);
+    return {
+      generation: state.generation,
+      accountHandle: state.accountHandle,
+    };
+  }
+
   function validateState(value) {
     if (
       !exactKeys(value, [
@@ -257,7 +283,12 @@
       });
     }
 
-    async function writeState({ accountHandle, sessionState, bumpGeneration }) {
+    async function writeState({
+      accountHandle,
+      sessionState,
+      bumpGeneration,
+      expected,
+    }) {
       if (!SESSION_STATES.has(sessionState))
         throw new AuthStateError("invalid_session_state");
       if (
@@ -267,12 +298,8 @@
         )
       )
         throw new AuthStateError("invalid_account_handle");
-      if (
-        (sessionState === "signed_out" && accountHandle !== null) ||
-        (sessionState !== "signed_out" && accountHandle === null)
-      )
-        throw new AuthStateError("invalid_auth_state");
-
+      const checkedExpected =
+        expected === undefined ? null : validateExpected(expected);
       return withLock(async () => {
         const database = await open();
         const state = await new Promise((resolve, reject) => {
@@ -288,12 +315,21 @@
                   request.result === undefined
                     ? null
                     : validateState(request.result);
+                if (
+                  checkedExpected &&
+                  (!previous ||
+                    previous.generation !== checkedExpected.generation ||
+                    previous.accountHandle !== checkedExpected.accountHandle)
+                )
+                  throw new AuthStateError("stale_account");
                 next = {
                   authVersion: AUTH_VERSION,
                   generation: bumpGeneration
                     ? newGeneration(random)
                     : previous?.generation,
-                  accountHandle,
+                  accountHandle: bumpGeneration
+                    ? accountHandle
+                    : (previous?.accountHandle ?? accountHandle),
                   sessionState,
                 };
                 validateState(next);
@@ -324,23 +360,69 @@
       });
     }
 
+    async function writeLocalDecision({ accountHandle, expected, write }) {
+      const checkedExpected = validateExpected(expected);
+      const database = await open();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(AUTH_STORE, "readwrite");
+        const objectStore = transaction.objectStore(AUTH_STORE);
+        const authRequest = objectStore.get(AUTH_STATE_KEY);
+        authRequest.addEventListener(
+          "success",
+          () => {
+            try {
+              const current =
+                authRequest.result === undefined
+                  ? null
+                  : validateState(authRequest.result);
+              if (
+                !current ||
+                current.generation !== checkedExpected.generation ||
+                current.accountHandle !== checkedExpected.accountHandle ||
+                current.accountHandle !== accountHandle
+              )
+                throw new AuthStateError("stale_account");
+              write(objectStore);
+            } catch (error) {
+              reject(error);
+              try {
+                transaction.abort();
+              } catch {
+                // The transaction may already be inactive.
+              }
+            }
+          },
+          { once: true },
+        );
+        transaction.addEventListener("complete", () => resolve(), {
+          once: true,
+        });
+        transaction.addEventListener(
+          "abort",
+          () => reject(transaction.error ?? new AuthStateError("unavailable")),
+          { once: true },
+        );
+      });
+    }
+
     const store = {
       initialize,
       read,
-      write: ({ accountHandle, sessionState }) =>
+      write: ({ accountHandle, sessionState, expected }) =>
         writeState({
           accountHandle,
           sessionState,
           bumpGeneration: true,
+          expected,
         }),
-      setSessionState: async (sessionState) => {
-        const current = await read();
-        return writeState({
-          accountHandle: current.accountHandle,
+      setSessionState: (sessionState, expected) =>
+        writeState({
+          accountHandle: null,
           sessionState,
           bumpGeneration: false,
-        });
-      },
+          expected,
+        }),
+      snapshot: async () => snapshotOf(await read()),
       currentScope: async () => {
         const state = await read();
         return {
@@ -382,54 +464,92 @@
         await transactionDone(transaction);
         return value?.declined === true;
       },
-      async setCopyDeclined(accountHandle, declined) {
+      async setCopyDeclined(accountHandle, declined, expected) {
         if (typeof accountHandle !== "string" || !HANDLE.test(accountHandle))
           throw new AuthStateError("invalid_account_handle");
         if (typeof declined !== "boolean")
           throw new AuthStateError("invalid_copy_marker");
-        const database = await open();
-        const transaction = database.transaction(AUTH_STORE, "readwrite");
-        const objectStore = transaction.objectStore(AUTH_STORE);
-        if (declined)
-          objectStore.put({ declined: true }, `auth:copy:${accountHandle}`);
-        else objectStore.delete(`auth:copy:${accountHandle}`);
-        await transactionDone(transaction);
+        return writeLocalDecision({
+          accountHandle,
+          expected,
+          write(objectStore) {
+            if (declined)
+              objectStore.put({ declined: true }, `auth:copy:${accountHandle}`);
+            else objectStore.delete(`auth:copy:${accountHandle}`);
+          },
+        });
       },
-      async copyUnboundToAccount(accountHandle) {
+      async copyUnboundToAccount(accountHandle, expected) {
         if (typeof accountHandle !== "string" || !HANDLE.test(accountHandle))
           throw new AuthStateError("invalid_account_handle");
+        const checkedExpected = validateExpected(expected);
         const database = await open();
-        const transaction = database.transaction(AUTH_STORE, "readwrite");
-        const objectStore = transaction.objectStore(AUTH_STORE);
-        const accountKey = `account:${accountHandle}:planner`;
-        const unboundRequest = objectStore.get("planner");
-        const accountRequest = objectStore.get(accountKey);
-        let remaining = 2;
-        let copied = false;
-        const apply = () => {
-          remaining -= 1;
-          if (remaining !== 0) return;
-          const source = unboundRequest.result;
-          if (source === undefined || accountRequest.result !== undefined)
-            return;
-          const copiedRecord =
-            source?.storageVersion === 2 && source.bytes instanceof Uint8Array
-              ? {
-                  storageVersion: 2,
-                  bytes: new Uint8Array(source.bytes),
-                }
-              : source;
-          objectStore.put(copiedRecord, accountKey);
-          objectStore.put(
-            { pendingUpload: true },
-            `auth:upload:${accountHandle}`,
+        return new Promise((resolve, reject) => {
+          const transaction = database.transaction(AUTH_STORE, "readwrite");
+          const objectStore = transaction.objectStore(AUTH_STORE);
+          const accountKey = `account:${accountHandle}:planner`;
+          const authRequest = objectStore.get(AUTH_STATE_KEY);
+          const unboundRequest = objectStore.get("planner");
+          const accountRequest = objectStore.get(accountKey);
+          let remaining = 3;
+          let copied = false;
+          const apply = () => {
+            remaining -= 1;
+            if (remaining !== 0) return;
+            try {
+              const current =
+                authRequest.result === undefined
+                  ? null
+                  : validateState(authRequest.result);
+              if (
+                !current ||
+                current.generation !== checkedExpected.generation ||
+                current.accountHandle !== checkedExpected.accountHandle ||
+                current.accountHandle !== accountHandle
+              )
+                throw new AuthStateError("stale_account");
+              if (
+                unboundRequest.result === undefined ||
+                accountRequest.result !== undefined
+              ) {
+                return;
+              }
+              const source = unboundRequest.result;
+              const copiedRecord =
+                source?.storageVersion === 2 &&
+                source.bytes instanceof Uint8Array
+                  ? {
+                      storageVersion: 2,
+                      bytes: new Uint8Array(source.bytes),
+                    }
+                  : source;
+              objectStore.put(copiedRecord, accountKey);
+              objectStore.put(
+                { pendingUpload: true },
+                `auth:upload:${accountHandle}`,
+              );
+              copied = true;
+            } catch (error) {
+              reject(error);
+              try {
+                transaction.abort();
+              } catch {
+                // The transaction may already be inactive.
+              }
+            }
+          };
+          for (const request of [authRequest, unboundRequest, accountRequest])
+            request.addEventListener("success", apply, { once: true });
+          transaction.addEventListener("complete", () => resolve(copied), {
+            once: true,
+          });
+          transaction.addEventListener(
+            "abort",
+            () =>
+              reject(transaction.error ?? new AuthStateError("unavailable")),
+            { once: true },
           );
-          copied = true;
-        };
-        unboundRequest.addEventListener("success", apply, { once: true });
-        accountRequest.addEventListener("success", apply, { once: true });
-        await transactionDone(transaction);
-        return copied;
+        });
       },
       async isPendingUpload(accountHandle) {
         if (typeof accountHandle !== "string" || !HANDLE.test(accountHandle))
@@ -444,21 +564,23 @@
         await transactionDone(transaction);
         return value?.pendingUpload === true;
       },
-      async setPendingUpload(accountHandle, pending) {
+      async setPendingUpload(accountHandle, pending, expected) {
         if (typeof accountHandle !== "string" || !HANDLE.test(accountHandle))
           throw new AuthStateError("invalid_account_handle");
         if (typeof pending !== "boolean")
           throw new AuthStateError("invalid_pending_upload");
-        const database = await open();
-        const transaction = database.transaction(AUTH_STORE, "readwrite");
-        const objectStore = transaction.objectStore(AUTH_STORE);
-        if (pending)
-          objectStore.put(
-            { pendingUpload: true },
-            `auth:upload:${accountHandle}`,
-          );
-        else objectStore.delete(`auth:upload:${accountHandle}`);
-        await transactionDone(transaction);
+        return writeLocalDecision({
+          accountHandle,
+          expected,
+          write(objectStore) {
+            if (pending)
+              objectStore.put(
+                { pendingUpload: true },
+                `auth:upload:${accountHandle}`,
+              );
+            else objectStore.delete(`auth:upload:${accountHandle}`);
+          },
+        });
       },
       subscribe(listener) {
         if (typeof listener !== "function") return () => {};

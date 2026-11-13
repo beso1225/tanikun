@@ -484,3 +484,63 @@ test("auth requests never carry a bearer token or cross-origin credentials", asy
   assert.equal(calls[0].init.headers.Authorization, undefined);
   assert.equal(calls[0].url.includes("token"), false);
 });
+
+test("aborting a pending native ceremony prevents the verify request", async () => {
+  let createOptions;
+  let verifyCalls = 0;
+  const { fetch } = createFetch([
+    jsonResponse(registrationOptions()),
+    () => {
+      verifyCalls += 1;
+      return jsonResponse({ session: activeSession });
+    },
+  ]);
+  const controller = new AbortController();
+  const client = createAuthClient({
+    fetch,
+    baseUrl: "https://localhost:4300",
+    credentials: {
+      create(options) {
+        createOptions = options;
+        controller.abort();
+        return Promise.resolve(syntheticRegistrationCredential());
+      },
+    },
+  });
+  await assert.rejects(
+    client.register({ displayName: "Alice", signal: controller.signal }),
+    (error) => error.code === "canceled",
+  );
+  assert.equal(createOptions.signal, controller.signal);
+  assert.equal(verifyCalls, 0);
+});
+
+test("aborting a pending assertion prevents the verify request", async () => {
+  let getOptions;
+  let verifyCalls = 0;
+  const { fetch } = createFetch([
+    jsonResponse(assertionOptions()),
+    () => {
+      verifyCalls += 1;
+      return jsonResponse({ session: activeSession });
+    },
+  ]);
+  const controller = new AbortController();
+  const client = createAuthClient({
+    fetch,
+    baseUrl: "https://localhost:4300",
+    credentials: {
+      get(options) {
+        getOptions = options;
+        controller.abort();
+        return Promise.resolve(syntheticAssertionCredential());
+      },
+    },
+  });
+  await assert.rejects(
+    client.signIn({ signal: controller.signal }),
+    (error) => error.code === "canceled",
+  );
+  assert.equal(getOptions.signal, controller.signal);
+  assert.equal(verifyCalls, 0);
+});
