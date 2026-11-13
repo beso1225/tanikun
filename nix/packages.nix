@@ -135,9 +135,11 @@ let
       moon test --frozen --target js --deny-warn -p beso1225/tanikun-api
       node --test tests/integration/moonbit-export.test.mjs tests/integration/parse-jsonc.test.mjs
     '';
-    # Keep the bridge's relative imports intact. The #176 WebAuthn spike
-    # verifier is bundled separately so the release artifact can prove the
-    # library's offline closure without enabling a product route. Include every
+    # Keep the bridge's relative imports intact. The WebAuthn verifier and the
+    # Phase 5 auth-service entry are bundled into self-contained ESM files so
+    # the release artifact has no bare npm import or source-checkout fallback.
+    # The handler remains unregistered in the Worker bridge until #180 adds the
+    # cookie/session/CSRF layer and #181 adds abuse limits. Include every
     # production module, migration, and a runtime config that does not depend
     # on the source tree's Moon project. The source config keeps its build/watch
     # hooks for local development; the packaged copy strips them and the missing
@@ -145,7 +147,7 @@ let
     installPhase = ''
       mkdir -p "$out/apps/api/bridges" "$out/apps/api/http" "$out/apps/api/repositories" "$out/apps/api/migrations" "$out/apps/api/webauthn" "$out/packages/sync-contract" "$out/_build/js/release/build/beso1225/tanikun-api"
       cp apps/api/bridges/*.mjs "$out/apps/api/bridges/"
-      cp apps/api/http/*.mjs "$out/apps/api/http/"
+      cp apps/api/http/auth.mjs apps/api/http/errors.mjs apps/api/http/json.mjs apps/api/http/respond.mjs apps/api/http/sync.mjs "$out/apps/api/http/"
       cp apps/api/repositories/*.mjs "$out/apps/api/repositories/"
       cp apps/api/migrations/*.sql "$out/apps/api/migrations/"
       cp packages/sync-contract/contract.mjs "$out/packages/sync-contract/"
@@ -156,6 +158,14 @@ let
         --platform=browser \
         --target=es2022 \
         --outfile="$out/apps/api/webauthn/verify.js"
+      pnpm exec esbuild apps/api/webauthn/entry.mjs \
+        --bundle \
+        --format=esm \
+        --platform=browser \
+        --target=es2022 \
+        --outfile="$out/apps/api/webauthn/auth.js"
+      printf 'export { handleWebAuthnRequest } from "../webauthn/auth.js";\n' \
+        > "$out/apps/api/http/webauthn.mjs"
       node --input-type=module <<'NODE'
       import { readFileSync, writeFileSync } from "node:fs";
       import { parseJsonc } from "./scripts/parse-jsonc.mjs";
