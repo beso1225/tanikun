@@ -8,15 +8,18 @@
     <script src="./automerge.js"></script>
     <script src="./planner-document.js"></script>
     <script src="./persistence-transactions.js"></script>
+    <script src="./auth-state.js"></script>
     <script src="./persistence.js"></script>
     <script src="./sync-store.js"></script>
     <script src="./sync-metadata.js"></script>
     <script src="./sync-coordinator.js"></script>
+    <script type="module" src="./auth-shell.js"></script>
     <script type="module" src="./index.js"></script>
     <script type="module" src="./sync-shell.js"></script>
   </head>
   <body>
     <div id="app"></div>
+    <div id="auth-root"></div>
     <script>
       (() => {
         const dialog = () =>

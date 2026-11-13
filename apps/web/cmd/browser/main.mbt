@@ -81,12 +81,35 @@ fn planner_view(
               [span("+"), span("科目")],
             ),
             button(
+              id="account-button",
+              class="hidden min-h-8 max-w-24 truncate rounded-md px-2 text-xs text-muted hover:bg-canvas max-md:hidden md:inline-flex md:items-center",
+              attrs=@html.Attrs::build().aria_label(
+                "アカウント情報を開く",
+              ),
+              "サインイン",
+            ),
+            button(
               id="open-settings",
               class="min-h-8 rounded-md px-2 text-xs text-muted hover:bg-canvas",
               on_click=emit(@app.PlannerMsg::OpenSettings),
               "設定",
             ),
           ],
+        ),
+      ],
+    ),
+    div(
+      id="account-mobile-bar",
+      class="hidden items-center justify-between gap-3 border-b border-rule bg-paper px-4 py-1.5 md:hidden",
+      [
+        span(class="text-xs text-muted", "アカウント"),
+        button(
+          id="account-button-mobile",
+          class="min-h-8 rounded-md px-2 text-xs text-muted hover:bg-canvas",
+          attrs=@html.Attrs::build().aria_label(
+            "アカウント情報を開く",
+          ),
+          "サインイン",
         ),
       ],
     ),

@@ -238,6 +238,29 @@ fn settings_panel(
         "プロファイル",
       ),
       profile_controls(state, emit),
+      div(
+        id="account-settings-section",
+        class="hidden space-y-2 border-t border-rule/60 pt-4",
+        [
+          h3(
+            class="text-sm font-semibold",
+            "アカウントとローカルデータ",
+          ),
+          p(
+            class="text-xs text-muted",
+            "パスキーをすべて失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる迂回はありません。",
+          ),
+          p(
+            class="text-xs text-muted",
+            "サインアウトしても、この端末のローカルデータは削除されません。また暗号化もされません。認証はPhase 6の文書鍵を提供しません。",
+          ),
+          button(
+            id="open-account-settings",
+            class="min-h-9 rounded-md border border-rule px-3 text-sm hover:bg-canvas",
+            "アカウントを開く",
+          ),
+        ],
+      ),
     ]),
   ]
   modal_shell(
