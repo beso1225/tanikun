@@ -49,7 +49,7 @@ in `t.after()`.
 | Register and sign in with two accounts, second passkey, expiry, logout, revocation, invalid and replayed challenges            | `session-account-journey`, `session-credential-journey`, `session-auth-faults`               |
 | Two Alice replicas over session HTTP, Bob read/write denial, account-switch outbox isolation, duplicate, response loss, reload | `session-replica-proof`, `session-account-proof`, `session-response-loss`                    |
 | Cookie flags, CSRF and Origin rejection, no unauthorized account, document, credential, session, or change writes              | `session-auth-faults`, `session-account-proof`                                               |
-| Sanitized failure evidence and owned cleanup                                                                                   | `assertEvidenceSanitized`, `assertHarnessCleaned`, every new proof test                      |
+| Sanitized failure evidence and owned cleanup                                                                                   | `session-failure-evidence`, `assertEvidenceSanitized`, `assertHarnessCleaned`                |
 | Virtual-auth properties and physical limits documented                                                                         | This page                                                                                    |
 
 ### Replica and account boundary
@@ -178,12 +178,15 @@ gate owned by the maintainer.
 
 These results were recorded on macOS arm64 on 2026-11-13.
 
-| Command                                                          | Result                                       |
-| ---------------------------------------------------------------- | -------------------------------------------- |
-| `just test-session-proof` with source artifacts                  | 19 tests, 16 passed, 3 packaged-only skipped |
-| `just test-session-proof` with Nix `result-web` and `result-api` | recorded below after the packaged run        |
-| `just test-sync` with source artifacts                           | recorded below after the Phase 4 run         |
-| `just lint`                                                      | recorded below after the full lint run       |
+| Command                                                          | Result                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ |
+| `just test-session-proof` with source artifacts                  | 20 tests, 17 passed, 3 packaged-only skipped                 |
+| `just test-session-proof` with Nix `result-web` and `result-api` | 20 passed                                                    |
+| `just test-sync` with source artifacts                           | 48 tests, 47 passed, 1 packaged-only skipped                 |
+| `just test-sync` with Nix `result-web` and `result-api`          | 48 passed                                                    |
+| `nix build path:.#web` and `path:.#api`                          | both built as self-contained artifacts                       |
+| `nix flake check path:. -L`                                      | passed; omitted the incompatible x86_64-linux system locally |
+| `just lint`                                                      | passed                                                       |
 
 A controlled red check temporarily disabled the session Origin guard in
 `apps/api/session/admission.mjs`. `session-auth-faults.test.mjs` failed with
