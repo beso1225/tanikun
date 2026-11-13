@@ -1,3 +1,5 @@
+import { retryAfterSeconds } from "./sync-transport.js";
+
 // Read-only Phase 5 session handoff for the sync shell. The session cookie is
 // HttpOnly; this client never sees it and never stores a session or CSRF token
 // outside memory. #183 owns sign-in UI, account partitioning, and local state.
@@ -6,6 +8,7 @@ const SESSION_STATUS_KINDS = Object.freeze({
   ACTIVE: "active",
   REAUTH_REQUIRED: "reauth_required",
   UNAVAILABLE: "unavailable",
+  RATE_LIMITED: "rate_limited",
   MALFORMED: "malformed",
 });
 
@@ -97,6 +100,15 @@ export function createSessionStatusClient({
       if (response.status === 401) {
         clear();
         return { kind: SESSION_STATUS_KINDS.REAUTH_REQUIRED, retryable: false };
+      }
+      if (response.status === 429) {
+        const result = {
+          kind: SESSION_STATUS_KINDS.RATE_LIMITED,
+          retryable: true,
+        };
+        const retryAfter = retryAfterSeconds(response);
+        if (retryAfter !== undefined) result.retry_after = retryAfter;
+        return result;
       }
       if (response.status >= 500)
         return { kind: SESSION_STATUS_KINDS.UNAVAILABLE, retryable: true };

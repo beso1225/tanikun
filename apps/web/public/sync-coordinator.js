@@ -13,7 +13,8 @@ const bytesToBase64 = (bytes) => {
 const retryable = (result) =>
   result.kind === "offline" ||
   result.kind === "timeout" ||
-  (result.kind === "server_error" && result.retryable === true);
+  ((result.kind === "server_error" || result.kind === "rate_limited") &&
+    result.retryable === true);
 
 {
   const maxRetries = 5;
@@ -147,7 +148,11 @@ const retryable = (result) =>
           return result;
         }
         const minimum =
-          result.retry_after !== undefined ? result.retry_after * 1000 : 0;
+          result.retry_after !== undefined
+            ? result.retry_after * 1000
+            : result.kind === "rate_limited"
+              ? 1_000
+              : 0;
         const ceiling = Math.max(minimum, Math.min(30_000, 500 * 2 ** attempt));
         const delay = Math.max(minimum, Math.floor(random() * ceiling));
         await wait(delay);
@@ -437,8 +442,11 @@ const retryable = (result) =>
           const code = error?.code ?? "sync_failed";
           const state =
             code === "offline" || code === "timeout" ? "offline" : "error";
-          emit(state, { code });
-          return { kind: state, code };
+          const retryAfter = error?.result?.retry_after;
+          const detail =
+            retryAfter !== undefined ? { retry_after: retryAfter } : {};
+          emit(state, { code, ...detail });
+          return { kind: state, code, ...detail };
         } finally {
           running = null;
         }

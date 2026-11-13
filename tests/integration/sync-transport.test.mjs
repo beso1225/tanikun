@@ -921,3 +921,62 @@ test("transport does not read local state or log request bytes", async () => {
   }
   assert.deepEqual(output, []);
 });
+
+test("session sync 429 retains Retry-After for every operation", async () => {
+  for (const operation of ["bootstrap", "push", "pull"]) {
+    const transport = createSyncTransport({
+      fetch: async () =>
+        jsonResponse(
+          { error: { code: "rate_limited" } },
+          {
+            status: 429,
+            headers: { "Retry-After": "7" },
+          },
+        ),
+      mode: "session",
+      baseUrl,
+      getCsrfToken: () => "C".repeat(43),
+    });
+    const result =
+      operation === "bootstrap"
+        ? await transport.bootstrap()
+        : operation === "pull"
+          ? await transport.pull(documentId)
+          : await transport.push(
+              documentId,
+              structuredClone(caseByName("append").request.body.changes),
+            );
+    assert.deepEqual(result, {
+      kind: "rate_limited",
+      status: 429,
+      code: "rate_limited",
+      retryable: true,
+      retry_after: 7,
+    });
+  }
+});
+
+test("session status 429 preserves retry metadata and recovers", async () => {
+  let calls = 0;
+  const client = createSessionStatusClient({
+    fetch: async () => {
+      calls += 1;
+      return calls === 1
+        ? jsonResponse(
+            { error: { code: "rate_limited" } },
+            {
+              status: 429,
+              headers: { "Retry-After": "2" },
+            },
+          )
+        : jsonResponse({ session: null });
+    },
+    baseUrl,
+  });
+  assert.deepEqual(await client.read(), {
+    kind: "rate_limited",
+    retryable: true,
+    retry_after: 2,
+  });
+  assert.equal((await client.read()).kind, S.SIGNED_OUT);
+});

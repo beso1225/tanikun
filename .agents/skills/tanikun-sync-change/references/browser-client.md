@@ -10,21 +10,31 @@ failure paths.
 
 `sync-transport.js` is stateless. It returns explicit `SYNC_TRANSPORT_KINDS`
 results for bootstrap, push, pull, offline, timeout, abort, unauthorized, not
-found, malformed response, conflict, rejected request, and server error. It
+found, malformed response, conflict, rejected request, rate limit, and server error. It
 validates request envelopes and response bodies with the shared contract. It
 does not touch IndexedDB or Automerge state.
 
 - Use the shared `SYNC_LIMITS`. Do not add a browser-only limit.
-- Keep `credentials: "omit"`, `cache: "no-store"`, and the explicit bearer.
-- Retry only `offline`, `timeout`, and `temporarily_unavailable` with
-  `retryable: true`. Honor `Retry-After`.
+- Require an explicit `mode`. Dev bearer uses `credentials: "omit"`, an
+  explicit bearer, and GET bootstrap. Session mode uses same-origin cookies,
+  POST bootstrap, and an in-memory CSRF header on writes, with no bearer.
+  Both modes use `cache: "no-store"`; neither falls back to the other.
+- Retry `offline`, `timeout`, `temporarily_unavailable`, and `rate_limited`
+  only when retryable. A `429 rate_limited` preserves the integer
+  `Retry-After` as `retry_after`; the coordinator waits before its next attempt.
+  Retry exhaustion preserves the outbox and passes the cooldown to the shell.
+- `sync-session.js` reads session status without exposing the HttpOnly token.
+  Network/5xx and 429 results permit retry; 429 preserves `Retry-After`.
+  Malformed or signed-out results never trigger a sync retry.
 - Do not treat a malformed `200` response as success. Reject it before any
   state change.
 
 ## Outbox and seen
 
 `sync-store.js` uses the `tanikun-sync` database with `outbox` and `seen`.
-Keys are scoped by `${origin}:${documentId}`. The outbox holds unsynced `none`
+The active dev-bearer keys are scoped by `${origin}:${documentId}`.
+Session account partitioning is deferred to #183; do not reuse these keys to
+activate cookie sync. The outbox holds unsynced `none`
 envelopes. Seen marks remote and acknowledged changes. `acknowledge` deletes
 the outbox entry and writes seen in one transaction.
 
@@ -101,7 +111,11 @@ high-water. `clear` removes the record.
 `sync-shell.js` reads `globalThis["__TANIKUN_SYNC_CONFIG__"]` before its modules
 load. It maps states to the visible labels, shows retry only for retryable
 codes, and never offers retry for an unsafe identity or not-found error. The
-shell is not a protocol owner.
+shell is not a protocol owner. Transient session-status failures offer retry
+without reloading; rate-limited retries stay disabled until `Retry-After`
+elapses, including programmatic retry calls. Session-mode planner sync stays
+paused until #183 provides account-scoped storage and generation fencing. A
+valid session does not authorize uploading the unbound plan.
 
 ## Focused proofs
 

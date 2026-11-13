@@ -24,6 +24,7 @@ export const SYNC_TRANSPORT_KINDS = Object.freeze({
   MALFORMED_RESPONSE: "malformed_response",
   CONFLICT: "conflict",
   REQUEST_REJECTED: "request_rejected",
+  RATE_LIMITED: "rate_limited",
   SERVER_ERROR: "server_error",
 });
 
@@ -95,12 +96,16 @@ function readJson(response, text) {
 }
 
 // Browsers expose Retry-After only when the API sends
-// Access-Control-Expose-Headers: Retry-After. The Phase 4 Worker does.
-function retryAfterSeconds(response) {
+// Access-Control-Expose-Headers: Retry-After. The Phase 4 Worker does;
+// same-origin session responses need no CORS exposure.
+export function retryAfterSeconds(response) {
   const raw = response.headers?.get?.("retry-after");
   if (typeof raw !== "string" || !/^[0-9]+$/.test(raw)) return undefined;
   const seconds = Number(raw);
-  return Number.isSafeInteger(seconds) ? seconds : undefined;
+  // Keep timer delays within the browser's signed 32-bit millisecond range.
+  return Number.isSafeInteger(seconds) && seconds <= 2_147_483
+    ? seconds
+    : undefined;
 }
 
 function serverFailure(status, response, text) {
@@ -134,6 +139,13 @@ function serverFailure(status, response, text) {
       return { ...base, kind: K.CONFLICT };
     case 413:
       return { ...base, kind: K.REQUEST_REJECTED };
+    case 429: {
+      if (code !== "rate_limited") return { ...base, kind: K.REQUEST_REJECTED };
+      const result = { ...base, kind: K.RATE_LIMITED, retryable: true };
+      const retryAfter = retryAfterSeconds(response);
+      if (retryAfter !== undefined) result.retry_after = retryAfter;
+      return result;
+    }
     default:
       if (status >= 500) {
         const retryable = code === "temporarily_unavailable";

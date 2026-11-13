@@ -96,9 +96,12 @@ mapping is valid and nonempty, and no session-only configuration is present.
 `just dev-api` and the test Wrangler configuration set the mode explicitly.
 
 `AUTH_MODE=session` is local/test only. It resolves the owner from the
-HttpOnly session cookie through `createSessionAdmission.admitSessionSync`,
-requires the exact `https://localhost:4300` Origin, applies the 120/minute
-session sync window, and requires CSRF on session appends. Session bootstrap is
+HttpOnly session cookie through `createSessionAdmission.admitRequest`,
+requires the exact `https://localhost:4300` Origin, and requires CSRF on session
+appends. After ownership and body/query validation, `enforceSessionSyncRate`
+applies the 120/minute session window. The combined `admitSessionSync` helper
+is not used here because it would charge the quota before body validation.
+Session bootstrap is
 `POST /api/v1/sync/document`; the old cookie-authenticated GET is not accepted.
 The session owner is the server-resolved `users.id`, and the document is
 provisioned with `ON CONFLICT(owner_id) DO NOTHING` plus a primary read in the

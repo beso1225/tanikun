@@ -34,6 +34,8 @@ let sessionClient = null;
 let retryQueued = false;
 let saveTriggerInstalled = false;
 let starting = false;
+let retryNotBefore = 0;
+let retryTimer;
 
 function callFetch(...args) {
   return globalThis.fetch(...args);
@@ -53,7 +55,8 @@ function render() {
   if (text) text.textContent = current.text;
   if (button) {
     button.classList.toggle("hidden", !current.retry);
-    button.disabled = current.state === "syncing";
+    button.disabled =
+      current.state === "syncing" || Date.now() < retryNotBefore;
   }
 }
 
@@ -62,6 +65,7 @@ const RETRYABLE_CODES = new Set([
   "timeout",
   "temporarily_unavailable",
   "sync_failed",
+  "rate_limited",
 ]);
 
 function retryIsSafe(state, code) {
@@ -70,7 +74,12 @@ function retryIsSafe(state, code) {
   );
 }
 
-function setStatus(state, code = null) {
+function setStatus(state, code = null, retryAfter) {
+  clearTimeout(retryTimer);
+  retryNotBefore =
+    code === "rate_limited" ? Date.now() + (retryAfter ?? 1) * 1000 : 0;
+  if (retryNotBefore > Date.now())
+    retryTimer = setTimeout(render, retryNotBefore - Date.now());
   current = {
     state,
     text: labelFor(state, code),
@@ -83,6 +92,7 @@ function setStatus(state, code = null) {
 }
 
 function triggerSync() {
+  if (Date.now() < retryNotBefore) return;
   if (!coordinator) {
     void start();
     return;
@@ -202,7 +212,7 @@ function createCoordinator(config, storage, statusClient) {
     maxRetry: Number.isSafeInteger(config.maxRetry)
       ? config.maxRetry
       : undefined,
-    onStatus: ({ state, code, pending }) => {
+    onStatus: ({ state, code, pending, retry_after }) => {
       if (
         config.mode === M.SESSION &&
         state === "error" &&
@@ -213,7 +223,7 @@ function createCoordinator(config, storage, statusClient) {
         setStatus("reauth_required");
         return;
       }
-      setStatus(state, code);
+      setStatus(state, code, retry_after);
       if (state === "synced" && pending > 0) queueSync();
     },
   });
@@ -274,7 +284,15 @@ async function startOnce() {
       setStatus("reauth_required");
       return;
     } else {
-      setStatus("error", "sync_setup_failed");
+      setStatus(
+        "error",
+        status.retryable
+          ? status.kind === "rate_limited"
+            ? "rate_limited"
+            : "temporarily_unavailable"
+          : "sync_setup_failed",
+        status.retry_after,
+      );
       return;
     }
     // #183 must supply account-scoped storage and generation fencing before

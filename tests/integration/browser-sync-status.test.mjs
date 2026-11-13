@@ -127,6 +127,13 @@ async function installFakeApi(page, origin) {
     ) {
       const body = JSON.parse(request.postData() ?? "{}");
       const envelopes = Array.isArray(body.changes) ? body.changes : [];
+      if (mode === "rate-limited") {
+        await route.fulfill({
+          ...syncJson(429, { error: { code: "rate_limited" } }),
+          headers: { "Retry-After": "1" },
+        });
+        return;
+      }
       const accepted = recordPush(envelopes);
       if (mode === "fail-push" && !failedPush) {
         failedPush = true;
@@ -583,5 +590,119 @@ test(
     assert.equal(api.bootstrapCalls.length, 0);
     assert.equal(await page.locator("#sync-retry").isVisible(), false);
     assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "session status network and 503 failures offer retry without reloading",
+  { timeout: 60_000 },
+  async (t) => {
+    for (const failure of ["network", "503"]) {
+      let attempts = 0;
+      const { page, api, errors } = await openPage(t, undefined, {
+        mode: "session",
+        beforeGoto: async (targetPage, origin) => {
+          await targetPage.route(
+            `${origin}/api/v1/auth/session`,
+            async (route) => {
+              attempts += 1;
+              if (attempts > 1) return route.fallback();
+              if (failure === "network") return route.abort("connectionreset");
+              return route.fulfill(
+                syncJson(503, { error: { code: "temporarily_unavailable" } }),
+              );
+            },
+          );
+        },
+      });
+      await waitForSync(page, "同期エラー");
+      assert.equal(await page.locator("#sync-retry").isVisible(), true);
+      await page.locator("#sync-retry").click();
+      await waitForSync(page, "同期未設定");
+      assert.equal(attempts, 2);
+      assert.equal(api.bootstrapCalls.length, 0);
+      assert.equal(api.pushBodies.length, 0);
+      assert.deepEqual(errors, []);
+    }
+  },
+);
+
+test(
+  "session status 429 disables retry until Retry-After and then recovers",
+  { timeout: 60_000 },
+  async (t) => {
+    let attempts = 0;
+    const { page, api, errors } = await openPage(t, undefined, {
+      mode: "session",
+      beforeGoto: async (targetPage, origin) => {
+        await targetPage.route(
+          `${origin}/api/v1/auth/session`,
+          async (route) => {
+            attempts += 1;
+            if (attempts > 1) return route.fallback();
+            return route.fulfill({
+              ...syncJson(429, { error: { code: "rate_limited" } }),
+              headers: { "Retry-After": "1" },
+            });
+          },
+        );
+      },
+    });
+    await waitForSync(page, "同期エラー");
+    assert.equal(await page.locator("#sync-retry").isVisible(), true);
+    assert.equal(await page.locator("#sync-retry").isDisabled(), true);
+    await page.evaluate(() => globalThis.tanikunSyncShell.sync());
+    assert.equal(attempts, 1);
+    await page.locator("#sync-retry").click();
+    await waitForSync(page, "同期未設定");
+    assert.equal(attempts, 2);
+    assert.equal(api.bootstrapCalls.length, 0);
+    assert.equal(api.pushBodies.length, 0);
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "sync quota exhaustion disables immediate retry and then converges",
+  { timeout: 60_000 },
+  async (t) => {
+    const { page, api, errors } = await openPage(t);
+    await waitForSync(page, "同期済み");
+    api.mode = "rate-limited";
+    await addOffering(page);
+    await waitForSync(page, "同期エラー");
+    assert.equal(await page.locator("#sync-retry").isVisible(), true);
+    assert.equal(await page.locator("#sync-retry").isDisabled(), true);
+    const pulls = api.pullCalls.length;
+    await page.evaluate(() => globalThis.tanikunSyncShell.sync());
+    assert.equal(api.pullCalls.length, pulls);
+    api.mode = "online";
+    await page.locator("#sync-retry").click();
+    await waitForSync(page, "同期済み");
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "malformed and signed-out session status never offer retry",
+  { timeout: 60_000 },
+  async (t) => {
+    for (const body of [{ session: null }, { session: { account: {} } }]) {
+      const { page, api, errors } = await openPage(t, undefined, {
+        mode: "session",
+        beforeGoto: async (targetPage, origin) => {
+          await targetPage.route(`${origin}/api/v1/auth/session`, (route) =>
+            route.fulfill(syncJson(200, body)),
+          );
+        },
+      });
+      await waitForSync(
+        page,
+        body.session === null ? "再認証が必要" : "同期エラー",
+      );
+      assert.equal(await page.locator("#sync-retry").isVisible(), false);
+      assert.equal(api.bootstrapCalls.length, 0);
+      assert.deepEqual(errors, []);
+    }
   },
 );
