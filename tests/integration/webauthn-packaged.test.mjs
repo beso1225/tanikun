@@ -468,7 +468,12 @@ test(
 
 function sessionWorkerSource(authBundlePath) {
   return `
-import { handleSessionAuthRequest } from ${JSON.stringify(authBundlePath)};
+import {
+  AUTH_RATE_LIMIT_POLICIES,
+  createConfiguredAuthRateLimiter,
+  handleSessionAuthRequest,
+  trustedClientAddress,
+} from ${JSON.stringify(authBundlePath)};
 
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
@@ -476,6 +481,35 @@ const MINUTE = 60 * 1000;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/limit") {
+      const limiter = await createConfiguredAuthRateLimiter({
+        db: env.DB,
+        request,
+        env,
+        now: () => 1760000000000,
+      });
+      const outcomes = [];
+      for (let index = 0; index < 6; index += 1) {
+        try {
+          await limiter.enforce(
+            [AUTH_RATE_LIMIT_POLICIES.logoutAllAccount],
+            { account: "acct_packaged_rate" },
+          );
+          outcomes.push("admitted");
+        } catch (error) {
+          outcomes.push(error.code);
+        }
+      }
+      const row = await env.DB.prepare(
+        "SELECT bucket_key, count FROM auth_rate_limit_counters",
+      ).first();
+      return Response.json({
+        address: trustedClientAddress(request),
+        outcomes,
+        bucketLength: row.bucket_key.length,
+        count: row.count,
+      });
+    }
     if (url.pathname === "/seed") {
       if (request.method !== "POST")
         return new Response("Method Not Allowed", { status: 405 });
@@ -681,6 +715,25 @@ test(
     });
     const seedText = await seed.text();
     assert.equal(seed.status, 200, seedText);
+
+    const limit = await fetch(`${origin}/limit`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    const limitText = await limit.text();
+    assert.equal(limit.status, 200, limitText);
+    assert.deepEqual(JSON.parse(limitText), {
+      address: "127.0.0.1",
+      outcomes: [
+        "admitted",
+        "admitted",
+        "admitted",
+        "admitted",
+        "admitted",
+        "rate_limited",
+      ],
+      bucketLength: 43,
+      count: 5,
+    });
 
     const status = await fetch(`${origin}/api/v1/auth/session`, {
       headers: { Cookie: cookie },

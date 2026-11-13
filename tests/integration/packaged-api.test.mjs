@@ -54,8 +54,11 @@ test(
     assert.deepEqual((await readdir(resolve(apiRoot, migrations))).toSorted(), [
       "0001_sync.sql",
       "0002_auth_storage.sql",
+      "0003_auth_rate_limits.sql",
     ]);
     for (const modulePath of [
+      "apps/api/rate-limits/limiter.mjs",
+      "apps/api/rate-limits/policy.mjs",
       "apps/api/repositories/auth-data.mjs",
       "apps/api/repositories/auth.mjs",
     ]) {
