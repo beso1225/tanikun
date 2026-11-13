@@ -98,6 +98,7 @@ async function dispatch(request, env, dependencies, state) {
     touch: route.touch,
   });
   const session = presented.kind === "valid" ? presented.session : null;
+  state.admittedSession = session !== null;
   state.invalidSession = presented.kind === "invalid" && presented.present;
 
   if (route.session === "required" && !session) {
@@ -228,13 +229,20 @@ export async function handleSessionAuthRequest(
   env,
   dependencies = {},
 ) {
-  const state = { invalidSession: false };
+  const state = { invalidSession: false, admittedSession: false };
   try {
     const result = await dispatch(request, env, dependencies, state);
     return appendSetCookies(result.response, result.setCookies);
   } catch (error) {
     const response = authErrorResponse(error);
-    if (!storageFailure(error) && state.invalidSession)
+    // A commit-time recheck may reject a session that was valid at admission
+    // but revoked concurrently. Clear that cookie just like an admission
+    // failure, while leaving cookies unchanged on storage failures.
+    if (
+      !storageFailure(error) &&
+      (state.invalidSession ||
+        (state.admittedSession && error?.code === "unauthorized"))
+    )
       return appendSetCookies(response, [clearSessionCookie()]);
     return response;
   }

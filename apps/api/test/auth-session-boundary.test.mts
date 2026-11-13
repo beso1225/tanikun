@@ -732,6 +732,51 @@ describe("session boundary", () => {
     ).toEqual({ revoke_reason: "logout_all" });
   });
 
+  it("clears the cookie if logout-all rechecks a session revoked after admission", async () => {
+    const account = await registerAccount();
+    const second = await createSecondSession(account, 0x93);
+    const repository = createAuthRepository(env.DB, { now: account.clock.now });
+    const response = await handleSessionAuthRequest(
+      request("/api/v1/auth/logout-all", {
+        headers: {
+          Cookie: `${SESSION}=${account.session}`,
+          "X-CSRF-Token": account.csrf,
+        },
+      }),
+      account.env,
+      {
+        ...account.deps,
+        repository: {
+          ...repository,
+          async revokeAllSessionsForSession(input) {
+            // Admission succeeded; another tab logs this session out before
+            // the real SQL guard rechecks it for the sensitive mutation.
+            await repository.revokeSession({
+              sessionDigest: input.sessionDigest,
+            });
+            return repository.revokeAllSessionsForSession(input);
+          },
+        },
+      },
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: { code: "unauthorized" } });
+    expect(setCookies(response)).toEqual([
+      `${SESSION}=; ${SESSION_ATTRIBUTES}; Max-Age=0`,
+    ]);
+    expect((await sessionStatus(account)).status).toBe(401);
+    expect(
+      (await sessionStatus(account, `${SESSION}=${second.material.token}`))
+        .status,
+    ).toBe(200);
+    expect(
+      await queryFirst(
+        "SELECT revoked_at FROM sessions WHERE digest = ?1",
+        second.session.digest,
+      ),
+    ).toEqual({ revoked_at: null });
+  });
+
   it("rotates the session at sign-in and rejects the old cookie and CSRF token", async () => {
     const clock = fakeClock();
     const account = await registerAccount({ clock });
