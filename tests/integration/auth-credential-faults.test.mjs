@@ -463,3 +463,85 @@ test("logout drains an in-flight credential list before revoking its session", a
   assert.equal(logoutCalls, 1);
   assert.deepEqual(errors, []);
 });
+
+test("credential lists reject an A-to-B-to-A server session change", async (t) => {
+  let switchOnList = false;
+  let serverChanged = false;
+  const { page, errors } = await openPage(t, {
+    async beforeGoto(targetPage, origin) {
+      await targetPage.route(`${origin}/sync-shell.js`, (route) =>
+        route.fulfill({ contentType: "text/javascript", body: "export {};" }),
+      );
+      await installRoutes(targetPage, origin, {
+        onSession: async () => {
+          const status = active();
+          if (serverChanged) status.session.csrf_token = "D".repeat(43);
+          return status;
+        },
+      });
+      await targetPage.route(
+        `${origin}/api/v1/auth/credentials`,
+        async (route) => {
+          if (switchOnList) serverChanged = true;
+          await route.fulfill(
+            json(200, {
+              credentials: [
+                {
+                  ...credential,
+                  id: serverChanged
+                    ? Buffer.alloc(16, 2).toString("base64url")
+                    : credential.id,
+                },
+              ],
+            }),
+          );
+        },
+      );
+    },
+  });
+  await page.locator("#account-button-mobile").click();
+  await page.waitForFunction(
+    () =>
+      globalThis.tanikunAuthController.state.credentials !== null &&
+      !globalThis.tanikunAuthController.state.credentialsLoading,
+  );
+  await page.locator("#auth-close").click();
+  switchOnList = true;
+  await page.locator("#account-button-mobile").click();
+  await page.waitForFunction(
+    () => !globalThis.tanikunAuthController.state.credentialsLoading,
+  );
+  assert.equal(
+    await page.evaluate(() => globalThis.tanikunAuthController.state.stale),
+    true,
+  );
+  assert.equal(
+    await page.evaluate(
+      () => globalThis.tanikunAuthController.state.credentials,
+    ),
+    null,
+  );
+  assert.equal(
+    (await page.evaluate(() => globalThis.tanikunAuthState.read()))
+      .accountHandle,
+    HANDLE,
+  );
+  assert.deepEqual(errors, []);
+});
+
+test("registration explains that the final passkey cannot be removed", async (t) => {
+  const { page, errors } = await openPage(t, {
+    async beforeGoto(targetPage, origin) {
+      await installRoutes(targetPage, origin, {
+        onSession: () => ({ session: null }),
+      });
+    },
+  });
+  await page.locator("#account-button-mobile").click();
+  await page.locator('[data-action="register-start"]').click();
+  assert.match(
+    await page.locator("#auth-dialog").innerText(),
+    /最後のパスキーは削除できません/u,
+  );
+  assert.deepEqual(errors, []);
+});

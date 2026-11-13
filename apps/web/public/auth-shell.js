@@ -369,7 +369,7 @@ function disclosure() {
     "div",
     { class: "space-y-2 rounded-md bg-canvas p-3 text-xs text-muted" },
     paragraph(
-      "パスキーをすべて失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる迂回はありません。",
+      "最後のパスキーは削除できません。パスキーをすべて失うと、このアカウントにはサインインできません。パスワード、メール、復旧コード、サポートによる迂回はありません。",
     ),
     paragraph(
       "パスキーを追加しても、暗号化キーの登録や、失われた暗号化キーの復旧は行われません。",
@@ -1225,9 +1225,15 @@ async function loadCredentials({ expected } = {}) {
   renderDialog();
   credentialsPromise = (async () => {
     try {
-      await activeStatus(scope);
+      const before = await activeStatus(scope);
       const credentials = await authClient.listCredentials();
-      await activeStatus(scope);
+      const after = await activeStatus(scope);
+      // The handle can return to its original value after another tab signs in
+      // twice. Require the same session binding around this response as well.
+      if (before.csrf_token !== after.csrf_token)
+        throw Object.assign(new Error("account_changed"), {
+          code: "account_changed",
+        });
       await checkCeremonyScope(scope);
       state.credentials = sortedCredentials(credentials);
       state.credentialsError = null;
