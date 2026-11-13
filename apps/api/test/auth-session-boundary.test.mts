@@ -1160,4 +1160,40 @@ describe("session boundary", () => {
       expect(setCookies(response)).toEqual([]);
     }
   });
+  it("writes last-seen at most once per minute during status admission", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    const row = () =>
+      queryFirst(
+        "SELECT last_seen_at, idle_expires_at FROM sessions WHERE user_id = (SELECT id FROM users WHERE handle = ?1)",
+        account.handle,
+      );
+    const before = await row();
+
+    clock.advance(59_000);
+    expect((await sessionStatus(account)).status).toBe(200);
+    expect(await row()).toEqual(before);
+
+    clock.advance(2_000);
+    expect((await sessionStatus(account)).status).toBe(200);
+    expect(await row()).toEqual({
+      last_seen_at: clock.current(),
+      idle_expires_at: clock.current() + 30 * 60 * 1000,
+    });
+  });
+
+  it("rejects absolute expiry even while the extended idle window is still valid", async () => {
+    const clock = fakeClock();
+    const account = await registerAccount({ clock });
+    for (let index = 0; index < 24; index += 1) {
+      clock.advance(29 * 60 * 1000);
+      expect((await sessionStatus(account)).status).toBe(200);
+    }
+    // 24 touches leave idle_expires_at at +12h06m; absolute expiry is +12h.
+    clock.advance(25 * 60 * 1000);
+    const expired = await sessionStatus(account);
+    expect(expired.status).toBe(401);
+    expect((await expired.json()).error.code).toBe("unauthorized");
+    expect(setCookies(expired)).toHaveLength(1);
+  });
 });
