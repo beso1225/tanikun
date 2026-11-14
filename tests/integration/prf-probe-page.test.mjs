@@ -592,3 +592,63 @@ for (const phase of ["registration", "assertion"]) {
     );
   });
 }
+
+for (const scenario of ["cleanup", "cancelled"]) {
+  test(`probe observations remain coherent after ${scenario}`, async (t) => {
+    const harness = await startPrfProbeServer({ log() {} });
+    t.after(() => harness.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    await page.addInitScript((mode) => {
+      globalThis.probeCreateCalls = 0;
+      Object.defineProperty(navigator, "credentials", {
+        configurable: true,
+        value: {
+          create: async () => {
+            globalThis.probeCreateCalls += 1;
+            if (mode === "cancelled")
+              throw new DOMException(
+                "synthetic cancellation",
+                "NotAllowedError",
+              );
+            const data = new Uint8Array(37);
+            data[32] = 0x45;
+            return {
+              type: "public-key",
+              rawId: new Uint8Array(16).fill(1).buffer,
+              getClientExtensionResults: () => ({ prf: { enabled: true } }),
+              response: { getAuthenticatorData: () => data.buffer },
+            };
+          },
+        },
+      });
+      Object.defineProperty(PublicKeyCredential, "getClientCapabilities", {
+        configurable: true,
+        value: async () => ({ "extension:prf": true }),
+      });
+    }, scenario);
+    await page.goto(harness.origin);
+    await page.selectOption("#tls-trust", "bypassed");
+    if (scenario === "cancelled") await page.check("#cancel-R1");
+    await page.click("#step-r1");
+    await page.waitForFunction(
+      () => document.querySelector("#status-R1").textContent !== "untested",
+    );
+    if (scenario === "cancelled") {
+      assert.equal(await page.locator("#status-R1").innerText(), "denied");
+      return;
+    }
+    assert.equal(await page.locator("#step-r2").isDisabled(), false);
+    await page.selectOption("#cleanup-status", "blocked");
+    await page.selectOption("#cleanup-blocker", "cleanup_blocked");
+    await page.click("#cleanup-record");
+    assert.equal(await page.locator("#step-r2").isDisabled(), true);
+    assert.equal(await page.locator("#step-a1").isDisabled(), true);
+    await page.selectOption("#cleanup-status", "pending");
+    assert.equal(await page.locator("#step-r2").isDisabled(), true);
+    await page.evaluate(() => document.querySelector("#step-r2").click());
+    assert.equal(await page.evaluate(() => globalThis.probeCreateCalls), 1);
+  });
+}

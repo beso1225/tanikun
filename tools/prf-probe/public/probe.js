@@ -305,11 +305,16 @@ function updateButtons() {
   setDisabled("clear", secretsCleared || !hasSecrets);
 }
 
-function recordCell(id, raw, classification) {
+function recordCell(id, raw) {
   syncStateFromDom();
   const cell = state.cells[id];
   cell.raw = { ...raw, cancelled: cell.cancelObserved };
-  Object.assign(cell, classification);
+  Object.assign(
+    cell,
+    id === "R1" || id === "R2"
+      ? classifyRegistration(cell.raw)
+      : classifyAssertion(cell.raw),
+  );
   renderCell(id);
   renderComparisons();
   renderAliases();
@@ -474,7 +479,7 @@ async function runRegistration(cellId, slot) {
         resultPresent: false,
         resultLength: null,
       };
-      recordCell(cellId, raw, classifyRegistration(raw));
+      recordCell(cellId, raw);
       return;
     }
     const prf = read.prf;
@@ -496,7 +501,7 @@ async function runRegistration(cellId, slot) {
       bsFlag: flags.bs,
     };
     zeroize(result.bytes);
-    recordCell(cellId, raw, classifyRegistration(raw));
+    recordCell(cellId, raw);
   } catch (error) {
     if (controller.signal.aborted || secretsCleared || invalidated) return;
     const raw = {
@@ -506,7 +511,7 @@ async function runRegistration(cellId, slot) {
       resultPresent: false,
       resultLength: null,
     };
-    recordCell(cellId, raw, classifyRegistration(raw));
+    recordCell(cellId, raw);
   } finally {
     zeroize(userHandle);
     zeroize(challenge);
@@ -628,7 +633,7 @@ async function runAssertion(cellId, slot, salt) {
       beFlag: flags.be,
       bsFlag: flags.bs,
     };
-    recordCell(cellId, raw, classifyAssertion(raw));
+    recordCell(cellId, raw);
     keepResult = applyComparison(cellId, result.bytes);
     if (cellId === "A4") {
       zeroizeSecrets();
@@ -653,7 +658,7 @@ async function runAssertion(cellId, slot, salt) {
       beFlag: null,
       bsFlag: null,
     };
-    recordCell(cellId, raw, classifyAssertion(raw));
+    recordCell(cellId, raw);
     if (cellId === "A4") zeroizeSecrets();
   } finally {
     zeroize(challenge);
@@ -670,6 +675,7 @@ async function runAssertion(cellId, slot, salt) {
 }
 
 function recordCleanup() {
+  if (ceremony !== null) return;
   syncStateFromDom();
   if (state.cleanup.status === CLEANUP_STATUS.PENDING) {
     setText(
@@ -709,6 +715,12 @@ function recordCleanup() {
     );
     return;
   }
+  zeroizeSecrets();
+  updateButtons();
+  setText(
+    "clear-status",
+    "Run closed after cleanup. Reload to start a new run.",
+  );
   setText("cleanup-message", `Cleanup recorded as ${state.cleanup.status}.`);
 }
 

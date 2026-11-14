@@ -439,7 +439,10 @@ no API route, no cookie, no CORS header, and no request log.
 Cleanup records `c1_absent_confirmed` and `c2_absent_confirmed`: the human
 confirms each disposable credential is absent after deletion, or was never
 created. This permits an unsupported or cancelled attempt without falsely
-recording a deletion. Wait for all native prompts to settle before confirming.
+recording a deletion. Wait for all native prompts to settle before confirming. Recording either
+complete or blocked cleanup closes the run, clears its in-memory secrets, and
+permanently disables further ceremonies until reload. Editing observation
+fields afterwards cannot reopen the run.
 
 The export schema is `tanikun-prf-probe-export-v1`. It has exactly the run
 header, preflight, environment, providers, six cells, three comparisons,
@@ -570,9 +573,9 @@ shell. They use synthetic stubs only.
 | Command                                                                                             | Result    |
 | --------------------------------------------------------------------------------------------------- | --------- |
 | `node --test tests/integration/prf-probe-core.test.mjs tests/integration/prf-probe-server.test.mjs` | 15 passed |
-| `node --test tests/integration/prf-probe-page.test.mjs`                                             | 3 passed  |
+| `node --test tests/integration/prf-probe-page.test.mjs`                                             | 5 passed  |
 | `just lint`                                                                                         | passed    |
-| `just test-prf-probe`                                                                               | 18 passed |
+| `just test-prf-probe`                                                                               | 20 passed |
 
 Linux CI runs the same synthetic checks; physical-device ceremonies are not
 part of CI. The cancellation regressions exercise pending registration and
