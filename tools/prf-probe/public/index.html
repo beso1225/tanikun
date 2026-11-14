@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tanikun PRF physical probe</title>
+    <link rel="stylesheet" href="./probe.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Tanikun Phase 5 spike</p>
+        <h1>PRF physical probe</h1>
+        <p class="lede">
+          This page is not the product login. It creates two disposable passkeys
+          for the approved test origin and compares PRF results only in memory.
+          Do not use a real account, planner record, or production origin.
+        </p>
+      </header>
+
+      <section aria-labelledby="preflight-heading">
+        <h2 id="preflight-heading">1. Preflight</h2>
+        <p>
+          The only approved origin is
+          <code>https://localhost:4300</code> with RP ID <code>localhost</code>.
+          This page refuses to start a ceremony on any other origin, over an
+          iframe, or without a secure context.
+        </p>
+        <dl class="facts">
+          <div>
+            <dt>Origin</dt>
+            <dd id="preflight-origin">checking</dd>
+          </div>
+          <div>
+            <dt>RP ID</dt>
+            <dd id="preflight-rp">checking</dd>
+          </div>
+          <div>
+            <dt>Secure context</dt>
+            <dd id="preflight-secure">checking</dd>
+          </div>
+          <div>
+            <dt>Top-level document</dt>
+            <dd id="preflight-top">checking</dd>
+          </div>
+          <div>
+            <dt><code>PublicKeyCredential</code></dt>
+            <dd id="preflight-pkc">checking</dd>
+          </div>
+          <div>
+            <dt><code>getClientCapabilities</code></dt>
+            <dd id="preflight-caps">checking</dd>
+          </div>
+          <div>
+            <dt>PRF client capability</dt>
+            <dd id="preflight-prf">checking</dd>
+          </div>
+        </dl>
+        <p class="note">
+          PRF client capability is not authenticator or provider support. It
+          only says that this browser can process the extension.
+        </p>
+        <div class="field">
+          <label for="tls-trust">TLS trust observed in this browser</label>
+          <select id="tls-trust">
+            <option value="">Select after opening the page</option>
+            <option value="trusted">Trusted without a warning</option>
+            <option value="bypassed">Warning bypassed for this run</option>
+            <option value="blocked">Blocked by the browser</option>
+          </select>
+          <p class="note">
+            Do not install a certificate, change an OS trust store, edit the
+            browser profile, or launch with certificate flags. If the browser
+            shows a warning and you choose to proceed, select
+            <q>Warning bypassed</q>. The export records that limit.
+          </p>
+        </div>
+        <p id="preflight-blocker" class="blocker" role="status"></p>
+      </section>
+
+      <section aria-labelledby="environment-heading">
+        <h2 id="environment-heading">2. Run environment</h2>
+        <p>
+          Enter exactly what the device and browser report. These are metadata,
+          not support claims. Leave a field blank until it is observed.
+        </p>
+        <div class="grid">
+          <div class="field">
+            <label for="run-id">Run ID</label>
+            <input id="run-id" readonly />
+          </div>
+          <div class="field">
+            <label for="harness-commit">Harness commit</label>
+            <input
+              id="harness-commit"
+              value="unknown"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="40 lowercase hex characters or unknown"
+            />
+          </div>
+          <div class="field">
+            <label for="device-role">Device role</label>
+            <select id="device-role">
+              <option value="">Not recorded</option>
+              <option value="mac">Mac</option>
+              <option value="iphone">iPhone</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="device-model">Device model</label>
+            <input id="device-model" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="os">OS</label>
+            <input id="os" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="os-build">OS build</label>
+            <input id="os-build" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="browser">Browser</label>
+            <select id="browser">
+              <option value="">Not recorded</option>
+              <option value="chrome">Chrome</option>
+              <option value="safari">Safari</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="browser-version">Browser version</label>
+            <input id="browser-version" autocomplete="off" />
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="providers-heading">
+        <h2 id="providers-heading">3. Providers</h2>
+        <p>
+          Record the exact provider name shown in the chooser and its exact
+          versions. Use a provider name only. Do not enter an account email,
+          credential ID, or any secret.
+        </p>
+        <div class="providers">
+          <fieldset>
+            <legend>Provider P1</legend>
+            <label for="p1-label">Provider label</label>
+            <input id="p1-label" autocomplete="off" />
+            <label for="p1-app">App version</label>
+            <input id="p1-app" autocomplete="off" />
+            <label for="p1-ext">Extension version</label>
+            <input id="p1-ext" autocomplete="off" />
+          </fieldset>
+          <fieldset>
+            <legend>Provider P2</legend>
+            <label for="p2-label">Provider label</label>
+            <input id="p2-label" autocomplete="off" />
+            <label for="p2-app">App version</label>
+            <input id="p2-app" autocomplete="off" />
+            <label for="p2-ext">Extension version</label>
+            <input id="p2-ext" autocomplete="off" />
+          </fieldset>
+          <fieldset>
+            <legend>Provider P3</legend>
+            <label for="p3-label">Provider label</label>
+            <input id="p3-label" autocomplete="off" />
+            <label for="p3-app">App version</label>
+            <input id="p3-app" autocomplete="off" />
+            <label for="p3-ext">Extension version</label>
+            <input id="p3-ext" autocomplete="off" />
+          </fieldset>
+        </div>
+      </section>
+
+      <section aria-labelledby="ceremonies-heading">
+        <h2 id="ceremonies-heading">4. Ceremonies</h2>
+        <p class="warning">
+          The provider chooser, user-presence gesture, and user-verification
+          prompt are owned by the human tester. This page never selects a
+          provider and never supplies a biometric or PIN. Click one step, then
+          record what the chooser and prompts actually showed.
+        </p>
+        <p id="run-warning" class="warning" role="alert"></p>
+
+        <article class="step" data-cell="R1">
+          <h3>R1. Register C1</h3>
+          <p class="step-note">
+            Creates disposable credential C1 with <code>extensions.prf</code>.
+            Record <code>prf.enabled</code>, the provider, and the UP and UV
+            observations.
+          </p>
+          <button id="step-r1" type="button" disabled>Register C1</button>
+          <dl class="result">
+            <div>
+              <dt>Status</dt>
+              <dd id="status-R1" data-status="untested">untested</dd>
+            </div>
+            <div>
+              <dt>Error</dt>
+              <dd id="error-R1">none</dd>
+            </div>
+            <div>
+              <dt><code>prf.enabled</code></dt>
+              <dd id="enabled-R1">not recorded</dd>
+            </div>
+            <div>
+              <dt>Result</dt>
+              <dd id="result-R1">not applicable</dd>
+            </div>
+            <div>
+              <dt>UP flag</dt>
+              <dd id="upflag-R1">not inspected</dd>
+            </div>
+            <div>
+              <dt>UV flag</dt>
+              <dd id="uvflag-R1">not inspected</dd>
+            </div>
+            <div>
+              <dt>BE flag</dt>
+              <dd id="beflag-R1">not inspected</dd>
+            </div>
+            <div>
+              <dt>BS flag</dt>
+              <dd id="bsflag-R1">not inspected</dd>
+            </div>
+            <div>
+              <dt>Blocker</dt>
+              <dd id="blocker-R1">not_run</dd>
+            </div>
+          </dl>
+          <div class="observations">
+            <label for="upobs-R1">UP observed</label>
+            <select id="upobs-R1">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label for="uvobs-R1">UV observed</label>
+            <select id="uvobs-R1">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label class="check">
+              <input id="cancel-R1" type="checkbox" />
+              I cancelled or declined this prompt
+            </label>
+            <label for="provider-R1">Provider</label>
+            <select id="provider-R1">
+              <option value="">Not recorded</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <label for="transport-R1">Transport</label>
+            <select id="transport-R1">
+              <option value="">Not recorded</option>
+              <option value="platform">Platform</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="usb">USB</option>
+              <option value="nfc">NFC</option>
+              <option value="ble">BLE</option>
+              <option value="internal">Internal</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </article>
+
+        <article class="step" data-cell="A1">
+          <h3>A1. Authenticate C1 with salt A, first</h3>
+          <button id="step-a1" type="button" disabled>
+            Authenticate C1 with salt A
+          </button>
+          <dl class="result">
+            <div>
+              <dt>Status</dt>
+              <dd id="status-A1" data-status="untested">untested</dd>
+            </div>
+            <div>
+              <dt>Error</dt>
+              <dd id="error-A1">none</dd>
+            </div>
+            <div>
+              <dt>Result present</dt>
+              <dd id="result-A1">not recorded</dd>
+            </div>
+            <div>
+              <dt>Length</dt>
+              <dd id="length-A1">not recorded</dd>
+            </div>
+            <div>
+              <dt>UP flag</dt>
+              <dd id="upflag-A1">not inspected</dd>
+            </div>
+            <div>
+              <dt>UV flag</dt>
+              <dd id="uvflag-A1">not inspected</dd>
+            </div>
+            <div>
+              <dt>BE flag</dt>
+              <dd id="beflag-A1">not inspected</dd>
+            </div>
+            <div>
+              <dt>BS flag</dt>
+              <dd id="bsflag-A1">not inspected</dd>
+            </div>
+            <div>
+              <dt>Blocker</dt>
+              <dd id="blocker-A1">not_run</dd>
+            </div>
+          </dl>
+          <div class="observations">
+            <label for="upobs-A1">UP observed</label>
+            <select id="upobs-A1">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label for="uvobs-A1">UV observed</label>
+            <select id="uvobs-A1">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label class="check">
+              <input id="cancel-A1" type="checkbox" />
+              I cancelled or declined this prompt
+            </label>
+            <label for="provider-A1">Provider</label>
+            <select id="provider-A1">
+              <option value="">Not recorded</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <label for="transport-A1">Transport</label>
+            <select id="transport-A1">
+              <option value="">Not recorded</option>
+              <option value="platform">Platform</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="usb">USB</option>
+              <option value="nfc">NFC</option>
+              <option value="ble">BLE</option>
+              <option value="internal">Internal</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </article>
+
+        <article class="step" data-cell="A2">
+          <h3>A2. Authenticate C1 with salt A, second</h3>
+          <button id="step-a2" type="button" disabled>
+            Authenticate C1 with salt A again
+          </button>
+          <dl class="result">
+            <div>
+              <dt>Status</dt>
+              <dd id="status-A2" data-status="untested">untested</dd>
+            </div>
+            <div>
+              <dt>Error</dt>
+              <dd id="error-A2">none</dd>
+            </div>
+            <div>
+              <dt>Result present</dt>
+              <dd id="result-A2">not recorded</dd>
+            </div>
+            <div>
+              <dt>Length</dt>
+              <dd id="length-A2">not recorded</dd>
+            </div>
+            <div>
+              <dt>UP flag</dt>
+              <dd id="upflag-A2">not inspected</dd>
+            </div>
+            <div>
+              <dt>UV flag</dt>
+              <dd id="uvflag-A2">not inspected</dd>
+            </div>
+            <div>
+              <dt>BE flag</dt>
+              <dd id="beflag-A2">not inspected</dd>
+            </div>
+            <div>
+              <dt>BS flag</dt>
+              <dd id="bsflag-A2">not inspected</dd>
+            </div>
+            <div>
+              <dt>Blocker</dt>
+              <dd id="blocker-A2">not_run</dd>
+            </div>
+          </dl>
+          <div class="observations">
+            <label for="upobs-A2">UP observed</label>
+            <select id="upobs-A2">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label for="uvobs-A2">UV observed</label>
+            <select id="uvobs-A2">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label class="check">
+              <input id="cancel-A2" type="checkbox" />
+              I cancelled or declined this prompt
+            </label>
+            <label for="provider-A2">Provider</label>
+            <select id="provider-A2">
+              <option value="">Not recorded</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <label for="transport-A2">Transport</label>
+            <select id="transport-A2">
+              <option value="">Not recorded</option>
+              <option value="platform">Platform</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="usb">USB</option>
+              <option value="nfc">NFC</option>
+              <option value="ble">BLE</option>
+              <option value="internal">Internal</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </article>
+
+        <article class="step" data-cell="A3">
+          <h3>A3. Authenticate C1 with salt B</h3>
+          <button id="step-a3" type="button" disabled>
+            Authenticate C1 with salt B
+          </button>
+          <dl class="result">
+            <div>
+              <dt>Status</dt>
+              <dd id="status-A3" data-status="untested">untested</dd>
+            </div>
+            <div>
+              <dt>Error</dt>
+              <dd id="error-A3">none</dd>
+            </div>
+            <div>
+              <dt>Result present</dt>
+              <dd id="result-A3">not recorded</dd>
+            </div>
+            <div>
+              <dt>Length</dt>
+              <dd id="length-A3">not recorded</dd>
+            </div>
+            <div>
+              <dt>UP flag</dt>
+              <dd id="upflag-A3">not inspected</dd>
+            </div>
+            <div>
+              <dt>UV flag</dt>
+              <dd id="uvflag-A3">not inspected</dd>
+            </div>
+            <div>
+              <dt>BE flag</dt>
+              <dd id="beflag-A3">not inspected</dd>
+            </div>
+            <div>
+              <dt>BS flag</dt>
+              <dd id="bsflag-A3">not inspected</dd>
+            </div>
+            <div>
+              <dt>Blocker</dt>
+              <dd id="blocker-A3">not_run</dd>
+            </div>
+          </dl>
+          <div class="observations">
+            <label for="upobs-A3">UP observed</label>
+            <select id="upobs-A3">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label for="uvobs-A3">UV observed</label>
+            <select id="uvobs-A3">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label class="check">
+              <input id="cancel-A3" type="checkbox" />
+              I cancelled or declined this prompt
+            </label>
+            <label for="provider-A3">Provider</label>
+            <select id="provider-A3">
+              <option value="">Not recorded</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <label for="transport-A3">Transport</label>
+            <select id="transport-A3">
+              <option value="">Not recorded</option>
+              <option value="platform">Platform</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="usb">USB</option>
+              <option value="nfc">NFC</option>
+              <option value="ble">BLE</option>
+              <option value="internal">Internal</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </article>
+
+        <article class="step" data-cell="R2">
+          <h3>R2. Register C2</h3>
+          <button id="step-r2" type="button" disabled>Register C2</button>
+          <dl class="result">
+            <div>
+              <dt>Status</dt>
+              <dd id="status-R2" data-status="untested">untested</dd>
+            </div>
+            <div>
+              <dt>Error</dt>
+              <dd id="error-R2">none</dd>
+            </div>
+            <div>
+              <dt><code>prf.enabled</code></dt>
+              <dd id="enabled-R2">not recorded</dd>
+            </div>
+            <div>
+              <dt>Result</dt>
+              <dd id="result-R2">not applicable</dd>
+            </div>
+            <div>
+              <dt>UP flag</dt>
+              <dd id="upflag-R2">not inspected</dd>
+            </div>
+            <div>
+              <dt>UV flag</dt>
+              <dd id="uvflag-R2">not inspected</dd>
+            </div>
+            <div>
+              <dt>BE flag</dt>
+              <dd id="beflag-R2">not inspected</dd>
+            </div>
+            <div>
+              <dt>BS flag</dt>
+              <dd id="bsflag-R2">not inspected</dd>
+            </div>
+            <div>
+              <dt>Blocker</dt>
+              <dd id="blocker-R2">not_run</dd>
+            </div>
+          </dl>
+          <div class="observations">
+            <label for="upobs-R2">UP observed</label>
+            <select id="upobs-R2">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label for="uvobs-R2">UV observed</label>
+            <select id="uvobs-R2">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label class="check">
+              <input id="cancel-R2" type="checkbox" />
+              I cancelled or declined this prompt
+            </label>
+            <label for="provider-R2">Provider</label>
+            <select id="provider-R2">
+              <option value="">Not recorded</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <label for="transport-R2">Transport</label>
+            <select id="transport-R2">
+              <option value="">Not recorded</option>
+              <option value="platform">Platform</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="usb">USB</option>
+              <option value="nfc">NFC</option>
+              <option value="ble">BLE</option>
+              <option value="internal">Internal</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </article>
+
+        <article class="step" data-cell="A4">
+          <h3>A4. Authenticate C2 with salt A</h3>
+          <button id="step-a4" type="button" disabled>
+            Authenticate C2 with salt A
+          </button>
+          <dl class="result">
+            <div>
+              <dt>Status</dt>
+              <dd id="status-A4" data-status="untested">untested</dd>
+            </div>
+            <div>
+              <dt>Error</dt>
+              <dd id="error-A4">none</dd>
+            </div>
+            <div>
+              <dt>Result present</dt>
+              <dd id="result-A4">not recorded</dd>
+            </div>
+            <div>
+              <dt>Length</dt>
+              <dd id="length-A4">not recorded</dd>
+            </div>
+            <div>
+              <dt>UP flag</dt>
+              <dd id="upflag-A4">not inspected</dd>
+            </div>
+            <div>
+              <dt>UV flag</dt>
+              <dd id="uvflag-A4">not inspected</dd>
+            </div>
+            <div>
+              <dt>BE flag</dt>
+              <dd id="beflag-A4">not inspected</dd>
+            </div>
+            <div>
+              <dt>BS flag</dt>
+              <dd id="bsflag-A4">not inspected</dd>
+            </div>
+            <div>
+              <dt>Blocker</dt>
+              <dd id="blocker-A4">not_run</dd>
+            </div>
+          </dl>
+          <div class="observations">
+            <label for="upobs-A4">UP observed</label>
+            <select id="upobs-A4">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label for="uvobs-A4">UV observed</label>
+            <select id="uvobs-A4">
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="not_observed">Not observed</option>
+            </select>
+            <label class="check">
+              <input id="cancel-A4" type="checkbox" />
+              I cancelled or declined this prompt
+            </label>
+            <label for="provider-A4">Provider</label>
+            <select id="provider-A4">
+              <option value="">Not recorded</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <label for="transport-A4">Transport</label>
+            <select id="transport-A4">
+              <option value="">Not recorded</option>
+              <option value="platform">Platform</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="usb">USB</option>
+              <option value="nfc">NFC</option>
+              <option value="ble">BLE</option>
+              <option value="internal">Internal</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </article>
+      </section>
+
+      <section aria-labelledby="comparisons-heading">
+        <h2 id="comparisons-heading">5. In-memory comparisons</h2>
+        <p>
+          Comparisons happen in memory. Only the boolean outcome is shown and
+          exported. Do not copy, hash, or save a PRF result.
+        </p>
+        <dl class="facts">
+          <div>
+            <dt>Same credential, same salt</dt>
+            <dd id="cmp-same-input" data-comparison="untested">untested</dd>
+          </div>
+          <div>
+            <dt>Same credential, different salt</dt>
+            <dd id="cmp-different-input" data-comparison="untested">
+              untested
+            </dd>
+          </div>
+          <div>
+            <dt>Different credential, same salt</dt>
+            <dd id="cmp-different-credential" data-comparison="untested">
+              untested
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="cleanup-heading">
+        <h2 id="cleanup-heading">6. Cleanup</h2>
+        <p>
+          Delete only the two disposable credentials by the aliases below.
+          Verify that neither appears in the chooser. Do not delete unrelated
+          passkeys, clear a keychain, or remove a browser profile.
+        </p>
+        <dl class="facts">
+          <div>
+            <dt>C1 alias</dt>
+            <dd id="alias-c1">not created</dd>
+          </div>
+          <div>
+            <dt>C2 alias</dt>
+            <dd id="alias-c2">not created</dd>
+          </div>
+        </dl>
+        <div class="observations">
+          <label class="check">
+            <input id="cleanup-c1" type="checkbox" />
+            C1 deleted in the provider UI
+          </label>
+          <label class="check">
+            <input id="cleanup-c2" type="checkbox" />
+            C2 deleted in the provider UI
+          </label>
+          <label class="check">
+            <input id="cleanup-chooser" type="checkbox" />
+            Neither disposable credential appears in the chooser
+          </label>
+          <label for="cleanup-status">Cleanup status</label>
+          <select id="cleanup-status">
+            <option value="pending">Pending</option>
+            <option value="complete">Complete</option>
+            <option value="blocked">Blocked</option>
+          </select>
+          <label for="cleanup-blocker">Cleanup blocker</label>
+          <select id="cleanup-blocker">
+            <option value="">None</option>
+            <option value="cleanup_blocked">Cleanup blocked</option>
+            <option value="provider_missing">
+              Provider action unavailable
+            </option>
+          </select>
+        </div>
+        <div class="actions">
+          <button id="cleanup-record" type="button">Record cleanup</button>
+        </div>
+        <p id="cleanup-message" class="note" role="status"></p>
+      </section>
+
+      <section aria-labelledby="export-heading">
+        <h2 id="export-heading">7. Safe export</h2>
+        <p>
+          The export contains booleans, status enums, exact version and provider
+          labels, and a pending recommendation. It never contains PRF bytes,
+          hashes, credential IDs, challenges, signatures, or credential
+          responses.
+        </p>
+        <div class="actions">
+          <button id="export" type="button" disabled>Download safe JSON</button>
+          <button id="clear" type="button" disabled>
+            Clear in-memory secrets
+          </button>
+        </div>
+        <p id="export-status" class="blocker" role="status"></p>
+        <p id="clear-status" class="note" role="status"></p>
+      </section>
+    </main>
+    <script type="module" src="./probe.js"></script>
+  </body>
+</html>

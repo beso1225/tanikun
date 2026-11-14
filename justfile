@@ -124,6 +124,18 @@ test-sync: _sync-artifacts
 test-session-proof: _sync-artifacts
     node --test --test-concurrency=1 --test-timeout=240000 tests/integration/session-sync-packaged.test.mjs tests/integration/webauthn-packaged.test.mjs tests/integration/session-account-journey.test.mjs tests/integration/session-credential-journey.test.mjs tests/integration/session-replica-proof.test.mjs tests/integration/session-account-proof.test.mjs tests/integration/session-auth-faults.test.mjs tests/integration/session-response-loss.test.mjs tests/integration/session-failure-evidence.test.mjs
 
+# Serve the isolated local PRF physical probe on https://localhost:4300.
+# It serves only the probe page and never creates a credential until a human
+# clicks a step. Run inside `nix develop`.
+prf-probe:
+    node tools/prf-probe/server.mjs
+
+# Verify the isolated PRF probe with synthetic stubs, without a real passkey.
+# Needs port 4300 and `nix develop` for Playwright.
+test-prf-probe:
+    node --test --test-timeout=60000 tests/integration/prf-probe-core.test.mjs tests/integration/prf-probe-server.test.mjs
+    node --test --test-timeout=120000 tests/integration/prf-probe-page.test.mjs
+
 # Verify Automerge core, change exchange, and IndexedDB through MoonBit FFI.
 test-automerge: build
     moon test --target js -p beso1225/tanikun-automerge-spike
