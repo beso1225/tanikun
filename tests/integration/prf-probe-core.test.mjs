@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import {
   BLOCKER,
@@ -15,6 +16,7 @@ import {
   classifyRegistration,
   compareBytes,
   compareOutcome,
+  copyBufferSource,
   createRunState,
   isSafeLabel,
   isSafeVersion,
@@ -238,6 +240,53 @@ test("byte comparison and zeroization do not retain values", () => {
   assert.equal(compareOutcome(left, null), COMPARISON.UNTESTED);
   zeroize(left);
   assert.deepEqual(Array.from(left), [0, 0, 0]);
+});
+
+test("foreign-realm buffers are copied at their real length and zeroized", () => {
+  for (const expression of [
+    "new Uint8Array(32).fill(7).buffer",
+    "new Uint8Array(new Uint8Array(40).fill(7).buffer, 4, 32)",
+    "new DataView(new Uint8Array(40).fill(7).buffer, 4, 32)",
+  ]) {
+    const source = runInNewContext(expression);
+    const result = copyBufferSource(source);
+    assert.equal(result.present, true);
+    assert.equal(result.length, 32);
+    assert.deepEqual(result.bytes, new Uint8Array(32).fill(7));
+    const original = ArrayBuffer.isView(source)
+      ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+      : new Uint8Array(source);
+    assert.deepEqual(original, new Uint8Array(32));
+    result.bytes.fill(9);
+    zeroize(result.bytes);
+    assert.deepEqual(result.bytes, new Uint8Array(32));
+    original.fill(3);
+    zeroize(source);
+    assert.deepEqual(original, new Uint8Array(32));
+  }
+});
+
+test("unknown PRF representations are distinct from an empty buffer", () => {
+  for (const source of [
+    "not-a-buffer",
+    {},
+    { byteLength: 32 },
+    {
+      [Symbol.toStringTag]: "ArrayBuffer",
+    },
+  ]) {
+    assert.deepEqual(copyBufferSource(source), {
+      present: true,
+      length: null,
+      bytes: null,
+    });
+  }
+  assert.equal(copyBufferSource(new ArrayBuffer(0)).length, 0);
+  assert.equal(
+    classifyAssertion({ ok: true, resultPresent: true, resultLength: null })
+      .blocker,
+    BLOCKER.PRF_RESULT_TYPE,
+  );
 });
 
 test("authenticator flags are read without retaining the buffer", () => {

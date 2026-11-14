@@ -67,6 +67,7 @@ export const BLOCKER = Object.freeze({
   PRF_ENABLED_WITHOUT_RESULT: "prf_enabled_without_result",
   PRF_ENABLED_INCONSISTENT: "prf_enabled_inconsistent",
   PRF_RESULT_LENGTH: "prf_result_length",
+  PRF_RESULT_TYPE: "prf_result_type",
   CLIENT_CAPABILITY_FALSE: "client_capability_false",
   CLIENT_CAPABILITY_CONFLICT: "client_capability_conflict",
   FLAGS_NOT_INSPECTED: "flags_not_inspected",
@@ -249,7 +250,13 @@ export function classifyRegistration(result) {
   }
 
   if (cell.resultPresent === true && cell.resultLength !== 32) {
-    return { ...cell, blocker: BLOCKER.PRF_RESULT_LENGTH };
+    return {
+      ...cell,
+      blocker:
+        cell.resultLength === null
+          ? BLOCKER.PRF_RESULT_TYPE
+          : BLOCKER.PRF_RESULT_LENGTH,
+    };
   }
   if (cell.resultPresent === true && cell.prfEnabled !== true) {
     return { ...cell, blocker: BLOCKER.PRF_ENABLED_INCONSISTENT };
@@ -329,7 +336,13 @@ export function classifyAssertion(result) {
   }
 
   if (cell.resultLength !== 32) {
-    return { ...cell, blocker: BLOCKER.PRF_RESULT_LENGTH };
+    return {
+      ...cell,
+      blocker:
+        cell.resultLength === null
+          ? BLOCKER.PRF_RESULT_TYPE
+          : BLOCKER.PRF_RESULT_LENGTH,
+    };
   }
   if (prfEnabledAtRegistration === false) {
     return { ...cell, blocker: BLOCKER.PRF_ENABLED_INCONSISTENT };
@@ -356,13 +369,35 @@ export function classifyAssertion(result) {
   return { ...cell, status: STATUS.SUPPORTED, blocker: BLOCKER.NONE };
 }
 
-export function readAuthenticatorFlags(data) {
-  let bytes = null;
-  if (data instanceof ArrayBuffer) {
-    bytes = new Uint8Array(data);
-  } else if (ArrayBuffer.isView(data)) {
-    bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+// The intrinsic getter checks ArrayBuffer's internal brand across realms.
+// Extension-provided buffers need not share the page's constructor identity.
+const arrayBufferByteLength = Object.getOwnPropertyDescriptor(
+  ArrayBuffer.prototype,
+  "byteLength",
+).get;
+
+function byteView(data) {
+  try {
+    if (ArrayBuffer.isView(data)) {
+      return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    }
+    const length = arrayBufferByteLength.call(data);
+    return new Uint8Array(data, 0, length);
+  } catch {
+    return null;
   }
+}
+
+export function copyBufferSource(source) {
+  const view = byteView(source);
+  if (!view) return { present: true, length: null, bytes: null };
+  const copy = view.slice();
+  view.fill(0);
+  return { present: true, length: copy.byteLength, bytes: copy };
+}
+
+export function readAuthenticatorFlags(data) {
+  const bytes = byteView(data);
   if (!bytes || bytes.byteLength < 37) {
     return { up: null, uv: null, be: null, bs: null };
   }
@@ -394,14 +429,7 @@ export function compareOutcome(left, right) {
 }
 
 export function zeroize(data) {
-  if (!data) return;
-  if (data instanceof ArrayBuffer) {
-    new Uint8Array(data).fill(0);
-    return;
-  }
-  if (ArrayBuffer.isView(data)) {
-    data.fill(0);
-  }
+  byteView(data)?.fill(0);
 }
 
 function isCancelError(name) {
