@@ -55,20 +55,29 @@ async function installFakeCommands(root, { buildWebStatus = 0 } = {}) {
   return { bin, log };
 }
 
-function runSyncRecipe(just, bin, log) {
+function runRecipe(just, bin, log, recipe, extraEnv = {}) {
   const env = {
     ...process.env,
     PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,
     JUST_CALL_LOG: log,
+    ...extraEnv,
   };
-  delete env.TANIKUN_WEB_DIST;
-  delete env.TANIKUN_API_DIST;
-  return spawnSync(just, ["test-sync"], {
+  if (!("TANIKUN_WEB_DIST" in extraEnv)) delete env.TANIKUN_WEB_DIST;
+  if (!("TANIKUN_API_DIST" in extraEnv)) delete env.TANIKUN_API_DIST;
+  return spawnSync(just, [recipe], {
     cwd: repositoryRoot,
     env,
     encoding: "utf8",
     timeout: 20_000,
   });
+}
+
+async function calls(log) {
+  try {
+    return (await readFile(log, "utf8")).trim().split("\n");
+  } catch {
+    return [];
+  }
 }
 
 test(
@@ -82,15 +91,14 @@ test(
       buildWebStatus: 42,
     });
 
-    const result = runSyncRecipe(just, bin, log);
+    const result = runRecipe(just, bin, log, "test-sync");
     assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    const calls = (await readFile(log, "utf8")).trim().split("\n");
-    assert.deepEqual(calls, ["just build-web"]);
+    assert.deepEqual(await calls(log), ["just build-web"]);
   },
 );
 
 test(
-  "test-sync builds both artifacts before running the node tests when builds succeed",
+  "test-sync builds both artifacts before running the Phase 4 dev-bearer tests",
   { timeout: 30_000 },
   async (t) => {
     const root = await mkdtemp(join(tmpdir(), "tanikun-justfile-"));
@@ -98,20 +106,96 @@ test(
     const just = await justBinary();
     const { bin, log } = await installFakeCommands(root);
 
-    const result = runSyncRecipe(just, bin, log);
+    const result = runRecipe(just, bin, log, "test-sync");
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    const calls = (await readFile(log, "utf8")).trim().split("\n");
-    assert.deepEqual(calls.slice(0, 2), ["just build-web", "just build"]);
-    assert.match(calls[2], /^node --test /);
-    assert.match(calls[2], /sync-harness\.test\.mjs/);
-    assert.match(calls[2], /sync-harness-lifecycle\.test\.mjs/);
-    assert.match(calls[2], /packaged-api\.test\.mjs/);
-    assert.match(calls[2], /justfile\.test\.mjs/);
-    assert.match(calls[2], /sync-api-faults\.test\.mjs/);
-    assert.match(calls[2], /sync-journey\.test\.mjs/);
-    assert.match(calls[2], /session-credential-journey\.test\.mjs/);
-    assert.match(calls[2], /sync-convergence\.test\.mjs/);
-    assert.match(calls[2], /sync-browser-faults\.test\.mjs/);
-    assert.equal(calls.length, 3);
+    const observed = await calls(log);
+    assert.deepEqual(observed.slice(0, 2), ["just build-web", "just build"]);
+    assert.match(observed[2], /^node --test /);
+    for (const file of [
+      "sync-harness.test.mjs",
+      "sync-harness-lifecycle.test.mjs",
+      "packaged-api.test.mjs",
+      "justfile.test.mjs",
+      "sync-api-faults.test.mjs",
+      "sync-journey.test.mjs",
+      "sync-convergence.test.mjs",
+      "sync-browser-faults.test.mjs",
+    ])
+      assert.match(observed[2], new RegExp(file.replaceAll(".", "\\.")));
+    assert.doesNotMatch(observed[2], /session-account-journey/);
+    assert.equal(observed.length, 3);
+  },
+);
+
+test(
+  "test-session-proof builds both artifacts then runs the bounded session suite",
+  { timeout: 30_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "tanikun-justfile-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const just = await justBinary();
+    const { bin, log } = await installFakeCommands(root);
+
+    const result = runRecipe(just, bin, log, "test-session-proof");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = await calls(log);
+    assert.deepEqual(observed.slice(0, 2), ["just build-web", "just build"]);
+    assert.match(observed[2], /^node --test /);
+    for (const file of [
+      "session-sync-packaged.test.mjs",
+      "webauthn-packaged.test.mjs",
+      "session-account-journey.test.mjs",
+      "session-credential-journey.test.mjs",
+      "session-replica-proof.test.mjs",
+      "session-account-proof.test.mjs",
+      "session-auth-faults.test.mjs",
+      "session-response-loss.test.mjs",
+      "session-failure-evidence.test.mjs",
+    ])
+      assert.match(observed[2], new RegExp(file.replaceAll(".", "\\.")));
+    assert.doesNotMatch(observed[2], /sync-convergence\.test\.mjs/);
+    assert.equal(observed.length, 3);
+  },
+);
+
+test(
+  "both real-session recipes reuse packaged artifacts without a source build",
+  { timeout: 30_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "tanikun-justfile-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const just = await justBinary();
+    const { bin, log } = await installFakeCommands(root);
+    const env = {
+      TANIKUN_WEB_DIST: "/nix/store/web",
+      TANIKUN_API_DIST: "/nix/store/api",
+    };
+
+    for (const recipe of ["test-sync", "test-session-proof"]) {
+      await rm(log, { force: true });
+      const result = runRecipe(just, bin, log, recipe, env);
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      const observed = await calls(log);
+      assert.equal(observed.length, 1);
+      assert.match(observed[0], /^node --test /);
+    }
+  },
+);
+
+test(
+  "one packaged root is rejected before a build or test",
+  { timeout: 30_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "tanikun-justfile-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const just = await justBinary();
+    const { bin, log } = await installFakeCommands(root);
+
+    const result = runRecipe(just, bin, log, "test-session-proof", {
+      TANIKUN_WEB_DIST: "/nix/store/web",
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(await calls(log), []);
+    assert.match(result.stderr, /must be set together/u);
   },
 );

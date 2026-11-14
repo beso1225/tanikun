@@ -36,6 +36,11 @@ discovery, snapshot compaction, or a production deployment.
   [Phase 4 results](docs/PHASE_4_RESULTS.md) record the baseline, test counts,
   and closeout gate. The milestone closeout is a separate administrative gate.
   The feature remains local-development only.
+- Phase 5: local passkey sessions and account isolation are implemented. The
+  contract is [docs/PHASE_5.md](docs/PHASE_5.md), and the bounded real-session
+  proof is [docs/PHASE_5_SESSION_PROOF.md](docs/PHASE_5_SESSION_PROOF.md).
+  Physical providers, screen readers, public deployment, and the Phase 5
+  closeout remain open.
 
 ## Stack
 
@@ -79,7 +84,9 @@ nix flake check path:.  # sandboxed checks, including pure domain tests
 `just test` needs the MoonBit toolchain and `pnpm install --frozen-lockfile`
 for the Automerge document tests. Web tooling and browser, Worker, and D1 tests
 also need the installed packages. The `just` file defines `test-css`,
-`test-browser`, `test-sync`, `test-worker`, `test-automerge`, and `test-d1`.
+`test-browser`, `test-sync` for the Phase 4 dev-bearer suite, `test-session-proof`
+for the Phase 5 real-session proof, `test-worker`, `test-automerge`, and
+`test-d1`.
 
 Mutation testing is optional and is not a CI gate:
 
@@ -100,6 +107,8 @@ See [docs/MUTATION.md](docs/MUTATION.md) for the baseline and accepted mutants.
 - [Phase 2 results](docs/PHASE_2_RESULTS.md)
 - [Phase 3 results](docs/PHASE_3_RESULTS.md)
 - [Phase 4 results](docs/PHASE_4_RESULTS.md)
+- [Phase 5 contract](docs/PHASE_5.md)
+- [Phase 5 real-session proof](docs/PHASE_5_SESSION_PROOF.md)
 - [Mutation testing](docs/MUTATION.md)
 - [Glossary](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)

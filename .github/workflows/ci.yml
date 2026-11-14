@@ -107,7 +107,7 @@ jobs:
           nix build path:.#web --out-link result-web
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" \
             just test-browser-built
-      - name: Exercise the real sync harness with packaged web and Worker
+      - name: Exercise the Phase 4 dev-bearer sync harness with packaged web and Worker
         timeout-minutes: 20
         run: |
           nix build path:.#web --out-link result-web
@@ -117,11 +117,24 @@ jobs:
             TANIKUN_WEB_DIST="$PWD/result-web" \
               TANIKUN_API_DIST="$PWD/result-api" just test-sync
           SCRIPT
+      - name: Prove the Phase 5 passkey-session path with packaged web and Worker
+        timeout-minutes: 20
+        run: |
+          nix build path:.#web --out-link result-web
+          nix build path:.#api --out-link result-api
+          nix develop path:. -c bash -eu <<'SCRIPT'
+            pnpm install --frozen-lockfile
+            TANIKUN_WEB_DIST="$PWD/result-web" \
+              TANIKUN_API_DIST="$PWD/result-api" just test-session-proof
+          SCRIPT
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: sync-harness-evidence
-          path: .cache/verify/sync
+          # Screenshots can contain planner text; keep them local.
+          path: |
+            .cache/verify/sync/**/*.log
+            .cache/verify/sync/**/*trace.zip
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 7

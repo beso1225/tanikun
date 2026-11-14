@@ -35,6 +35,11 @@ Worker と D1 を使った HTTP 差分同期を追加し、ローカル開発用
   実装しました。テスト件数とマイルストーンを終了する条件は
   [docs/PHASE_4_RESULTS.md](docs/PHASE_4_RESULTS.md) にあります。機能は
   ローカル開発専用です。
+- Phase 5: ローカルのパスキーセッションとアカウント分離を実装しています。
+  契約は [docs/PHASE_5.md](docs/PHASE_5.md)、範囲を限定した実セッションの
+  証跡は [docs/PHASE_5_SESSION_PROOF.md](docs/PHASE_5_SESSION_PROOF.md) です。
+  物理デバイス、スクリーンリーダー、公開デプロイ、Phase 5 の closeout は
+  未完了です。
 
 ## 構成
 
@@ -78,8 +83,9 @@ nix flake check path:.  # pure domain を含む sandbox チェック
 `just test` には MoonBit のツールチェーンと、Automerge の文書テストに使うパッケージが
 必要です。`pnpm install --frozen-lockfile` でインストールしてください。
 Web のツール、ブラウザ、Worker、D1 のテストにもこれらのパッケージが必要です。
-`just` には `test-css`、`test-browser`、`test-sync`、`test-worker`、
-`test-automerge`、`test-d1` もあります。
+`just` には `test-css`、`test-browser`、Phase 4 の dev-bearer 向け
+`test-sync`、Phase 5 の実セッション証跡向け `test-session-proof`、
+`test-worker`、`test-automerge`、`test-d1` もあります。
 
 Mutation testing は任意で、CI の必須チェックではありません。
 
@@ -100,6 +106,8 @@ baseline と accepted mutant は [docs/MUTATION.md](docs/MUTATION.md) にあり�
 - [Phase 2 の結果](docs/PHASE_2_RESULTS.md)
 - [Phase 3 の結果](docs/PHASE_3_RESULTS.md)
 - [Phase 4 の結果](docs/PHASE_4_RESULTS.md)
+- [Phase 5 の契約](docs/PHASE_5.md)
+- [Phase 5 の実セッション証跡](docs/PHASE_5_SESSION_PROOF.md)
 - [Mutation testing](docs/MUTATION.md)
 - [用語集](GLOSSARY.md)
 - [Architecture decision records](docs/adr/README.md)

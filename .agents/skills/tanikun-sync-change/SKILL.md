@@ -32,7 +32,7 @@ persistence, not sync.
 | Outbox and seen     | `apps/web/public/sync-store.js`                                                                | `tests/integration/sync-coordinator.test.mjs`                                           |
 | Metadata and commit | `apps/web/public/sync-metadata.js`, `sync-coordinator.js`                                      | `tests/integration/sync-coordinator.test.mjs`, `tests/integration/persistence.test.mjs` |
 | Status shell        | `apps/web/public/sync-shell.js`                                                                | `tests/integration/browser-sync-status.test.mjs`                                        |
-| Real convergence    | `tests/integration/sync-harness.mjs` and the sync fault suites                                 | `just test-sync`                                                                        |
+| Real convergence    | `tests/integration/sync-harness.mjs` and the sync fault suites                                 | `just test-sync` (Phase 4) and `just test-session-proof` (Phase 5)                      |
 
 ## Keep these invariants
 
@@ -138,13 +138,15 @@ Run commands inside `nix develop`. Install dependencies once with
 | D1, repository, Worker HTTP                   | `just test-d1`                                                                                                                             | Real Workers runtime and local D1, including auth, CORS, limits, ownership                       |
 | Worker health or bridge only                  | `just test-worker`                                                                                                                         | One health case. It does not prove sync auth or D1                                               |
 | Static page status                            | `just test-browser`                                                                                                                        | Built page with a fake API. It does not prove real convergence                                   |
-| Real Worker, D1, and two browsers             | `just test-sync`                                                                                                                           | Convergence, faults, and the session account journeys. Read the run output for current totals.   |
+| Real Worker, D1, and two browsers             | `just test-sync`                                                                                                                           | Phase 4 dev-bearer convergence and faults. Read the run output for current totals.               |
+| Real session proof                            | `just test-session-proof`                                                                                                                  | Phase 5 session replicas, ownership, CSRF/Origin, replay, expiry, evidence, and teardown         |
 | Session auth and account switch               | `node --test tests/integration/session-account-journey.test.mjs`                                                                           | Real Worker, D1, loopback TLS, virtual authenticator, copy consent, switch, expiry, and multitab |
 | Nix checks                                    | `nix flake check path:. -L`                                                                                                                | Nix checks and packaged artifacts. It does not run the real sync harness                         |
 
-`just test-sync` has two modes. Leave both `TANIKUN_WEB_DIST` and
-`TANIKUN_API_DIST` unset to build from source. Set both to the roots of the Nix
-outputs to test packaged artifacts. The session-account journey starts its own
+`just test-sync` and `just test-session-proof` share the same artifact mode.
+Leave both `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST` unset to build from source.
+Set both to the roots of the Nix outputs to test packaged artifacts. Setting
+only one is an error. The session proof starts its own
 `SyncHarness({ mode: "session" })`; it does not reuse a source or packaged API
 fallback:
 
@@ -152,7 +154,7 @@ fallback:
 nix build path:.#web --out-link result-web
 nix build path:.#api --out-link result-api
 TANIKUN_WEB_DIST="$PWD/result-web" \
-  TANIKUN_API_DIST="$PWD/result-api" just test-sync
+  TANIKUN_API_DIST="$PWD/result-api" just test-session-proof
 ```
 
 Setting only one variable is an error. Never point `TANIKUN_API_DIST` at the
@@ -177,8 +179,14 @@ public HTTP exception, change the RP ID, or reuse the user's browser profile.
 The harness uses Chromium `ignoreHTTPSErrors` only inside its disposable
 context, never an OS trust-store change. A virtual authenticator supplies the
 resident ES256 passkey. This is synthetic browser automation, not a physical
-provider proof. #185 owns the broader Linux TLS, cookie-jar, and virtual-auth CI
-matrix.
+provider proof.
+
+`just test-session-proof` is the bounded #185 proof. It covers two Alice
+replicas over session HTTP, Bob's foreign read and write denial, account-switch
+outbox isolation, cookie flags, CSRF and Origin rejection, replayed and invalid
+challenges, logout revocation, D1 expiry, response loss, sanitized evidence, and
+owned teardown. It is separate from the Phase 4 dev-bearer `just test-sync`
+suite. See [PHASE_5_SESSION_PROOF.md](../../../docs/PHASE_5_SESSION_PROOF.md).
 
 If 4300 is occupied, the harness fails with a clear message and leaves the
 listener alone. Stop and coordinate. Do not kill a process by name, reuse the
@@ -208,6 +216,7 @@ a public report.
   lifecycle, fault recipes, and evidence rules.
 
 For the current evidence and known limits, read
-[Phase 4 results](../../../docs/PHASE_4_RESULTS.md). For the historical local
-persistence boundary, read
+[Phase 4 results](../../../docs/PHASE_4_RESULTS.md) and
+[Phase 5 real-session proof](../../../docs/PHASE_5_SESSION_PROOF.md). For the
+historical local persistence boundary, read
 [ADR-0012](../../../docs/adr/0012-automerge-planner-document.md).

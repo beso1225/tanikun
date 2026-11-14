@@ -180,6 +180,12 @@ API URL from Wrangler readiness and the selected Alice or Bob dev identity are
 injected before page modules load through
 `globalThis["__TANIKUN_SYNC_CONFIG__"]`.
 
+The Phase 5 proof uses the same harness in `session` mode with the bounded
+`nix develop -c just test-session-proof` recipe. It serves the app at
+`https://localhost:4300` with a disposable loopback certificate, proxies `/api`
+to the ephemeral Wrangler origin, and drives Chromium virtual authenticators.
+The Phase 4 dev-bearer suite remains `just test-sync`.
+
 The page origin is fixed at `http://127.0.0.1:4300` because ADR-0014 allows
 exactly that Origin. The harness fails with a clear message when the port is
 occupied and never reuses or stops the existing listener. The API port is never
@@ -205,8 +211,10 @@ The release test checks the packaged config and a writable copy of the artifact
 passes `wrangler deploy --dry-run`; CI also starts the real Worker and D1 from
 the same packaged config.
 
-`just test-sync` includes three convergence and fault suites alongside the
-harness self-tests and the single-document journey.
+`just test-sync` includes the Phase 4 convergence and fault suites alongside the
+harness self-tests and the single-document journey. The session-only suites are
+in `just test-session-proof` and are listed in
+[PHASE_5_SESSION_PROOF.md](PHASE_5_SESSION_PROOF.md).
 
 - `sync-api-faults.test.mjs` starts the harness with `serveWeb: false` and
   exercises the real Worker and D1 without the fixed browser origin. It covers
@@ -253,17 +261,21 @@ rebuilt from an allowlist: it keeps the action timeline and sanitized network
 method/status/timing metadata, but no request or response headers, cookies,
 bodies, document identifiers, init-script arguments, console text, DOM
 snapshots, screencast frames, or the `trace.stacks` source-stack entry. Action
-events can retain redacted, bounded error messages and error stack strings;
-the archive is not stack-free. This tradeoff intentionally
-drops Playwright's DOM time travel and visual network detail; the failure log
-and screenshot remain the human-readable evidence. The rebuild is bounded by
+events retain only a fixed error marker, without error messages, assertion
+diffs, or error stacks. Journey failure logs use the same marker and error
+counts rather than raw browser error text. Successful group ledgers also keep
+only per-page counts, without fault text or reasons. This tradeoff intentionally
+drops Playwright's DOM time travel and visual network detail; the action
+timeline, failure marker, and local screenshot remain the evidence. The rebuild
+is bounded by
 entry size and event count. If trace sanitization fails or exceeds a bound, the
-raw trace is not retained and the failure log records the error. Page
+raw trace is not retained and the failure log records a fixed failure marker. Page
 creation, initialization, and navigation failures follow the same failure-log,
 screenshot (when a page exists), and trace path. The temporary persistence
 directory and owned process group are removed after success or failure;
 evidence is kept. Linux CI runs the same command against Nix-built artifacts
-and uploads this directory when the job fails.
+and uploads only `*.log` files and sanitized `*trace.zip` archives when the job
+fails. Screenshots stay local because their pixels can contain planner text.
 
 ## Local evidence
 
@@ -372,9 +384,14 @@ The real harness can run in `session` mode. It serves the app at
 `https://localhost:4300` with a disposable loopback certificate, proxies `/api`
 to the ephemeral Wrangler origin, and drives a Chromium virtual authenticator.
 The journeys use the real Worker, D1 migrations, cookies, CSRF, and Web Locks;
-the passkey and TLS material are synthetic test fixtures. This does not prove a
-physical authenticator, public deployment, or the Linux CI matrix owned by
-issue #185.
+the passkey and TLS material are synthetic test fixtures.
+`just test-session-proof` adds two-Alice replica convergence over session HTTP, Bob's
+foreign read and write denial, account-switch outbox isolation, replay and
+invalid challenge rejection, cookie-flag inspection, CSRF and Origin negatives,
+logout revocation, D1 expiry, response loss, sanitized evidence checks, and
+owned teardown. The proof does not establish a physical authenticator, a
+provider, a screen reader, public deployment, or Linux execution from a Darwin
+host. See [PHASE_5_SESSION_PROOF.md](PHASE_5_SESSION_PROOF.md).
 
 ### Account isolation evidence
 
@@ -384,13 +401,15 @@ The #183 implementation and its lifecycle fixes were verified on macOS arm64:
   runtime tests), plus 294 MoonBit tests.
 - `just test-d1`: 305 passed.
 - `just test-browser`: 58 browser tests and 1 allocation test passed.
-- `just test-sync` from source: 53 passed and 4 packaged-only tests skipped.
-- `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`: 57 passed,
-  including all nine session account journeys.
+- `just test-sync` from source, before the Phase 5 recipe split: 53 passed and
+  4 packaged-only tests skipped.
+- `just test-sync` with `TANIKUN_WEB_DIST` and `TANIKUN_API_DIST`, before the
+  Phase 5 recipe split: 57 passed, including all nine session account journeys.
 - `nix flake check path:. -L` on the current system: all checks passed,
   including 6 release checks. It omitted the incompatible `x86_64-linux`
-  system locally; #185 owns the Linux TLS, cookie-jar, and virtual-auth CI
-  matrix.
+  system locally. The Phase 5 Linux TLS, cookie-jar, and virtual-auth matrix is
+  the `just test-session-proof` step in CI; Darwin results are not a Linux CI
+  result.
 
 The account lifecycle regressions cover a late expiry after Alice switches to
 Bob, a late expiry after logout, a delayed active or expired status response,
@@ -404,3 +423,11 @@ reauthentication action rather than account-switch recovery.
 The session journeys use a disposable loopback certificate and a Chromium
 virtual authenticator. They do not prove a physical provider, screen-reader
 speech, public deployment, or Linux CI.
+
+### Real-session proof evidence
+
+Issue #185 adds `just test-session-proof` as a bounded single command. On macOS
+arm64 with source artifacts it ran 20 tests: 17 passed and 3 packaged-only tests
+skipped. The packaged Nix run and the exact-head Linux CI run are recorded in
+[PHASE_5_SESSION_PROOF.md](PHASE_5_SESSION_PROOF.md). The proof keeps the Phase 4
+dev-bearer suite distinguishable and does not close Phase 5 or milestone 6.

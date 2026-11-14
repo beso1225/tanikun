@@ -304,8 +304,10 @@ test(
       join(harness.evidenceDir, "sync-convergence.log"),
       "utf8",
     );
-    assert.match(runLog, /alice: expected faults: .*net::ERR_FAILED/);
-    assert.match(runLog, /bob: expected faults: .*net::ERR_FAILED/);
+    assert.deepEqual(JSON.parse(runLog), [
+      { label: "alice", pageErrorCount: 2, expectedFaultCount: 2 },
+      { label: "bob", pageErrorCount: 3, expectedFaultCount: 3 },
+    ]);
 
     const traceText = (
       await Promise.all(

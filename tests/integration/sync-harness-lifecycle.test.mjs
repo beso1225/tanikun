@@ -419,6 +419,15 @@ async function writeLeakyTrace(path) {
         params: { source: `globalThis.token = "${TRACE_TOKEN}"` },
       }),
       JSON.stringify({
+        type: "after",
+        callId: "failed@1",
+        error: {
+          message: TRACE_PAYLOAD,
+          stack: `AssertionError: ${TRACE_PAYLOAD}`,
+        },
+      }),
+      JSON.stringify({ type: "error", message: TRACE_PAYLOAD }),
+      JSON.stringify({
         type: "console",
         messageType: "error",
         text: `console ${TRACE_TOKEN}`,
@@ -541,7 +550,7 @@ test("group setup failure retains evidence for previously opened pages", async (
     const prefix = join(root, `group-setup-${label}-failure`);
     assert.match(
       await readFile(`${prefix}.log`, "utf8"),
-      /injected second-page setup failure/,
+      /Error details omitted/,
     );
     assert.ok(await pathExists(`${prefix}.png`));
     const entries = await readTraceArchiveEntries(`${prefix}-trace.zip`);
@@ -585,7 +594,7 @@ test(
       join(root, "setup-failure-failure.log"),
       "utf8",
     );
-    assert.match(failureLog, /injected page creation failure/);
+    assert.match(failureLog, /Error details omitted/);
     assert.equal(
       await pathExists(join(root, "setup-failure-failure.png")),
       false,
@@ -623,7 +632,7 @@ test(
     assert.equal(harness.activeContexts, 0);
     assert.match(
       await readFile(join(root, "navigation-failure-failure.log"), "utf8"),
-      /injected navigation failure/,
+      /Error details omitted/,
     );
     assert.ok(await pathExists(join(root, "navigation-failure-failure.png")));
     assert.ok(
@@ -656,7 +665,7 @@ test(
     assert.equal(harness.activeContexts, 0);
     assert.match(
       await readFile(join(root, "context-failure-failure.log"), "utf8"),
-      /injected context creation failure/,
+      /Error details omitted/,
     );
     assert.equal(
       await pathExists(join(root, "context-failure-failure.png")),
@@ -697,7 +706,7 @@ test(
     assert.equal(context.state.closeCount, 1);
     assert.match(
       await readFile(join(root, "init-failure-failure.log"), "utf8"),
-      /injected init script failure/,
+      /Error details omitted/,
     );
     assert.ok(await pathExists(join(root, "init-failure-failure.png")));
     assert.ok(await pathExists(join(root, "init-failure-failure-trace.zip")));
@@ -1146,4 +1155,46 @@ test("an extra console fault fails even when the expected fault occurred", () =>
       ]),
     /unexpected browser faults/,
   );
+});
+
+test("evidence redaction removes URL-safe tokens including punctuation boundaries", () => {
+  for (const token of [
+    Buffer.alloc(32, 251).toString("base64url"),
+    "_".repeat(43),
+    "-".repeat(43),
+  ]) {
+    assert.equal(redactEvidenceText(`token=${token};`).includes(token), false);
+  }
+});
+
+test("successful group evidence omits accepted fault text and reasons", async (t) => {
+  const root = await evidenceRoot(t);
+  const tempRoot = await mkdtemp(join(tmpdir(), "tanikun-sync-temp-"));
+  t.after(() => rm(tempRoot, { recursive: true, force: true }));
+  const browser = fakeBrowser({
+    newContext: () =>
+      fakeTraceContext({ newPage: async () => fakeScreenshotPage() }),
+  });
+  await installFakeChromium(t, async () => browser);
+  const harness = startedHarnessWithEvidence(root, tempRoot);
+  t.after(() => harness.close().catch(() => {}));
+  const canary = "Private planner accepted page error 197";
+  const reason = "Private planner fault reason 197";
+  await harness.runJourneyGroup(
+    "accepted-fault",
+    [{ label: "alice", identity: "alice" }],
+    async (_pages, _errors, [state]) => {
+      state.errors.push(canary);
+      state.faults.push({ kind: "pageerror", text: canary, url: null });
+      acceptBrowserFaults(state, [
+        { kind: "pageerror", text: canary, count: 1, reason },
+      ]);
+    },
+  );
+  const ledger = await readFile(join(root, "accepted-fault.log"), "utf8");
+  assert.equal(ledger.includes(canary), false);
+  assert.equal(ledger.includes(reason), false);
+  assert.deepEqual(JSON.parse(ledger), [
+    { label: "alice", pageErrorCount: 1, expectedFaultCount: 1 },
+  ]);
 });
