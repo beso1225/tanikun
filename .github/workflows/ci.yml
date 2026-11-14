@@ -107,6 +107,9 @@ jobs:
           nix build path:.#web --out-link result-web
           nix develop path:. -c env TANIKUN_WEB_DIST="$PWD/result-web" \
             just test-browser-built
+      - name: Check the isolated PRF probe with synthetic credentials
+        timeout-minutes: 5
+        run: nix develop path:. -c just test-prf-probe
       - name: Exercise the Phase 4 dev-bearer sync harness with packaged web and Worker
         timeout-minutes: 20
         run: |

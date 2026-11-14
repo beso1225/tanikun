@@ -1033,6 +1033,10 @@ synthetic inputs, records observed, failed, and untested cells separately, and
 never sends PRF output to the server. The operator can assist with a Mac and an
 iPhone, normally with 1Password; iCloud registration is also possible; a
 Chrome-managed credential is uncertain. No physical result is claimed here.
+The reconciled physical procedure, version and provider matrix, safe export,
+and decision rules are in
+[PHASE_5_PRF_DEVICE_PROTOCOL.md](PHASE_5_PRF_DEVICE_PROTOCOL.md). That page is
+preparation only until human observations and cleanup are complete.
 
 ### Client serialization
 
