@@ -261,17 +261,20 @@ rebuilt from an allowlist: it keeps the action timeline and sanitized network
 method/status/timing metadata, but no request or response headers, cookies,
 bodies, document identifiers, init-script arguments, console text, DOM
 snapshots, screencast frames, or the `trace.stacks` source-stack entry. Action
-events can retain redacted, bounded error messages and error stack strings;
-the archive is not stack-free. This tradeoff intentionally
-drops Playwright's DOM time travel and visual network detail; the failure log
-and screenshot remain the human-readable evidence. The rebuild is bounded by
+events retain only a fixed error marker, without error messages, assertion
+diffs, or error stacks. Journey failure logs use the same marker and error
+counts rather than raw browser error text. This tradeoff intentionally
+drops Playwright's DOM time travel and visual network detail; the action
+timeline, failure marker, and local screenshot remain the evidence. The rebuild
+is bounded by
 entry size and event count. If trace sanitization fails or exceeds a bound, the
-raw trace is not retained and the failure log records the error. Page
+raw trace is not retained and the failure log records a fixed failure marker. Page
 creation, initialization, and navigation failures follow the same failure-log,
 screenshot (when a page exists), and trace path. The temporary persistence
 directory and owned process group are removed after success or failure;
 evidence is kept. Linux CI runs the same command against Nix-built artifacts
-and uploads this directory when the job fails.
+and uploads only `*.log` files and sanitized `*trace.zip` archives when the job
+fails. Screenshots stay local because their pixels can contain planner text.
 
 ## Local evidence
 

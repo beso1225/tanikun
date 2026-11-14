@@ -302,7 +302,7 @@ test(
         join(harness.evidenceDir, "injected-failure-failure.log"),
         "utf8",
       ),
-      /injected journey failure/,
+      /Error details omitted/,
     );
     const trace = await readTraceArchiveEntries(
       join(harness.evidenceDir, "injected-failure-failure-trace.zip"),

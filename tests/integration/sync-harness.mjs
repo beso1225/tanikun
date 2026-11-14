@@ -92,7 +92,7 @@ export function redactEvidenceText(text) {
       /("(?:envelope|nonce|payload)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi,
       '$1"<redacted>"',
     )
-    .replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, "<redacted-binary>");
+    .replace(/[A-Za-z0-9+/_-]{40,}={0,2}/g, "<redacted-binary>");
 }
 
 function identityFor(name) {
@@ -327,17 +327,9 @@ function truncateEvidence(value, limit = 4_000) {
 }
 
 function sanitizeError(value) {
-  if (!value) return null;
-  if (typeof value === "string")
-    return { message: truncateEvidence(redactEvidenceText(value)) };
-  const message = value.message ?? value.error?.message;
-  const stack = value.stack ?? value.error?.stack;
-  const safe = {};
-  if (typeof message === "string")
-    safe.message = truncateEvidence(redactEvidenceText(message));
-  if (typeof stack === "string")
-    safe.stack = truncateEvidence(redactEvidenceText(stack));
-  return Object.keys(safe).length > 0 ? safe : null;
+  // Error messages and stacks can embed assertion actual/expected values,
+  // browser-evaluated arguments, or planner text. Keep only a fixed marker.
+  return value ? { message: "Error details omitted" } : null;
 }
 
 function safeTraceEvent(event) {
@@ -377,9 +369,7 @@ function safeTraceEvent(event) {
     case "error":
       return {
         type: "error",
-        message: truncateEvidence(
-          redactEvidenceText(event.message ?? event.error?.message ?? ""),
-        ),
+        message: "Error details omitted",
       };
     default:
       return null;
@@ -1912,11 +1902,13 @@ export class SyncHarness {
     try {
       await this.#writeEvidence(
         `${name}-failure.log`,
-        redactEvidenceText(
-          `${error?.stack ?? String(error)}\npage errors: ${JSON.stringify(errors)}\nexpected faults: ${JSON.stringify(
-            (state.faults ?? []).filter((fault) => fault.accepted),
-          )}\n`,
-        ),
+        JSON.stringify({
+          error: sanitizeError(error),
+          pageErrorCount: errors.length,
+          expectedFaultCount: (state.faults ?? []).filter(
+            (fault) => fault.accepted,
+          ).length,
+        }) + "\n",
       );
     } catch (writeError) {
       this.cleanupProblems.push(`failure log: ${writeError.message}`);
@@ -1927,20 +1919,20 @@ export class SyncHarness {
           path: join(this.evidenceDir, `${name}-failure.png`),
           fullPage: true,
         });
-      } catch (screenshotError) {
+      } catch {
         await this.#appendEvidence(
           `${name}-failure.log`,
-          redactEvidenceText(`screenshot failed: ${screenshotError.message}\n`),
+          "screenshot failed: Error details omitted\n",
         ).catch(() => {});
       }
     }
     if (state.context && state.tracingStarted) {
       try {
         await this.#stopSafeTrace(state.context, name, "failure-trace");
-      } catch (traceError) {
+      } catch {
         await this.#appendEvidence(
           `${name}-failure.log`,
-          redactEvidenceText(`trace failed: ${traceError.message}\n`),
+          "trace failed: Error details omitted\n",
         ).catch(() => {});
       }
     }

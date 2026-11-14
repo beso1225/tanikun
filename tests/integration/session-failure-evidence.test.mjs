@@ -29,6 +29,8 @@ test(
     t.after(() => harness.close());
     await harness.start();
     let forbidden = [];
+    const plannerCanary = "Private planner assertion canary 197";
+    const urlToken = Buffer.alloc(32, 251).toString("base64url");
     const name = "session-failure-evidence";
     const label = "alice";
 
@@ -46,6 +48,8 @@ test(
           );
           assert.equal(credentials.length, 1);
           forbidden = [
+            plannerCanary,
+            urlToken,
             cookieState.session.value,
             account.csrfToken,
             credentials[0].credentialId,
@@ -57,21 +61,26 @@ test(
             "X-CSRF-Token",
             "Authorization",
           ];
-          throw new Error("injected session evidence failure");
+          assert.deepEqual(
+            { planner: plannerCanary, token: urlToken },
+            { planner: "different planner", token: cookieState.session.value },
+          );
         },
       ),
-      /injected session evidence failure/u,
+      { code: "ERR_ASSERTION" },
     );
 
     const failureLog = await readFile(
       join(harness.evidenceDir, `${name}-${label}-failure.log`),
       "utf8",
     );
-    assert.match(failureLog, /injected session evidence failure/u);
+
     assert.ok(
       (await stat(join(harness.evidenceDir, `${name}-${label}-failure.png`)))
         .size > 0,
     );
+    assert.match(failureLog, /Error details omitted/u);
+    assert.doesNotMatch(failureLog, /AssertionError|Expected values/u);
     const trace = await readTraceArchiveEntries(
       join(harness.evidenceDir, `${name}-${label}-failure-trace.zip`),
     );

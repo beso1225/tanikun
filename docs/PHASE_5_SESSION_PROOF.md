@@ -110,12 +110,16 @@ confirms the account planner remains locally readable with no new writes.
 ### Evidence and cleanup
 
 `session-failure-evidence.test.mjs` fails a real session journey on purpose
-after registration. The retained failure log and sanitized trace must not
+after registration with an actual `assert.deepEqual` failure whose values
+include planner text and a URL-safe token. The retained failure log and sanitized trace must not
 contain the session token, CSRF token, credential ID, display name, or credential
 response fields. The screenshot remains a human-readable UI capture and can show
 fictional planner text and the account display name; automated absence checks
 apply to logs and sanitized traces, not screenshot pixels. The test also checks
-that the harness removes its process group and temporary storage.
+that the harness removes its process group and temporary storage. Journey
+failure logs and trace error events keep a fixed error marker instead of
+messages, actual/expected diffs, or stacks. URL-safe binary strings are also
+covered by log redaction.
 
 The new tests close their harness, then read every retained evidence file and
 every sanitized trace entry. They assert the raw session token, CSRF token,
@@ -202,3 +206,8 @@ pass again. The production file is unchanged in the delivered diff.
 
 This page does not claim Linux execution, Phase 5 completion, milestone closure,
 or physical-device support.
+
+After failure-evidence hardening on 2026-11-14, the packaged session proof
+passed 20/20 and the packaged dev-bearer suite passed 49/49. The added
+redaction regression accounts for the extra dev-bearer test. The lifecycle
+suite passed 24/24 and `just lint` passed.
