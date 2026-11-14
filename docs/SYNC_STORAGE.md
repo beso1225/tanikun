@@ -263,7 +263,8 @@ bodies, document identifiers, init-script arguments, console text, DOM
 snapshots, screencast frames, or the `trace.stacks` source-stack entry. Action
 events retain only a fixed error marker, without error messages, assertion
 diffs, or error stacks. Journey failure logs use the same marker and error
-counts rather than raw browser error text. This tradeoff intentionally
+counts rather than raw browser error text. Successful group ledgers also keep
+only per-page counts, without fault text or reasons. This tradeoff intentionally
 drops Playwright's DOM time travel and visual network detail; the action
 timeline, failure marker, and local screenshot remain the evidence. The rebuild
 is bounded by

@@ -119,7 +119,8 @@ apply to logs and sanitized traces, not screenshot pixels. The test also checks
 that the harness removes its process group and temporary storage. Journey
 failure logs and trace error events keep a fixed error marker instead of
 messages, actual/expected diffs, or stacks. URL-safe binary strings are also
-covered by log redaction.
+covered by log redaction. Successful group logs retain only per-page error and
+accepted-fault counts; neither fault text nor reasons are retained.
 
 The new tests close their harness, then read every retained evidence file and
 every sanitized trace entry. They assert the raw session token, CSRF token,
@@ -208,6 +209,6 @@ This page does not claim Linux execution, Phase 5 completion, milestone closure,
 or physical-device support.
 
 After failure-evidence hardening on 2026-11-14, the packaged session proof
-passed 20/20 and the packaged dev-bearer suite passed 49/49. The added
-redaction regression accounts for the extra dev-bearer test. The lifecycle
-suite passed 24/24 and `just lint` passed.
+passed 20/20 and the packaged dev-bearer suite passed 50/50. The added
+redaction and success-ledger regressions account for the extra dev-bearer
+tests. The lifecycle suite passed 25/25 and `just lint` passed.

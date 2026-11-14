@@ -1166,3 +1166,35 @@ test("evidence redaction removes URL-safe tokens including punctuation boundarie
     assert.equal(redactEvidenceText(`token=${token};`).includes(token), false);
   }
 });
+
+test("successful group evidence omits accepted fault text and reasons", async (t) => {
+  const root = await evidenceRoot(t);
+  const tempRoot = await mkdtemp(join(tmpdir(), "tanikun-sync-temp-"));
+  t.after(() => rm(tempRoot, { recursive: true, force: true }));
+  const browser = fakeBrowser({
+    newContext: () =>
+      fakeTraceContext({ newPage: async () => fakeScreenshotPage() }),
+  });
+  await installFakeChromium(t, async () => browser);
+  const harness = startedHarnessWithEvidence(root, tempRoot);
+  t.after(() => harness.close().catch(() => {}));
+  const canary = "Private planner accepted page error 197";
+  const reason = "Private planner fault reason 197";
+  await harness.runJourneyGroup(
+    "accepted-fault",
+    [{ label: "alice", identity: "alice" }],
+    async (_pages, _errors, [state]) => {
+      state.errors.push(canary);
+      state.faults.push({ kind: "pageerror", text: canary, url: null });
+      acceptBrowserFaults(state, [
+        { kind: "pageerror", text: canary, count: 1, reason },
+      ]);
+    },
+  );
+  const ledger = await readFile(join(root, "accepted-fault.log"), "utf8");
+  assert.equal(ledger.includes(canary), false);
+  assert.equal(ledger.includes(reason), false);
+  assert.deepEqual(JSON.parse(ledger), [
+    { label: "alice", pageErrorCount: 1, expectedFaultCount: 1 },
+  ]);
+});

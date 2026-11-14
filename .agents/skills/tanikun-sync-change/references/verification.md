@@ -200,7 +200,8 @@ method, status, and timing metadata. It omits headers, cookies, bodies, document
 identifiers, init-script arguments, console text, DOM snapshots, screencast
 frames, and the `trace.stacks` source-stack entry. Action errors contain only a fixed marker. Error
 messages, assertion diffs, and error stacks are omitted. Journey failure logs
-retain that marker and error counts, without raw browser error text.
+retain that marker and error counts, without raw browser error text. Successful
+group logs contain only per-page counts, without fault text or reasons.
 
 Do not attach a raw trace, a full Wrangler debug log, a token, a document ID, or
 a payload to a public report. Use the redacted evidence under

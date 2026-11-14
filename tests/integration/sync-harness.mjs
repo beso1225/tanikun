@@ -1798,21 +1798,15 @@ export class SyncHarness {
           throw new Error(`browser errors: ${errors.join("; ")}`);
         await this.#writeEvidence(
           `${name}.log`,
-          `${states
-            .map((state) => {
-              const accepted = (state.faults ?? [])
-                .filter((fault) => fault.accepted)
-                .map((fault) => ({
-                  kind: fault.kind,
-                  text: fault.text,
-                  reason: fault.accepted,
-                }));
-              return [
-                `${state.label}: page errors: ${JSON.stringify(state.errors)}`,
-                `${state.label}: expected faults: ${JSON.stringify(accepted)}`,
-              ].join("\n");
-            })
-            .join("\n")}\n`,
+          JSON.stringify(
+            states.map((state) => ({
+              label: state.label,
+              pageErrorCount: state.errors.length,
+              expectedFaultCount: (state.faults ?? []).filter(
+                (fault) => fault.accepted,
+              ).length,
+            })),
+          ) + "\n",
         );
         for (const state of states)
           await this.#stopSafeTrace(
