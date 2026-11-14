@@ -94,6 +94,7 @@ export const OBSERVATION = Object.freeze({
 });
 
 const ERROR_NAMES = new Set([
+  "other",
   "AbortError",
   "ConstraintError",
   "DataError",
@@ -212,8 +213,8 @@ export function createRunState() {
       differentCredential: COMPARISON.UNTESTED,
     },
     cleanup: {
-      c1Deleted: false,
-      c2Deleted: false,
+      c1AbsentConfirmed: false,
+      c2AbsentConfirmed: false,
       chooserAbsent: false,
       status: CLEANUP_STATUS.PENDING,
       blocker: null,
@@ -486,8 +487,8 @@ export function validateForExport(state) {
   if (
     state.cleanup.status === CLEANUP_STATUS.COMPLETE &&
     !(
-      state.cleanup.c1Deleted &&
-      state.cleanup.c2Deleted &&
+      state.cleanup.c1AbsentConfirmed &&
+      state.cleanup.c2AbsentConfirmed &&
       state.cleanup.chooserAbsent
     )
   ) {
@@ -600,8 +601,8 @@ export function buildExport(state, now = new Date()) {
       different_credential: state.comparisons.differentCredential,
     },
     cleanup: {
-      c1_deleted: state.cleanup.c1Deleted,
-      c2_deleted: state.cleanup.c2Deleted,
+      c1_absent_confirmed: state.cleanup.c1AbsentConfirmed,
+      c2_absent_confirmed: state.cleanup.c2AbsentConfirmed,
       chooser_absent: state.cleanup.chooserAbsent,
       status: state.cleanup.status,
       blocker: state.cleanup.blocker,

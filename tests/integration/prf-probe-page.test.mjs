@@ -365,8 +365,8 @@ test(
         different_credential: "different",
       });
       assert.deepEqual(exported.cleanup, {
-        c1_deleted: true,
-        c2_deleted: true,
+        c1_absent_confirmed: true,
+        c2_absent_confirmed: true,
         chooser_absent: true,
         status: "complete",
         blocker: null,
@@ -469,3 +469,103 @@ test(
     }
   },
 );
+
+for (const phase of ["registration", "assertion"]) {
+  test(`clearing a pending ${phase} aborts it and rejects its late result`, async (t) => {
+    const harness = await startPrfProbeServer({ log() {} });
+    t.after(() => harness.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    await page.addInitScript((pendingPhase) => {
+      const pending = {
+        calls: 0,
+        signal: null,
+        finish: null,
+        rawId: new Uint8Array(16).fill(7),
+        output: new Uint8Array(32).fill(8),
+      };
+      Object.defineProperty(navigator, "credentials", {
+        configurable: true,
+        value: {
+          create: (options) => {
+            if (pendingPhase === "assertion")
+              return Promise.resolve({
+                type: "public-key",
+                rawId: new Uint8Array(16).fill(7).buffer,
+                getClientExtensionResults: () => ({ prf: { enabled: true } }),
+                response: {
+                  getAuthenticatorData: () => new Uint8Array(37).buffer,
+                },
+              });
+            return waitForResult(options);
+          },
+          get: waitForResult,
+        },
+      });
+      function waitForResult(options) {
+        pending.calls += 1;
+        pending.signal = options.signal;
+        return new Promise((resolvePending) => {
+          pending.finish = () =>
+            resolvePending({
+              type: "public-key",
+              rawId: pending.rawId.buffer,
+              getClientExtensionResults: () => ({
+                prf: {
+                  enabled: true,
+                  results: { first: pending.output.buffer },
+                },
+              }),
+              response: {
+                getAuthenticatorData: () => new Uint8Array(37).buffer,
+              },
+            });
+        });
+      }
+      Object.defineProperty(PublicKeyCredential, "getClientCapabilities", {
+        configurable: true,
+        value: async () => ({ "extension:prf": true }),
+      });
+      globalThis.pendingProbeTest = pending;
+    }, phase);
+    await page.goto(harness.origin);
+    await page.selectOption("#tls-trust", "bypassed");
+    await page.click("#step-r1");
+    if (phase === "assertion") {
+      await page.waitForFunction(
+        () => document.querySelector("#status-R1").textContent === "supported",
+      );
+      await page.click("#step-a1");
+    }
+    await page.waitForFunction(() => globalThis.pendingProbeTest.calls === 1);
+    const pendingStep = phase === "registration" ? "#step-r1" : "#step-a1";
+    const pendingStatus =
+      phase === "registration" ? "#status-R1" : "#status-A1";
+    assert.equal(await page.locator(pendingStep).isDisabled(), true);
+    await page.click("#clear");
+    assert.equal(
+      await page.evaluate(() => globalThis.pendingProbeTest.signal?.aborted),
+      true,
+    );
+    await page.evaluate(() => globalThis.pendingProbeTest.finish());
+    await page.waitForFunction(
+      () => document.querySelector("#step-r1").disabled,
+    );
+    await page.waitForFunction(() =>
+      globalThis.pendingProbeTest.output.every((value) => value === 0),
+    );
+    assert.equal(
+      await page.evaluate(() =>
+        globalThis.pendingProbeTest.rawId.every((value) => value === 0),
+      ),
+      true,
+    );
+    assert.equal(await page.locator(pendingStatus).innerText(), "untested");
+    assert.equal(
+      await page.evaluate(() => globalThis.pendingProbeTest.calls),
+      1,
+    );
+  });
+}

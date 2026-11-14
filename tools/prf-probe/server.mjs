@@ -216,7 +216,7 @@ export async function startPrfProbeServer(options = {}) {
         if (error.code === "EADDRINUSE") {
           reject(
             new Error(
-              `${PROBE_ORIGIN} is already in use. Stop the existing listener; do not change the origin, RP ID, or port.`,
+              `${PROBE_ORIGIN} is already in use. Coordinate with its owner; do not kill or reuse it, or change the origin, RP ID, or port.`,
               { cause: error },
             ),
           );

@@ -26,6 +26,7 @@ const outputs = { a1: null, a2: null, a3: null, a4: null };
 const aliases = { c1: null, c2: null };
 let secretsCleared = false;
 let invalidated = false;
+let ceremony = null;
 
 function element(id) {
   return document.getElementById(id);
@@ -138,8 +139,8 @@ function syncStateFromDom() {
     cell.uvObserved = observationValue(`uvobs-${id}`);
     cell.cancelObserved = checked(`cancel-${id}`);
   }
-  state.cleanup.c1Deleted = checked("cleanup-c1");
-  state.cleanup.c2Deleted = checked("cleanup-c2");
+  state.cleanup.c1AbsentConfirmed = checked("cleanup-c1");
+  state.cleanup.c2AbsentConfirmed = checked("cleanup-c2");
   state.cleanup.chooserAbsent = checked("cleanup-chooser");
   state.cleanup.status =
     selectValue("cleanup-status") ?? CLEANUP_STATUS.PENDING;
@@ -276,14 +277,16 @@ function touched(id) {
 }
 
 function updateButtons() {
-  const canRun = preflightOk();
+  const canRun = preflightOk() && ceremony === null;
   setDisabled("step-r1", !canRun || touched("R1"));
   setDisabled("step-a1", !canRun || !credentials.c1 || touched("A1"));
   setDisabled("step-a2", !canRun || !outputs.a1 || touched("A2"));
   setDisabled("step-a3", !canRun || !outputs.a1 || touched("A3"));
   setDisabled("step-r2", !canRun || !credentials.c1 || touched("R2"));
   setDisabled("step-a4", !canRun || !credentials.c2 || touched("A4"));
+  setDisabled("cleanup-record", ceremony !== null);
   const canExport =
+    ceremony === null &&
     state.preflight.origin === PROBE_ORIGIN &&
     state.preflight.secureContext === true &&
     state.preflight.topLevel === true &&
@@ -340,6 +343,7 @@ function refresh() {
 }
 
 function zeroizeSecrets() {
+  ceremony?.abort();
   for (const key of Object.keys(outputs)) {
     zeroize(outputs[key]);
     outputs[key] = null;
@@ -429,19 +433,32 @@ function readPrf(credential) {
   }
 }
 
+function discardCredential(credential) {
+  if (!credential) return;
+  const { prf } = readPrf(credential);
+  zeroize(prf?.results?.first);
+  zeroize(prf?.results?.second);
+  zeroize(credential.rawId);
+}
+
 async function runRegistration(cellId, slot) {
   refresh();
-  if (!preflightOk()) return;
+  if (!preflightOk() || ceremony !== null) return;
+  const controller = new AbortController();
+  ceremony = controller;
+  updateButtons();
   const alias = `PRF Spike ${slot.toUpperCase()} ${state.runId.slice(0, 8)}`;
   const userHandle = randomBytes(32);
   const challenge = randomBytes(32);
   let credential = null;
+  aliases[slot] = alias;
+  renderAliases();
   try {
-    credential = await navigator.credentials.create(
-      optionsForRegistration(alias, userHandle, challenge),
-    );
-    aliases[slot] = alias;
-    renderAliases();
+    credential = await navigator.credentials.create({
+      ...optionsForRegistration(alias, userHandle, challenge),
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || secretsCleared || invalidated) return;
     if (!credential || credential.type !== "public-key") {
       throw new TypeError("unexpected credential");
     }
@@ -481,6 +498,7 @@ async function runRegistration(cellId, slot) {
     zeroize(result.bytes);
     recordCell(cellId, raw, classifyRegistration(raw));
   } catch (error) {
+    if (controller.signal.aborted || secretsCleared || invalidated) return;
     const raw = {
       ok: false,
       errorName: safeErrorName(error),
@@ -492,7 +510,10 @@ async function runRegistration(cellId, slot) {
   } finally {
     zeroize(userHandle);
     zeroize(challenge);
+    if (ceremony === controller) ceremony = null;
+    discardCredential(credential);
     credential = null;
+    updateButtons();
   }
   renderAll();
   updateButtons();
@@ -566,16 +587,22 @@ function applyComparison(cellId, bytes) {
 
 async function runAssertion(cellId, slot, salt) {
   refresh();
-  if (!preflightOk()) return;
+  if (!preflightOk() || ceremony !== null) return;
   const credential = credentials[slot];
   if (!credential || !salt) return;
+  const controller = new AbortController();
+  ceremony = controller;
+  updateButtons();
   const challenge = randomBytes(32);
   let result = null;
+  let assertion = null;
   let keepResult = false;
   try {
-    const assertion = await navigator.credentials.get(
-      optionsForAssertion(credential.rawId, salt, challenge),
-    );
+    assertion = await navigator.credentials.get({
+      ...optionsForAssertion(credential.rawId, salt, challenge),
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || secretsCleared || invalidated) return;
     if (!assertion || assertion.type !== "public-key") {
       throw new TypeError("unexpected credential");
     }
@@ -613,6 +640,7 @@ async function runAssertion(cellId, slot, salt) {
       }
     }
   } catch (error) {
+    if (controller.signal.aborted || secretsCleared || invalidated) return;
     const raw = {
       ok: false,
       errorName: safeErrorName(error),
@@ -631,6 +659,10 @@ async function runAssertion(cellId, slot, salt) {
     zeroize(challenge);
     if (!keepResult) zeroize(result?.bytes);
     result = null;
+    discardCredential(assertion);
+    assertion = null;
+    if (ceremony === controller) ceremony = null;
+    updateButtons();
   }
   renderAll();
   updatePreflightText();
@@ -649,14 +681,14 @@ function recordCleanup() {
   if (
     state.cleanup.status === CLEANUP_STATUS.COMPLETE &&
     !(
-      state.cleanup.c1Deleted &&
-      state.cleanup.c2Deleted &&
+      state.cleanup.c1AbsentConfirmed &&
+      state.cleanup.c2AbsentConfirmed &&
       state.cleanup.chooserAbsent
     )
   ) {
     setText(
       "cleanup-message",
-      "Cleanup is not complete: confirm C1 deletion, C2 deletion, and chooser absence.",
+      "Cleanup is not complete: confirm C1 and C2 are absent in the provider and chooser.",
     );
     return;
   }

@@ -424,14 +424,22 @@ The page:
 - compares PRF values in memory and records only `equal`, `different`, or
   `untested`;
 - exports a constructed allowlist object, not the page state;
-- zeroizes reachable PRF results, salts, and credential IDs on comparison,
-  cleanup, clear, and page hide. It does not claim secure erasure by the
-  browser.
+- runs at most one native ceremony at a time and supplies an AbortSignal;
+- aborts a pending ceremony on Clear or page hide, discards late results, and
+  zeroizes reachable buffers returned after cancellation;
+- retains the A1 result only until the remaining comparisons finish, then
+  zeroizes reachable PRF results, salts, and credential IDs. Clear and page
+  hide also zeroize them. This is not a browser secure-erasure claim.
 
 The server sets a restrictive CSP with `default-src 'none'`,
 `script-src 'self'`, `style-src 'self'`, and `connect-src 'none'`, plus
 `frame-ancestors 'none'`, `form-action 'none'`, and `base-uri 'none'`. It has
 no API route, no cookie, no CORS header, and no request log.
+
+Cleanup records `c1_absent_confirmed` and `c2_absent_confirmed`: the human
+confirms each disposable credential is absent after deletion, or was never
+created. This permits an unsupported or cancelled attempt without falsely
+recording a deletion. Wait for all native prompts to settle before confirming.
 
 The export schema is `tanikun-prf-probe-export-v1`. It has exactly the run
 header, preflight, environment, providers, six cells, three comparisons,
@@ -560,10 +568,14 @@ shell. They use synthetic stubs only.
 
 | Command                                                                                             | Result    |
 | --------------------------------------------------------------------------------------------------- | --------- |
-| `node --test tests/integration/prf-probe-core.test.mjs tests/integration/prf-probe-server.test.mjs` | 13 passed |
-| `node --test tests/integration/prf-probe-page.test.mjs`                                             | 1 passed  |
+| `node --test tests/integration/prf-probe-core.test.mjs tests/integration/prf-probe-server.test.mjs` | 14 passed |
+| `node --test tests/integration/prf-probe-page.test.mjs`                                             | 3 passed  |
 | `just lint`                                                                                         | passed    |
-| `just test-prf-probe`                                                                               | 14 passed |
+| `just test-prf-probe`                                                                               | 17 passed |
+
+Linux CI runs the same synthetic checks; physical-device ceremonies are not
+part of CI. The cancellation regressions exercise pending registration and
+assertion promises, including late results after Clear.
 
 The page test uses Chromium `ignoreHTTPSErrors` inside a disposable context. It
 does not establish physical provider support, normal-browser TLS trust, or a

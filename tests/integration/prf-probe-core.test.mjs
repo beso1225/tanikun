@@ -313,8 +313,8 @@ test("export validation rejects an incomplete supported cell and incomplete clea
   state.cells.R1.providerId = "P1";
   state.cleanup.status = CLEANUP_STATUS.COMPLETE;
   assert.ok(validateForExport(state).includes("cleanup.booleans"));
-  state.cleanup.c1Deleted = true;
-  state.cleanup.c2Deleted = true;
+  state.cleanup.c1AbsentConfirmed = true;
+  state.cleanup.c2AbsentConfirmed = true;
   state.cleanup.chooserAbsent = true;
   state.cleanup.blocker = "cleanup_blocked";
   assert.ok(validateForExport(state).includes("cleanup.blocker"));
@@ -348,4 +348,21 @@ test("invalid statuses and missing provider labels are rejected at export", () =
   other.cells.A1.providerId = "P1";
   other.providers[0].label = "";
   assert.throws(() => buildExport(other), /invalid PRF probe export/u);
+});
+
+test("an unknown native error exports only its safe fallback name", () => {
+  const state = validState();
+  Object.assign(
+    state.cells.A1,
+    classifyAssertion({ ok: false, errorName: "Private native diagnostic" }),
+  );
+  const exported = buildExport(state);
+  assert.equal(
+    exported.cells.find((cell) => cell.id === "A1").error_name,
+    "other",
+  );
+  assert.equal(
+    JSON.stringify(exported).includes("Private native diagnostic"),
+    false,
+  );
 });
