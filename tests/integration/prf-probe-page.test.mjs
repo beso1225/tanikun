@@ -276,10 +276,24 @@ test(
       }
 
       await step("R1");
-      await step("A1");
-      await step("A2");
-      await step("A3");
       await step("R2");
+      assert.equal(await page.locator("#step-a4").isDisabled(), true);
+      // Even a dispatched event cannot bypass the terminal step's prerequisites.
+      assert.equal(
+        await page.evaluate(() => {
+          document
+            .querySelector("#step-a4")
+            .dispatchEvent(new MouseEvent("click"));
+          return globalThis.tanikunPrfTest.checks.getCount;
+        }),
+        0,
+      );
+      await step("A1");
+      assert.equal(await page.locator("#step-a4").isDisabled(), true);
+      await step("A2");
+      assert.equal(await page.locator("#step-a4").isDisabled(), true);
+      await step("A3");
+      assert.equal(await page.locator("#step-a4").isDisabled(), false);
       await step("A4");
 
       for (const id of ["R1", "A1", "A2", "A3", "R2", "A4"]) {

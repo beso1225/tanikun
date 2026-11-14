@@ -276,6 +276,16 @@ function touched(id) {
   return state.cells[id].raw != null;
 }
 
+function finalAssertionReady() {
+  return Boolean(
+    credentials.c2 &&
+    outputs.a1 &&
+    touched("A1") &&
+    touched("A2") &&
+    touched("A3"),
+  );
+}
+
 function updateButtons() {
   const canRun = preflightOk() && ceremony === null;
   setDisabled("step-r1", !canRun || touched("R1"));
@@ -283,7 +293,7 @@ function updateButtons() {
   setDisabled("step-a2", !canRun || !outputs.a1 || touched("A2"));
   setDisabled("step-a3", !canRun || !outputs.a1 || touched("A3"));
   setDisabled("step-r2", !canRun || !credentials.c1 || touched("R2"));
-  setDisabled("step-a4", !canRun || !credentials.c2 || touched("A4"));
+  setDisabled("step-a4", !canRun || !finalAssertionReady() || touched("A4"));
   setDisabled("cleanup-record", ceremony !== null);
   const canExport =
     ceremony === null &&
@@ -593,6 +603,7 @@ function applyComparison(cellId, bytes) {
 async function runAssertion(cellId, slot, salt) {
   refresh();
   if (!preflightOk() || ceremony !== null) return;
+  if (cellId === "A4" && !finalAssertionReady()) return;
   const credential = credentials[slot];
   if (!credential || !salt) return;
   const controller = new AbortController();

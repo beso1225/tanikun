@@ -409,7 +409,9 @@ wrapping, recovery, or public deployment.
 
 The harness is in `tools/prf-probe/`. It is a separate page, not the product
 login. It has explicit buttons for R1, A1, A2, A3, R2, A4, and cleanup. It does
-not create a credential during preparation.
+not create a credential during preparation. A4 is terminal and remains disabled
+until A1, A2, and A3 have been recorded and the A1 result is available. The
+execution handler checks the same prerequisites before calling WebAuthn.
 
 The page:
 
