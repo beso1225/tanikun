@@ -19,6 +19,7 @@ Start with the current phase documents.
 - [Phase 5 WebAuthn verifier spike](PHASE_5_WEBAUTHN_SPIKE.md)
 - [Phase 5 authentication contract](PHASE_5.md)
 - [Phase 5 real-session proof](PHASE_5_SESSION_PROOF.md)
+- [Phase 5 PRF physical-device protocol](PHASE_5_PRF_DEVICE_PROTOCOL.md)
 - [Phase 5 passkey sessions and account boundary](adr/0015-passkey-session-account-boundary.md)
 - [Phase 5 authentication abuse limits](AUTH_ABUSE_LIMITS.md)
 - [Accessibility baseline](ACCESSIBILITY.md)
