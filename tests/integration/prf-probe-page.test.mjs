@@ -355,6 +355,29 @@ test(
       assert.equal(exported.preflight.tls_trust, "bypassed");
       assert.deepEqual(exported.limitations, ["tls_trust_bypassed"]);
       assert.equal(exported.cells.length, 6);
+      for (const id of ["R1", "R2"]) {
+        const registration = exported.cells.find((cell) => cell.id === id);
+        assert.deepEqual(
+          [
+            registration.up_flag,
+            registration.uv_flag,
+            registration.be_flag,
+            registration.bs_flag,
+          ],
+          [true, true, false, false],
+        );
+        for (const [flag, expected] of [
+          ["up", "true"],
+          ["uv", "true"],
+          ["be", "false"],
+          ["bs", "false"],
+        ])
+          assert.equal(
+            await page.locator(`#${flag}flag-${id}`).innerText(),
+            expected,
+          );
+      }
+
       assert.equal(
         exported.cells.every((cell) => cell.status === "supported"),
         true,

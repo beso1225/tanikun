@@ -75,6 +75,10 @@ test("registration classification separates support, unsupported, denial, and fa
       prfEnabled: true,
       resultPresent: false,
       resultLength: null,
+      upFlag: true,
+      uvFlag: true,
+      beFlag: false,
+      bsFlag: false,
     }),
     {
       status: STATUS.SUPPORTED,
@@ -82,6 +86,10 @@ test("registration classification separates support, unsupported, denial, and fa
       prfEnabled: true,
       resultPresent: false,
       resultLength: null,
+      upFlag: true,
+      uvFlag: true,
+      beFlag: false,
+      bsFlag: false,
       blocker: BLOCKER.NONE,
     },
   );
@@ -365,4 +373,18 @@ test("an unknown native error exports only its safe fallback name", () => {
     JSON.stringify(exported).includes("Private native diagnostic"),
     false,
   );
+});
+
+test("assertion results contradicting a disabled registration are failed", () => {
+  const result = classifyAssertion({
+    ok: true,
+    prfEnabledAtRegistration: false,
+    clientCapability: true,
+    resultPresent: true,
+    resultLength: 32,
+    upFlag: true,
+    uvFlag: true,
+  });
+  assert.equal(result.status, STATUS.FAILED);
+  assert.equal(result.blocker, BLOCKER.PRF_ENABLED_INCONSISTENT);
 });

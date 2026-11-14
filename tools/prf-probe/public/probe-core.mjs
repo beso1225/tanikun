@@ -230,6 +230,10 @@ export function classifyRegistration(result) {
     prfEnabled: asBooleanOrNull(result.prfEnabled),
     resultPresent: asBooleanOrNull(result.resultPresent),
     resultLength: asCountOrNull(result.resultLength),
+    upFlag: asBooleanOrNull(result.upFlag),
+    uvFlag: asBooleanOrNull(result.uvFlag),
+    beFlag: asBooleanOrNull(result.beFlag),
+    bsFlag: asBooleanOrNull(result.bsFlag),
     blocker: BLOCKER.CEREMONY_ERROR,
   };
 
@@ -326,6 +330,9 @@ export function classifyAssertion(result) {
 
   if (cell.resultLength !== 32) {
     return { ...cell, blocker: BLOCKER.PRF_RESULT_LENGTH };
+  }
+  if (prfEnabledAtRegistration === false) {
+    return { ...cell, blocker: BLOCKER.PRF_ENABLED_INCONSISTENT };
   }
   if (clientCapability === false) {
     return {

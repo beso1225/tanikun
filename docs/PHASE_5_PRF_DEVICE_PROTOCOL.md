@@ -506,7 +506,8 @@ nix develop -c just test-prf-probe
 ```
 
 The page test needs port 4300 and `PLAYWRIGHT_CORE` from `nix develop`. It does
-not run a physical ceremony and is not part of Linux CI.
+not run a physical ceremony. These synthetic checks run in Linux CI; physical
+ceremonies do not.
 
 ## Privacy and leakage controls
 
@@ -568,10 +569,10 @@ shell. They use synthetic stubs only.
 
 | Command                                                                                             | Result    |
 | --------------------------------------------------------------------------------------------------- | --------- |
-| `node --test tests/integration/prf-probe-core.test.mjs tests/integration/prf-probe-server.test.mjs` | 14 passed |
+| `node --test tests/integration/prf-probe-core.test.mjs tests/integration/prf-probe-server.test.mjs` | 15 passed |
 | `node --test tests/integration/prf-probe-page.test.mjs`                                             | 3 passed  |
 | `just lint`                                                                                         | passed    |
-| `just test-prf-probe`                                                                               | 17 passed |
+| `just test-prf-probe`                                                                               | 18 passed |
 
 Linux CI runs the same synthetic checks; physical-device ceremonies are not
 part of CI. The cancellation regressions exercise pending registration and
