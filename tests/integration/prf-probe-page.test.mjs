@@ -174,12 +174,18 @@ test(
             previousChallenge = challenge;
             const canary = [null, a1, a1, a3, c2][checks.getCount];
             const output = prfBytes(canary);
+            // Model an extension result from another JavaScript realm.
+            // Keep its actual bytes private to the synthetic credential.
+            const frame = document.createElement("iframe");
+            document.body.append(frame);
+            const foreignOutput = new frame.contentWindow.Uint8Array(output);
+            frame.remove();
             const rawId = (checks.getCount <= 3 ? c1RawId : c2RawId).slice();
             return {
               type: "public-key",
               rawId: rawId.buffer,
               getClientExtensionResults: () => ({
-                prf: { results: { first: output.buffer } },
+                prf: { results: { first: foreignOutput.buffer } },
               }),
               response: {
                 authenticatorData: flags(0x05).buffer,
@@ -289,6 +295,8 @@ test(
         0,
       );
       await step("A1");
+      assert.equal(await page.locator("#length-A1").innerText(), "32");
+      assert.equal(await page.locator("#status-A1").innerText(), "supported");
       assert.equal(await page.locator("#step-a4").isDisabled(), true);
       await step("A2");
       assert.equal(await page.locator("#step-a4").isDisabled(), true);

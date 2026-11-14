@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import {
   BLOCKER,
@@ -15,6 +16,7 @@ import {
   classifyRegistration,
   compareBytes,
   compareOutcome,
+  copyBufferSource,
   createRunState,
   isSafeLabel,
   isSafeVersion,
@@ -238,6 +240,71 @@ test("byte comparison and zeroization do not retain values", () => {
   assert.equal(compareOutcome(left, null), COMPARISON.UNTESTED);
   zeroize(left);
   assert.deepEqual(Array.from(left), [0, 0, 0]);
+});
+
+test("foreign-realm buffers are copied at their real length and zeroized", () => {
+  for (const expression of [
+    "Uint8Array.from({ length: 32 }, (_, i) => i + 1).buffer",
+    "new Uint8Array(Uint8Array.from({ length: 40 }, (_, i) => i + 1).buffer, 4, 32)",
+    "new DataView(Uint8Array.from({ length: 40 }, (_, i) => i + 1).buffer, 4, 32)",
+  ]) {
+    const source = runInNewContext(expression);
+    const offset = ArrayBuffer.isView(source) ? 4 : 0;
+    const result = copyBufferSource(source);
+    assert.equal(result.present, true);
+    assert.equal(result.length, 32);
+    assert.deepEqual(
+      result.bytes,
+      Uint8Array.from({ length: 32 }, (_, i) => i + offset + 1),
+    );
+    const original = ArrayBuffer.isView(source)
+      ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+      : new Uint8Array(source);
+    assert.deepEqual(original, new Uint8Array(32));
+    result.bytes.fill(9);
+    zeroize(result.bytes);
+    assert.deepEqual(result.bytes, new Uint8Array(32));
+    original.fill(3);
+    zeroize(source);
+    assert.deepEqual(original, new Uint8Array(32));
+    if (offset !== 0) {
+      const backing = new Uint8Array(source.buffer);
+      assert.deepEqual(backing.slice(0, 4), Uint8Array.from([1, 2, 3, 4]));
+      assert.deepEqual(backing.slice(36), Uint8Array.from([37, 38, 39, 40]));
+    }
+  }
+});
+
+test("unknown PRF representations are distinct from an empty buffer", () => {
+  for (const source of [
+    "not-a-buffer",
+    {},
+    { byteLength: 32 },
+    {
+      [Symbol.toStringTag]: "ArrayBuffer",
+    },
+  ]) {
+    assert.deepEqual(copyBufferSource(source), {
+      present: true,
+      length: null,
+      bytes: null,
+    });
+  }
+  assert.equal(copyBufferSource(new ArrayBuffer(0)).length, 0);
+  for (const classify of [classifyRegistration, classifyAssertion]) {
+    for (const [length, blocker] of [
+      [null, BLOCKER.PRF_RESULT_TYPE],
+      [0, BLOCKER.PRF_RESULT_LENGTH],
+    ]) {
+      const result = classify({
+        ok: true,
+        resultPresent: true,
+        resultLength: length,
+      });
+      assert.equal(result.status, STATUS.FAILED);
+      assert.equal(result.blocker, blocker);
+    }
+  }
 });
 
 test("authenticator flags are read without retaining the buffer", () => {

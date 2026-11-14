@@ -13,6 +13,7 @@ import {
   classifyRegistration,
   compareBytes,
   compareOutcome,
+  copyBufferSource,
   createRunState,
   readAuthenticatorFlags,
   safeErrorName,
@@ -61,39 +62,16 @@ function randomBytes(length) {
   return bytes;
 }
 
-function copyBytes(source) {
-  if (source instanceof ArrayBuffer) {
-    const view = new Uint8Array(source);
-    const copy = view.slice();
-    zeroize(view);
-    return { present: true, length: copy.byteLength, bytes: copy };
-  }
-  if (ArrayBuffer.isView(source)) {
-    const view = new Uint8Array(
-      source.buffer,
-      source.byteOffset,
-      source.byteLength,
-    );
-    const copy = view.slice();
-    zeroize(view);
-    return { present: true, length: copy.byteLength, bytes: copy };
-  }
-  return { present: true, length: 0, bytes: null };
-}
-
 function copyPrfResult(source) {
   if (source === undefined || source === null) {
     return { present: false, length: null, bytes: null };
   }
-  return copyBytes(source);
+  return copyBufferSource(source);
 }
 
 function copyRawId(source) {
   if (source === undefined || source === null) return null;
-  if (!(source instanceof ArrayBuffer) && !ArrayBuffer.isView(source)) {
-    return null;
-  }
-  const copy = copyBytes(source);
+  const copy = copyBufferSource(source);
   if (!copy.bytes || copy.bytes.byteLength === 0) {
     zeroize(copy.bytes);
     return null;
@@ -170,7 +148,9 @@ function renderCell(id) {
       `result-${id}`,
       cell.raw
         ? cell.resultPresent === true
-          ? `present (${cell.resultLength ?? 0} bytes)`
+          ? cell.resultLength === null
+            ? "present (unrecognized type)"
+            : `present (${cell.resultLength} bytes)`
           : "absent"
         : "not applicable",
     );
