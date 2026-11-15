@@ -288,6 +288,10 @@ test("unknown PRF representations are distinct from an empty buffer", () => {
       present: true,
       length: null,
       bytes: null,
+      typeBlocker:
+        typeof source === "string"
+          ? "prf_result_type_string"
+          : "prf_result_type_object",
     });
   }
   assert.equal(copyBufferSource(new ArrayBuffer(0)).length, 0);
@@ -305,6 +309,58 @@ test("unknown PRF representations are distinct from an empty buffer", () => {
       assert.equal(result.blocker, blocker);
     }
   }
+});
+
+test("unrecognized PRF representations expose only a fixed type blocker", () => {
+  const canary = "PRF-REPRESENTATION-CANARY";
+  for (const [source, blocker] of [
+    [canary, "prf_result_type_string"],
+    [[canary], "prf_result_type_array"],
+    [{ secret: canary }, "prf_result_type_object"],
+    [
+      new Proxy(
+        {},
+        {
+          get() {
+            throw new Error("must not inspect properties");
+          },
+        },
+      ),
+      "prf_result_type_object",
+    ],
+    [true, "prf_result_type_other"],
+  ]) {
+    const copied = copyBufferSource(source);
+    assert.deepEqual(copied, {
+      present: true,
+      length: null,
+      bytes: null,
+      typeBlocker: blocker,
+    });
+    for (const classify of [classifyRegistration, classifyAssertion]) {
+      const result = classify({
+        ok: true,
+        resultPresent: true,
+        resultLength: null,
+        resultTypeBlocker: copied.typeBlocker,
+      });
+      assert.equal(result.status, STATUS.FAILED);
+      assert.equal(result.blocker, blocker);
+      assert.equal(JSON.stringify(result).includes(canary), false);
+      assert.equal(
+        classify({
+          ok: true,
+          resultPresent: true,
+          resultLength: null,
+          resultTypeBlocker: canary,
+        }).blocker,
+        BLOCKER.PRF_RESULT_TYPE,
+      );
+    }
+  }
+  const { proxy, revoke } = Proxy.revocable({}, {});
+  revoke();
+  assert.equal(copyBufferSource(proxy).typeBlocker, "prf_result_type_other");
 });
 
 test("authenticator flags are read without retaining the buffer", () => {

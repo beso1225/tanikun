@@ -28,6 +28,133 @@ const CANARY_A1 = "TANIKUN-PRF-CANARY-A1-";
 const CANARY_A3 = "TANIKUN-PRF-CANARY-A3-";
 const CANARY_C2 = "TANIKUN-PRF-CANARY-C2-";
 
+for (const kind of ["string", "array", "object", "other"]) {
+  test(`unknown ${kind} PRF results export only a fixed blocker`, async (t) => {
+    const canary = "PRF-UNKNOWN-REPRESENTATION-PRIVATE-CANARY";
+    const logs = [];
+    const harness = await startPrfProbeServer({
+      log: (line) => logs.push(line),
+    });
+    t.after(() => harness.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    const requests = [];
+    page.on("console", (message) => logs.push(message.text()));
+    page.on("pageerror", (error) => logs.push(error.message));
+    page.on("request", (request) =>
+      requests.push({ method: request.method(), url: request.url() }),
+    );
+    await page.addInitScript(
+      ({ kind: resultKind, canary: secretCanary }) => {
+        const data = new Uint8Array(37);
+        data[32] = 0x05;
+        Object.defineProperty(navigator, "credentials", {
+          configurable: true,
+          value: {
+            create: async () => ({
+              type: "public-key",
+              rawId: new Uint8Array(16).fill(1).buffer,
+              getClientExtensionResults: () => ({ prf: { enabled: true } }),
+              response: { getAuthenticatorData: () => data.slice().buffer },
+            }),
+            get: async () => {
+              const first =
+                resultKind === "string"
+                  ? secretCanary
+                  : resultKind === "array"
+                    ? [secretCanary]
+                    : resultKind === "object"
+                      ? {
+                          secret: secretCanary,
+                          toJSON() {
+                            throw new Error("must not serialize native result");
+                          },
+                        }
+                      : 7;
+              return {
+                type: "public-key",
+                rawId: new Uint8Array(16).fill(1).buffer,
+                getClientExtensionResults: () => ({
+                  prf: { results: { first } },
+                }),
+                response: { authenticatorData: data.slice().buffer },
+              };
+            },
+          },
+        });
+        Object.defineProperty(PublicKeyCredential, "getClientCapabilities", {
+          configurable: true,
+          value: async () => ({ "extension:prf": true }),
+        });
+      },
+      { kind, canary },
+    );
+    await page.goto(harness.origin);
+    await page.selectOption("#tls-trust", "bypassed");
+    for (const [selector, value] of [
+      ["#harness-commit", "b".repeat(40)],
+      ["#device-model", "Test Mac"],
+      ["#os", "Test OS"],
+      ["#os-build", "1"],
+      ["#browser-version", "1"],
+      ["#p1-label", "Synthetic Provider"],
+      ["#p1-app", "1"],
+      ["#p1-ext", "1"],
+    ])
+      await page.fill(selector, value);
+    await page.selectOption("#device-role", "mac");
+    await page.selectOption("#browser", "chrome");
+    for (const id of ["R1", "A1"])
+      await page.selectOption(`#provider-${id}`, "P1");
+    await page.click("#step-r1");
+    await page.waitForFunction(
+      () => document.querySelector("#status-R1").textContent === "supported",
+    );
+    await page.click("#step-a1");
+    await page.waitForFunction(
+      () => document.querySelector("#status-A1").textContent === "failed",
+    );
+    assert.equal(
+      await page.locator("#blocker-A1").innerText(),
+      `prf_result_type_${kind}`,
+    );
+    assert.equal(await page.locator("#length-A1").innerText(), "not recorded");
+    assert.equal(await page.locator("#step-a2").isDisabled(), true);
+    for (const id of ["c1", "c2", "chooser"])
+      await page.check(`#cleanup-${id}`);
+    await page.selectOption("#cleanup-status", "complete");
+    await page.click("#cleanup-record");
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.click("#export"),
+    ]);
+    const exported = await readFile(await download.path(), "utf8");
+    const cell = JSON.parse(exported).cells.find(
+      (candidate) => candidate.id === "A1",
+    );
+    assert.equal(cell.blocker, `prf_result_type_${kind}`);
+    assert.equal(cell.result_length, null);
+    assert.equal(cell.status, "failed");
+    assert.equal(exported.includes(canary), false);
+    assert.equal(
+      (await page.locator("body").innerText()).includes(canary),
+      false,
+    );
+    assert.equal(
+      logs.some((line) => line.includes(canary)),
+      false,
+    );
+    assert.ok(
+      requests.every(
+        (request) =>
+          request.method === "GET" && request.url.startsWith(harness.origin),
+      ),
+    );
+  });
+}
+
 test(
   "probe page keeps synthetic PRF canaries out of DOM, logs, storage, network, and export",
   { timeout: 120_000 },

@@ -354,6 +354,16 @@ or `untested`.
 Never write the bytes or a hash. `prf.enabled` is `true`, `false`, or `absent`.
 `not_run` is the initial blocker, not a physical result.
 
+If `results.first` is present but is not a recognized BufferSource, length
+remains unrecorded and the cell fails. The blocker records only a fixed type
+category: `prf_result_type_string`, `prf_result_type_array`,
+`prf_result_type_object`, or `prf_result_type_other`. The generic
+`prf_result_type` remains the fallback when no category is available. These
+categories do not record values, keys, constructor names, or string lengths.
+The probe does not stringify, decode, or accept these representations as PRF
+bytes. A type failure leaves provider support inconclusive; stop the run,
+perform cleanup, and export the safe observation before another attempt.
+
 ### Comparisons
 
 | Check                 | Credential and input      | Compared with | Expected    | Observed | Status   |
