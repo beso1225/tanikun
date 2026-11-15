@@ -68,6 +68,10 @@ export const BLOCKER = Object.freeze({
   PRF_ENABLED_INCONSISTENT: "prf_enabled_inconsistent",
   PRF_RESULT_LENGTH: "prf_result_length",
   PRF_RESULT_TYPE: "prf_result_type",
+  PRF_RESULT_TYPE_STRING: "prf_result_type_string",
+  PRF_RESULT_TYPE_ARRAY: "prf_result_type_array",
+  PRF_RESULT_TYPE_OBJECT: "prf_result_type_object",
+  PRF_RESULT_TYPE_OTHER: "prf_result_type_other",
   CLIENT_CAPABILITY_FALSE: "client_capability_false",
   CLIENT_CAPABILITY_CONFLICT: "client_capability_conflict",
   FLAGS_NOT_INSPECTED: "flags_not_inspected",
@@ -254,7 +258,7 @@ export function classifyRegistration(result) {
       ...cell,
       blocker:
         cell.resultLength === null
-          ? BLOCKER.PRF_RESULT_TYPE
+          ? resultTypeBlocker(result.resultTypeBlocker)
           : BLOCKER.PRF_RESULT_LENGTH,
     };
   }
@@ -340,7 +344,7 @@ export function classifyAssertion(result) {
       ...cell,
       blocker:
         cell.resultLength === null
-          ? BLOCKER.PRF_RESULT_TYPE
+          ? resultTypeBlocker(result.resultTypeBlocker)
           : BLOCKER.PRF_RESULT_LENGTH,
     };
   }
@@ -376,6 +380,30 @@ const arrayBufferByteLength = Object.getOwnPropertyDescriptor(
   "byteLength",
 ).get;
 
+function resultTypeBlocker(value) {
+  return [
+    BLOCKER.PRF_RESULT_TYPE_STRING,
+    BLOCKER.PRF_RESULT_TYPE_ARRAY,
+    BLOCKER.PRF_RESULT_TYPE_OBJECT,
+    BLOCKER.PRF_RESULT_TYPE_OTHER,
+  ].includes(value)
+    ? value
+    : BLOCKER.PRF_RESULT_TYPE;
+}
+
+function unrecognizedTypeBlocker(source) {
+  // Do not read properties, call toString/toJSON, or decode the value.
+  if (typeof source === "string") return BLOCKER.PRF_RESULT_TYPE_STRING;
+  try {
+    if (Array.isArray(source)) return BLOCKER.PRF_RESULT_TYPE_ARRAY;
+  } catch {
+    return BLOCKER.PRF_RESULT_TYPE_OTHER;
+  }
+  return typeof source === "object"
+    ? BLOCKER.PRF_RESULT_TYPE_OBJECT
+    : BLOCKER.PRF_RESULT_TYPE_OTHER;
+}
+
 function byteView(data) {
   try {
     if (ArrayBuffer.isView(data)) {
@@ -390,7 +418,13 @@ function byteView(data) {
 
 export function copyBufferSource(source) {
   const view = byteView(source);
-  if (!view) return { present: true, length: null, bytes: null };
+  if (!view)
+    return {
+      present: true,
+      length: null,
+      bytes: null,
+      typeBlocker: unrecognizedTypeBlocker(source),
+    };
   const copy = view.slice();
   view.fill(0);
   return { present: true, length: copy.byteLength, bytes: copy };
