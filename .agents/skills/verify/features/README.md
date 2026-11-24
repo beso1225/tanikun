@@ -28,6 +28,8 @@ route to the sibling `tanikun-sync-change` skill at
 sign-in, account switch, copy consent, and reauthentication also belong to that
 skill. The static driver does not start the fixed HTTPS origin, a Worker, D1, or
 a virtual authenticator, so it does not prove the account dialogs.
+See the [Phase 5 results](../../../../docs/PHASE_5_RESULTS.md) for the recorded
+session, physical PRF, and accessibility evidence.
 
 All journeys start from the deterministic `sample_state()` data. Selectors are
 the production ids and roles in `apps/web/cmd/browser/view_*.mbt`; do not replace

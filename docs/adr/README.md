@@ -22,9 +22,8 @@ ADR-0013 and ADR-0014 are implemented. The
 [Phase 4 results](../PHASE_4_RESULTS.md) record the implementation evidence and
 local-development limits.
 
-ADR-0015 defines the Phase 5 implementation target. The
-[#176](https://github.com/beso1225/tanikun/issues/176) verifier evidence is
-merged; the dependent issues implement ADR-0015. ADR-0014 remains current
-for the separate local-bearer mode.
+ADR-0015 governs the implemented Phase 5 account and session boundary.
+The [Phase 5 results](../PHASE_5_RESULTS.md) record verification and release
+limits. ADR-0014 remains current for the separate local-bearer mode.
 
 See the [documentation index](../README.md) for current contracts.

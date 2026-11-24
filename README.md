@@ -36,11 +36,10 @@ discovery, snapshot compaction, or a production deployment.
   [Phase 4 results](docs/PHASE_4_RESULTS.md) record the baseline, test counts,
   and closeout gate. The milestone closeout is a separate administrative gate.
   The feature remains local-development only.
-- Phase 5: local passkey sessions and account isolation are implemented. The
-  contract is [docs/PHASE_5.md](docs/PHASE_5.md), and the bounded real-session
-  proof is [docs/PHASE_5_SESSION_PROOF.md](docs/PHASE_5_SESSION_PROOF.md).
-  Physical providers, screen readers, public deployment, and the Phase 5
-  closeout remain open.
+- Phase 5: local passkey sessions and account isolation are implemented.
+  The [Phase 5 results](docs/PHASE_5_RESULTS.md) record the Linux session proof,
+  Mac PRF observations, and milestone closeout criteria. Public plaintext sync
+  stays disabled pending encryption and deployment review.
 
 ## Stack
 
@@ -108,6 +107,7 @@ See [docs/MUTATION.md](docs/MUTATION.md) for the baseline and accepted mutants.
 - [Phase 3 results](docs/PHASE_3_RESULTS.md)
 - [Phase 4 results](docs/PHASE_4_RESULTS.md)
 - [Phase 5 contract](docs/PHASE_5.md)
+- [Phase 5 results](docs/PHASE_5_RESULTS.md)
 - [Phase 5 real-session proof](docs/PHASE_5_SESSION_PROOF.md)
 - [Mutation testing](docs/MUTATION.md)
 - [Glossary](GLOSSARY.md)

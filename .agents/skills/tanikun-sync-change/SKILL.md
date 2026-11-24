@@ -217,6 +217,8 @@ a public report.
 
 For the current evidence and known limits, read
 [Phase 4 results](../../../docs/PHASE_4_RESULTS.md) and
-[Phase 5 real-session proof](../../../docs/PHASE_5_SESSION_PROOF.md). For the
+[Phase 5 results](../../../docs/PHASE_5_RESULTS.md). The
+[real-session proof](../../../docs/PHASE_5_SESSION_PROOF.md) documents the
+packaged browser and Worker harness. For the
 historical local persistence boundary, read
 [ADR-0012](../../../docs/adr/0012-automerge-planner-document.md).
