@@ -35,11 +35,10 @@ Worker と D1 を使った HTTP 差分同期を追加し、ローカル開発用
   実装しました。テスト件数とマイルストーンを終了する条件は
   [docs/PHASE_4_RESULTS.md](docs/PHASE_4_RESULTS.md) にあります。機能は
   ローカル開発専用です。
-- Phase 5: ローカルのパスキーセッションとアカウント分離を実装しています。
-  契約は [docs/PHASE_5.md](docs/PHASE_5.md)、範囲を限定した実セッションの
-  証跡は [docs/PHASE_5_SESSION_PROOF.md](docs/PHASE_5_SESSION_PROOF.md) です。
-  物理デバイス、スクリーンリーダー、公開デプロイ、Phase 5 の closeout は
-  未完了です。
+- Phase 5: ローカルのパスキーセッションとアカウント分離を実装しました。
+  [Phase 5 の結果](docs/PHASE_5_RESULTS.md)に、Linux でのセッション検証、
+  Mac 実機での PRF の観測結果、マイルストーンを閉じる条件をまとめています。
+  平文の同期機能は、暗号化とデプロイ構成のレビューが済むまで公開しません。
 
 ## 構成
 
@@ -107,6 +106,7 @@ baseline と accepted mutant は [docs/MUTATION.md](docs/MUTATION.md) にあり�
 - [Phase 3 の結果](docs/PHASE_3_RESULTS.md)
 - [Phase 4 の結果](docs/PHASE_4_RESULTS.md)
 - [Phase 5 の契約](docs/PHASE_5.md)
+- [Phase 5 の結果](docs/PHASE_5_RESULTS.md)
 - [Phase 5 の実セッション証跡](docs/PHASE_5_SESSION_PROOF.md)
 - [Mutation testing](docs/MUTATION.md)
 - [用語集](GLOSSARY.md)

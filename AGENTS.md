@@ -116,10 +116,10 @@ Actual screen-reader evidence for the requirement summary remains open in
   [ADR-0014](docs/adr/0014-local-development-auth.md), and
   [docs/SYNC_STORAGE.md](docs/SYNC_STORAGE.md).
 - [docs/PHASE_5.md](docs/PHASE_5.md) is the Phase 5 authentication,
-  session, and account-boundary implementation contract. Its decision is
-  [ADR-0015](docs/adr/0015-passkey-session-account-boundary.md). The
-  [#176](https://github.com/beso1225/tanikun/issues/176) verifier evidence is
-  merged; the dependent issues implement the authentication contract.
+  session, and account-boundary contract. Its decision is
+  [ADR-0015](docs/adr/0015-passkey-session-account-boundary.md).
+- [docs/PHASE_5_RESULTS.md](docs/PHASE_5_RESULTS.md) records Phase 5
+  implementation evidence, release limits, and milestone closeout criteria.
 - [docs/PHASE_5_SESSION_PROOF.md](docs/PHASE_5_SESSION_PROOF.md) records the
   bounded #185 real-session proof, its virtual-authenticator properties, and
   the physical, screen-reader, and Linux CI limits.

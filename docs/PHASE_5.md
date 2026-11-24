@@ -6,8 +6,8 @@ accepted
 
 This contract is the implementation target for
 [issue #177](https://github.com/beso1225/tanikun/issues/177), effective when its
-contract PR is merged. It defines the work for #178 through #185; it does not
-claim that authentication or sessions are already implemented. The
+contract PR is merged. It defines the work for #178 through #185. The
+[Phase 5 results](PHASE_5_RESULTS.md) record implementation and verification. The
 [#176 verifier spike](PHASE_5_WEBAUTHN_SPIKE.md) merged in `6bc6535`, and its
 required main CI gate
 [43262536319](https://github.com/beso1225/tanikun/actions/runs/43262536319)
@@ -28,9 +28,9 @@ Bob's owner-scoped read and write denial, account-switch outbox isolation,
 Chromium cookie flags, CSRF and Origin rejection, replay and invalid challenge
 rejection, session logout and expiry, response loss, sanitized evidence, and
 owned teardown. The proof and its virtual-authenticator limits are in
-[PHASE_5_SESSION_PROOF.md](PHASE_5_SESSION_PROOF.md). Physical providers,
-screen readers, public deployment, and Linux execution are not claimed by the
-local proof.
+[PHASE_5_SESSION_PROOF.md](PHASE_5_SESSION_PROOF.md). The
+[Phase 5 results](PHASE_5_RESULTS.md) record the Linux baseline and link to
+the separate physical PRF observations.
 
 ## Verifier baseline
 
