@@ -19,6 +19,8 @@ The source is the tester's safe JSON exports, identified by run prefixes
 order. The first four used harness commit `5f918a0`. The final trial used
 comparison-mode commit `62074e8` with `registration_eval=true`. A separate
 evaluation trial (`22101b2d`) also passed R1 and A1 before cleanup.
+The tester confirmed the 1Password app version for the Safari run separately.
+That export leaves the app version blank.
 
 Across the three completed comparison runs, the same credential and input
 produced equal results. A different input or a different credential produced

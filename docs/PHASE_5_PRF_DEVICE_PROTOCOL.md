@@ -6,14 +6,9 @@ the state before the first physical trial.
 
 ## Status
 
-prepared; physical observations pending
-
-This page is the reconciled preparation for
-[#186](https://github.com/beso1225/tanikun/issues/186). It is not an evidence
-record and it does not claim PRF support for any browser, device, authenticator,
-or provider. No physical ceremony was run while preparing it. Issue #186 stays
-open until a human records the observations, the cleanup is verified, and the
-review is complete.
+This page describes the test procedure for
+[#186](https://github.com/beso1225/tanikun/issues/186). The results document
+records the Mac trials, including cleanup and the Phase 6 recommendation.
 
 The base commit is
 `187a05654f950fd11cbd6c75ea5d37646d759d90` (`#197` merged, `#176` through
@@ -564,7 +559,9 @@ If a browser or provider exposes a credential object in a console or a HAR file,
 do not retain that file. Stop, record the blocker, and do not upload the raw
 file.
 
-## Acceptance criteria map
+## Acceptance criteria map at preparation
+
+This table describes the work and evidence required before the first trial.
 
 | #186 criterion                                                                                                                                                                | Prepared in this change                                                                                       | Still requires human observation                                           |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -573,22 +570,6 @@ file.
 | Observed, failed, and untested cells recorded separately; concrete blockers; virtual results excluded from physical compatibility                                             | Status enum, blocker enum, blocked iPhone cell, synthetic test isolation                                      | All physical cell values and cleanup booleans                              |
 | No PRF output to server, public logs, or artifacts; no real key wrapping, E2EE, or recovery claim                                                                             | Isolated page, no server API, strict CSP, allowlist export, canary tests, explicit non-goals                  | Human confirmation that the run did not use real data or a public listener |
 | Evidence-based Phase 6 recommendation, with unsupported as valid completion                                                                                                   | Decision rules and pending state                                                                              | The reviewer's recommendation after observations and cleanup               |
-
-## Remaining blockers
-
-- Physical observations are not recorded. Every M1 to M5 and H1 cell is
-  `untested`; I1 is `blocked`.
-- The disposable certificate may be rejected by a normal browser. A trusted
-  certificate path, if any, must be supplied by the parent without changing
-  trust stores.
-- The iPhone browser and provider versions are unknown. A direct iPhone-browser
-  cell has no approved origin or certificate path.
-- The Chrome-managed credential is tentative, not a confirmed provider.
-- The provider chooser, Touch ID or Face ID, 1Password unlock, and deletion are
-  human-owned. This preparation did not trigger them.
-- A physical result remains pending even if the synthetic tests pass.
-- The independent review and the parent's review are still required before
-  human execution or a PR merge.
 
 ## Preparation verification
 
