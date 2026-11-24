@@ -161,6 +161,7 @@ The safe export contains only:
 - status enums and booleans;
 - exact manually entered device, browser, provider, and extension version
   labels;
+- `registration_eval`, the boolean that records the registration mode;
 - result presence and a byte length, never a result value;
 - UP, UV, BE, and BS flags as booleans or `not inspected`;
 - human UP and UV observations as `yes`, `no`, or `not_observed`;
@@ -210,7 +211,10 @@ One run uses one fictional RP test account and two disposable credentials.
   exported.
 - The options use the accepted Phase 5 settings: `residentKey: "required"`,
   `userVerification: "required"`, `attestation: "none"`, and ES256 (`alg: -7`).
-- Registration sends `extensions: { prf: {} }`.
+- By default, registration sends `extensions: { prf: {} }` to check PRF support.
+  To compare with registration-time evaluation, select **Request PRF evaluation
+  at registration (comparison run)** before R1. Both registrations then send
+  `extensions: { prf: { eval: { first: salts.a } } }` with salt A.
 - Assertion sends `extensions: { prf: { eval: { first: salt } } }`.
   `evalByCredential` is not used.
 - Salt A and salt B are independent random 32-byte values in browser memory.
@@ -339,6 +343,7 @@ or `untested`.
 | Transport                   | TBD                            |
 | TLS trust                   | TBD                            |
 | PRF client capability       | TBD                            |
+| `registration_eval`         | `false` or `true`              |
 | RP ID                       | `localhost`                    |
 | Exact origin                | `https://localhost:4300`       |
 | Approved contract revision  | `#177` / ADR-0015 at `187a056` |
