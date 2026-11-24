@@ -1,5 +1,9 @@
 # Phase 5 PRF physical-device protocol
 
+The [physical PRF results](PHASE_5_PRF_RESULTS.md) record the completed
+trials and Phase 6 recommendation. The preparation tables below describe
+the state before the first physical trial.
+
 ## Status
 
 prepared; physical observations pending
