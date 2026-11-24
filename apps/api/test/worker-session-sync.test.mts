@@ -1,5 +1,5 @@
 import { applyD1Migrations, env, reset } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import fixture from "../../../docs/contracts/sync-v1.json";
 import worker from "../bridges/worker.mjs";
@@ -615,7 +615,14 @@ describe("session principal sync authorization", () => {
     });
   });
 
-  it("enforces the session window after request validation", async () => {
+  it("enforces the session window after request validation", async ({
+    onTestFinished,
+  }) => {
+    // Keep bootstrap and all pulls in the same fixed window.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    onTestFinished(() => {
+      clock.mockRestore();
+    });
     const alice = await register(sessionEnv(), { idFill: 8 });
     const { document_id: documentId } = await bootstrap(alice);
     // Bootstrap already charged the first request in this fixed window. The
