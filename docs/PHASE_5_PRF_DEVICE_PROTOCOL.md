@@ -265,6 +265,13 @@ the client blocker. Provider evaluation was not possible.
 
 A successful creation does not prove that assertion will return a PRF result.
 
+In a separate comparison run, select **Request PRF evaluation at
+registration (comparison run)** before registering C1. Both registrations
+send `prf.eval.first` using salt A. The setting is locked once registration
+starts. Record `prf.enabled` and whether registration returned a result.
+Proceed to A1 if the passkey was created. A missing registration result
+can occur even when authentication returns a PRF result.
+
 ### 3. Authenticate C1 with salt A, twice
 
 1. Click **A1** and complete the prompt. Record UP, UV, flags, and provider.
@@ -456,8 +463,10 @@ complete or blocked cleanup closes the run, clears its in-memory secrets, and
 permanently disables further ceremonies until reload. Editing observation
 fields afterwards cannot reopen the run.
 
-The export schema is `tanikun-prf-probe-export-v1`. It has exactly the run
-header, preflight, environment, providers, six cells, three comparisons,
+The export schema is `tanikun-prf-probe-export-v1`. The run header includes
+`registration_eval`, a boolean that identifies the selected mode. Earlier
+exports omit this field and used the support check only. The export also
+includes preflight, environment, providers, six cells, three comparisons,
 cleanup, a fixed `pending_human` recommendation, and fixed limitation labels.
 It has no result bytes, hashes, credential IDs, challenges, requests, or
 responses.

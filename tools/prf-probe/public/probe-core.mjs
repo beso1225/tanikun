@@ -188,6 +188,7 @@ export function createRunState() {
   return {
     runId: "",
     harnessCommit: "unknown",
+    registrationEval: false,
     preflight: {
       origin: PROBE_ORIGIN,
       rpId: PROBE_RP_ID,
@@ -492,6 +493,8 @@ export function validateForExport(state) {
   const errors = [];
   if (!isSafeRunId(state.runId)) errors.push("run_id");
   if (!isSafeCommit(state.harnessCommit)) errors.push("harness_commit");
+  if (typeof state.registrationEval !== "boolean")
+    errors.push("registration_eval");
   if (state.preflight.origin !== PROBE_ORIGIN) errors.push("origin");
   if (state.preflight.rpId !== PROBE_RP_ID) errors.push("rp_id");
   if (state.preflight.secureContext !== true) errors.push("secure_context");
@@ -644,6 +647,7 @@ export function buildExport(state, now = new Date()) {
     generated_at: generatedAt.toISOString(),
     run_id: state.runId,
     harness_commit: state.harnessCommit,
+    registration_eval: state.registrationEval,
     preflight: {
       origin: state.preflight.origin,
       rp_id: state.preflight.rpId,
