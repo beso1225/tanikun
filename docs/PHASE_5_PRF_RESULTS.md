@@ -6,13 +6,13 @@ The trials took place on November 24, 2026, on a MacBook Air M3 running macOS
 27.2.1 (26B131). They used HTTPS loopback with a manual certificate warning
 bypass. The transport field was unrecorded.
 
-| Browser and provider | Registration request | Registration response | Authentication and comparisons |
-| --- | --- | --- | --- |
-| Chrome 158.0.8127.37, 1Password 8.12.46, Chrome extension 8.12.46.29 | Support check | `enabled=true` | A1 returned a plain JavaScript array. Failed with `prf_result_type_array`. |
-| Same Chrome, Apple Passwords 3.2 | Support check | R1 and R2 reported `enabled=true`. | A1–A4 returned 32 bytes. All three comparisons passed. |
-| Safari 27.2, 1Password 8.12.46 through macOS AutoFill, extension off | Support check | R1 and R2 created passkeys and omitted `enabled`. The probe reported `prf_enabled_absent`. | A1–A4 returned 32 bytes. All three comparisons passed. |
-| Same Chrome, 1Password 8.12.46 through macOS AutoFill, extension off | Support check | R1 reported `enabled=false`. | A1 returned 32 bytes. The probe reported `prf_enabled_inconsistent`. The tester reported the same outcome on retry. |
-| Same Chrome and 1Password macOS AutoFill configuration | Registration evaluation | R1 and R2 reported `enabled=true` and returned 32 bytes. | A1–A4 returned 32 bytes. All three comparisons passed. |
+| Browser and provider                                                 | Registration request    | Registration response                                                                      | Authentication and comparisons                                                                                      |
+| -------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Chrome 158.0.8127.37, 1Password 8.12.46, Chrome extension 8.12.46.29 | Support check           | `enabled=true`                                                                             | A1 returned a plain JavaScript array. Failed with `prf_result_type_array`.                                          |
+| Same Chrome, Apple Passwords 3.2                                     | Support check           | R1 and R2 reported `enabled=true`.                                                         | A1–A4 returned 32 bytes. All three comparisons passed.                                                              |
+| Safari 27.2, 1Password 8.12.46 through macOS AutoFill, extension off | Support check           | R1 and R2 created passkeys and omitted `enabled`. The probe reported `prf_enabled_absent`. | A1–A4 returned 32 bytes. All three comparisons passed.                                                              |
+| Same Chrome, 1Password 8.12.46 through macOS AutoFill, extension off | Support check           | R1 reported `enabled=false`.                                                               | A1 returned 32 bytes. The probe reported `prf_enabled_inconsistent`. The tester reported the same outcome on retry. |
+| Same Chrome and 1Password macOS AutoFill configuration               | Registration evaluation | R1 and R2 reported `enabled=true` and returned 32 bytes.                                   | A1–A4 returned 32 bytes. All three comparisons passed.                                                              |
 
 The source is the tester's safe JSON exports, identified by run prefixes
 `9249eeb0`, `0d77e01b`, `610d454b`, `b47039a2`, and `2ff9b02e` in table
