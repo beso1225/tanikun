@@ -53,12 +53,17 @@ for (const kind of ["string", "array", "object", "other"]) {
         Object.defineProperty(navigator, "credentials", {
           configurable: true,
           value: {
-            create: async () => ({
-              type: "public-key",
-              rawId: new Uint8Array(16).fill(1).buffer,
-              getClientExtensionResults: () => ({ prf: { enabled: true } }),
-              response: { getAuthenticatorData: () => data.slice().buffer },
-            }),
+            create: async (options) => {
+              if (options.publicKey.extensions.prf.eval !== undefined) {
+                throw new Error("default registration must only check support");
+              }
+              return {
+                type: "public-key",
+                rawId: new Uint8Array(16).fill(1).buffer,
+                getClientExtensionResults: () => ({ prf: { enabled: true } }),
+                response: { getAuthenticatorData: () => data.slice().buffer },
+              };
+            },
             get: async () => {
               const first =
                 resultKind === "string"
@@ -131,6 +136,7 @@ for (const kind of ["string", "array", "object", "other"]) {
       page.click("#export"),
     ]);
     const exported = await readFile(await download.path(), "utf8");
+    assert.equal(JSON.parse(exported).registration_eval, false);
     const cell = JSON.parse(exported).cells.find(
       (candidate) => candidate.id === "A1",
     );
@@ -205,6 +211,7 @@ test(
             allowC2: true,
           };
           let firstSalt = null;
+          const registrationInputs = [];
           let previousChallenge = null;
 
           // oxlint-disable-next-line unicorn/consistent-function-scoping
@@ -240,6 +247,11 @@ test(
             checks.createCount += 1;
             const publicKey = options.publicKey;
             checks.createPrf ||= Boolean(publicKey.extensions?.prf);
+            const registrationInput = publicKey.extensions?.prf?.eval?.first;
+            if (registrationInput?.byteLength !== 32) {
+              throw new Error("missing registration PRF input");
+            }
+            registrationInputs.push(new Uint8Array(registrationInput).slice());
             checks.createResident ||=
               publicKey.authenticatorSelection?.residentKey === "required" &&
               publicKey.authenticatorSelection?.requireResidentKey === true;
@@ -257,7 +269,9 @@ test(
             return {
               type: "public-key",
               rawId: rawId.buffer,
-              getClientExtensionResults: () => ({ prf: { enabled: true } }),
+              getClientExtensionResults: () => ({
+                prf: { enabled: true, results: { first: prfBytes(a1).buffer } },
+              }),
               response: {
                 getAuthenticatorData: () => flags(0x45).buffer,
               },
@@ -285,6 +299,14 @@ test(
               publicKey.extensions.prf.eval.first,
             ).slice();
             if (checks.getCount === 1) firstSalt = salt;
+            if (checks.getCount === 1 || checks.getCount === 4) {
+              const index = checks.getCount === 1 ? 0 : 1;
+              checks.registrationInputsMatch ??= true;
+              checks.registrationInputsMatch &&= equal(
+                salt,
+                registrationInputs[index],
+              );
+            }
             if (checks.getCount === 2) {
               checks.a1a2SaltSame = equal(salt, firstSalt);
             }
@@ -408,7 +430,9 @@ test(
         );
       }
 
+      await page.check("#registration-eval");
       await step("R1");
+      assert.equal(await page.locator("#registration-eval").isDisabled(), true);
       await step("R2");
       assert.equal(await page.locator("#step-a4").isDisabled(), true);
       // Even a dispatched event cannot bypass the terminal step's prerequisites.
@@ -470,6 +494,7 @@ test(
       assert.equal(checks.createCount, 2);
       assert.equal(checks.getCount, 4);
       assert.equal(checks.createPrf, true);
+      assert.equal(checks.registrationInputsMatch, true);
       assert.equal(checks.createResident, true);
       assert.equal(checks.createUv, true);
       assert.equal(checks.createAttestation, true);
@@ -500,12 +525,14 @@ test(
       const exportText = await readFile(downloadPath, "utf8");
       const exported = JSON.parse(exportText);
       assert.equal(exported.schema, "tanikun-prf-probe-export-v1");
+      assert.equal(exported.registration_eval, true);
       assert.equal(exported.recommendation, "pending_human");
       assert.equal(exported.preflight.tls_trust, "bypassed");
       assert.deepEqual(exported.limitations, ["tls_trust_bypassed"]);
       assert.equal(exported.cells.length, 6);
       for (const id of ["R1", "R2"]) {
         const registration = exported.cells.find((cell) => cell.id === id);
+        assert.equal(registration.result_length, 32);
         assert.deepEqual(
           [
             registration.up_flag,

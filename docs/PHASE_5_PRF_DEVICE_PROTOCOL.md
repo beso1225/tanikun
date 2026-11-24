@@ -1,15 +1,14 @@
 # Phase 5 PRF physical-device protocol
 
+The [physical PRF results](PHASE_5_PRF_RESULTS.md) record the completed
+trials and Phase 6 recommendation. The preparation tables below describe
+the state before the first physical trial.
+
 ## Status
 
-prepared; physical observations pending
-
-This page is the reconciled preparation for
-[#186](https://github.com/beso1225/tanikun/issues/186). It is not an evidence
-record and it does not claim PRF support for any browser, device, authenticator,
-or provider. No physical ceremony was run while preparing it. Issue #186 stays
-open until a human records the observations, the cleanup is verified, and the
-review is complete.
+This page describes the test procedure for
+[#186](https://github.com/beso1225/tanikun/issues/186). The results document
+records the Mac trials, including cleanup and the Phase 6 recommendation.
 
 The base commit is
 `187a05654f950fd11cbd6c75ea5d37646d759d90` (`#197` merged, `#176` through
@@ -162,6 +161,7 @@ The safe export contains only:
 - status enums and booleans;
 - exact manually entered device, browser, provider, and extension version
   labels;
+- `registration_eval`, the boolean that records the registration mode;
 - result presence and a byte length, never a result value;
 - UP, UV, BE, and BS flags as booleans or `not inspected`;
 - human UP and UV observations as `yes`, `no`, or `not_observed`;
@@ -211,7 +211,10 @@ One run uses one fictional RP test account and two disposable credentials.
   exported.
 - The options use the accepted Phase 5 settings: `residentKey: "required"`,
   `userVerification: "required"`, `attestation: "none"`, and ES256 (`alg: -7`).
-- Registration sends `extensions: { prf: {} }`.
+- By default, registration sends `extensions: { prf: {} }` to check PRF support.
+  To compare with registration-time evaluation, select **Request PRF evaluation
+  at registration (comparison run)** before R1. Both registrations then send
+  `extensions: { prf: { eval: { first: salts.a } } }` with salt A.
 - Assertion sends `extensions: { prf: { eval: { first: salt } } }`.
   `evalByCredential` is not used.
 - Salt A and salt B are independent random 32-byte values in browser memory.
@@ -264,6 +267,13 @@ the client blocker. Provider evaluation was not possible.
 6. Record the C1 alias for cleanup.
 
 A successful creation does not prove that assertion will return a PRF result.
+
+In a separate comparison run, select **Request PRF evaluation at
+registration (comparison run)** before registering C1. Both registrations
+send `prf.eval.first` using salt A. The setting is locked once registration
+starts. Record `prf.enabled` and whether registration returned a result.
+Proceed to A1 if the passkey was created. A missing registration result
+can occur even when authentication returns a PRF result.
 
 ### 3. Authenticate C1 with salt A, twice
 
@@ -333,6 +343,7 @@ or `untested`.
 | Transport                   | TBD                            |
 | TLS trust                   | TBD                            |
 | PRF client capability       | TBD                            |
+| `registration_eval`         | `false` or `true`              |
 | RP ID                       | `localhost`                    |
 | Exact origin                | `https://localhost:4300`       |
 | Approved contract revision  | `#177` / ADR-0015 at `187a056` |
@@ -456,8 +467,10 @@ complete or blocked cleanup closes the run, clears its in-memory secrets, and
 permanently disables further ceremonies until reload. Editing observation
 fields afterwards cannot reopen the run.
 
-The export schema is `tanikun-prf-probe-export-v1`. It has exactly the run
-header, preflight, environment, providers, six cells, three comparisons,
+The export schema is `tanikun-prf-probe-export-v1`. The run header includes
+`registration_eval`, a boolean that identifies the selected mode. Earlier
+exports omit this field and used the support check only. The export also
+includes preflight, environment, providers, six cells, three comparisons,
 cleanup, a fixed `pending_human` recommendation, and fixed limitation labels.
 It has no result bytes, hashes, credential IDs, challenges, requests, or
 responses.
@@ -551,7 +564,9 @@ If a browser or provider exposes a credential object in a console or a HAR file,
 do not retain that file. Stop, record the blocker, and do not upload the raw
 file.
 
-## Acceptance criteria map
+## Acceptance criteria map at preparation
+
+This table describes the work and evidence required before the first trial.
 
 | #186 criterion                                                                                                                                                                | Prepared in this change                                                                                       | Still requires human observation                                           |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -560,22 +575,6 @@ file.
 | Observed, failed, and untested cells recorded separately; concrete blockers; virtual results excluded from physical compatibility                                             | Status enum, blocker enum, blocked iPhone cell, synthetic test isolation                                      | All physical cell values and cleanup booleans                              |
 | No PRF output to server, public logs, or artifacts; no real key wrapping, E2EE, or recovery claim                                                                             | Isolated page, no server API, strict CSP, allowlist export, canary tests, explicit non-goals                  | Human confirmation that the run did not use real data or a public listener |
 | Evidence-based Phase 6 recommendation, with unsupported as valid completion                                                                                                   | Decision rules and pending state                                                                              | The reviewer's recommendation after observations and cleanup               |
-
-## Remaining blockers
-
-- Physical observations are not recorded. Every M1 to M5 and H1 cell is
-  `untested`; I1 is `blocked`.
-- The disposable certificate may be rejected by a normal browser. A trusted
-  certificate path, if any, must be supplied by the parent without changing
-  trust stores.
-- The iPhone browser and provider versions are unknown. A direct iPhone-browser
-  cell has no approved origin or certificate path.
-- The Chrome-managed credential is tentative, not a confirmed provider.
-- The provider chooser, Touch ID or Face ID, 1Password unlock, and deletion are
-  human-owned. This preparation did not trigger them.
-- A physical result remains pending even if the synthetic tests pass.
-- The independent review and the parent's review are still required before
-  human execution or a PR merge.
 
 ## Preparation verification
 

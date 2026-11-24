@@ -268,6 +268,10 @@ function finalAssertionReady() {
 
 function updateButtons() {
   const canRun = preflightOk() && ceremony === null;
+  setDisabled(
+    "registration-eval",
+    ceremony !== null || aliases.c1 !== null || secretsCleared,
+  );
   setDisabled("step-r1", !canRun || touched("R1"));
   setDisabled("step-a1", !canRun || !credentials.c1 || touched("A1"));
   setDisabled("step-a2", !canRun || !outputs.a1 || touched("A2"));
@@ -399,7 +403,9 @@ function optionsForRegistration(alias, userHandle, challenge) {
       },
       attestation: "none",
       timeout: 120_000,
-      extensions: { prf: {} },
+      extensions: {
+        prf: state.registrationEval ? { eval: { first: salts.a } } : {},
+      },
     },
   };
 }
@@ -438,7 +444,9 @@ function discardCredential(credential) {
 
 async function runRegistration(cellId, slot) {
   refresh();
-  if (!preflightOk() || ceremony !== null) return;
+  if (!preflightOk() || ceremony !== null || touched(cellId)) return;
+  if (slot === "c2" && !credentials.c1) return;
+  if (slot === "c1") state.registrationEval = checked("registration-eval");
   const controller = new AbortController();
   ceremony = controller;
   updateButtons();
